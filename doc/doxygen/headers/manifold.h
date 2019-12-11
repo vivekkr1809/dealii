@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -60,7 +60,7 @@
  *   in the Mapping class (see the @ref mapping module), which however obtains
  *   its information about the boundary of the domain from the classes
  *   described here. The same is, of course, true when integrating boundary
- *   terms (e.g., inhomogenous Neumann boundary conditions).
+ *   terms (e.g., inhomogeneous Neumann boundary conditions).
  *
  *   <li> Domains with nonzero codimension: In cases where a Triangulation is
  *   embedded into a higher dimensional space, i.e., whenever the second
@@ -74,6 +74,9 @@
  *   using high order mappings.
  *
  * </ul>
+ * Many other examples, as well as much theoretical underpinning for the
+ * implementation in deal.II, is provided in the
+ * @ref GlossGeometryPaper "geometry paper".
  *
  * In deal.II, a Manifold is seen as a collection of points, together
  * with a notion of distance between points (on the manifold). New

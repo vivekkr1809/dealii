@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,6 +21,7 @@
 
 #  include <deal.II/base/exceptions.h>
 #  include <deal.II/base/multithread_info.h>
+#  include <deal.II/base/std_cxx17/tuple.h>
 #  include <deal.II/base/template_constraints.h>
 
 #  include <condition_variable>
@@ -32,6 +33,7 @@
 #  include <tuple>
 #  include <utility>
 #  include <vector>
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  ifdef DEAL_II_WITH_THREADS
 #    include <thread>
 #    ifdef DEAL_II_USE_MT_POSIX
@@ -40,6 +42,7 @@
 #    include <tbb/task.h>
 #    include <tbb/tbb_stddef.h>
 #  endif
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 
 
@@ -1094,8 +1097,9 @@ namespace Threads
   inline Thread<RT>
   new_thread(RT (*fun_ptr)(Args...), typename identity<Args>::type... args)
   {
-    return new_thread(std::function<RT()>(
-      std::bind(fun_ptr, internal::maybe_make_ref<Args>::act(args)...)));
+    auto dummy = std::make_tuple(internal::maybe_make_ref<Args>::act(args)...);
+    return new_thread(
+      [dummy, fun_ptr]() -> RT { return std_cxx17::apply(fun_ptr, dummy); });
   }
 
 
@@ -1353,16 +1357,7 @@ namespace Threads
       tbb::task *worker =
         new (task->allocate_child()) TaskEntryPoint<RT>(*this);
 
-      // in earlier versions of the TBB, task::spawn was a regular
-      // member function; however, in later versions, it was converted
-      // into a static function. we could always call it as a regular member
-      // function of *task, but that appears to confuse the NVidia nvcc
-      // compiler. consequently, the following work-around:
-#    if TBB_VERSION_MAJOR >= 4
       tbb::task::spawn(*worker);
-#    else
-      task->spawn(*worker);
-#    endif
     }
 
 
@@ -1520,16 +1515,6 @@ namespace Threads
     }
 
 
-    /**
-     * Copy constructor.
-     *
-     * @post Using this constructor automatically makes the task object
-     * joinable().
-     */
-    Task(const Task<RT> &t)
-      : task_descriptor(t.task_descriptor)
-    {}
-
 
     /**
      * Default constructor. You can't do much with a task object constructed
@@ -1540,6 +1525,8 @@ namespace Threads
      * i.e., joinable() will return false.
      */
     Task() = default;
+
+
 
     /**
      * Join the task represented by this object, i.e. wait for it to finish.
@@ -1768,8 +1755,9 @@ namespace Threads
   inline Task<RT>
   new_task(RT (*fun_ptr)(Args...), typename identity<Args>::type... args)
   {
-    return new_task(std::function<RT()>(
-      std::bind(fun_ptr, internal::maybe_make_ref<Args>::act(args)...)));
+    auto dummy = std::make_tuple(internal::maybe_make_ref<Args>::act(args)...);
+    return new_task(
+      [dummy, fun_ptr]() -> RT { return std_cxx17::apply(fun_ptr, dummy); });
   }
 
 

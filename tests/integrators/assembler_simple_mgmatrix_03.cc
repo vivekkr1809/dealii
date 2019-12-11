@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2017 by the deal.II authors
+// Copyright (C) 2012 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -75,7 +75,7 @@ test(FiniteElement<dim> &fe)
 
   DoFHandler<dim> dof(tr);
   dof.distribute_dofs(fe);
-  dof.distribute_mg_dofs(fe);
+  dof.distribute_mg_dofs();
   dof.initialize_local_block_info();
   for (unsigned int level = 0; level < tr.n_levels(); ++level)
     DoFRenumbering::component_wise(dof, level);

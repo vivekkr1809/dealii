@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2017 by the deal.II authors
+// Copyright (C) 2004 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -94,7 +94,7 @@ test(std::string solver_name, std::string preconditioner_name)
         const dealii::Point<dim> &center = cell->center();
         const double              x      = center[0];
 
-        const unsigned int id = std::floor((x - x0) / dL);
+        const auto id = static_cast<unsigned int>((x - x0) / dL);
         cell->set_subdomain_id(id);
       }
   }

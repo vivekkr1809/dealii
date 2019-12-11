@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,6 +26,9 @@
 
 #include <deal.II/numerics/data_component_interpretation.h>
 
+// To be able to serialize XDMFEntry
+#include <boost/serialization/map.hpp>
+
 #include <limits>
 #include <string>
 #include <tuple>
@@ -44,9 +47,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
+// Forward declarations
+#ifndef DOXYGEN
 class ParameterHandler;
 class XDMFEntry;
+#endif
 
 /**
  * This is a base class for output of data on meshes of very general form.
@@ -264,10 +269,9 @@ namespace DataOutBase
     /**
      * Patch indices of neighbors of the current patch. This is made available
      * for the OpenDX format that requires neighbor
-     * information for advanced output. For dim==0 we still allow one
-     * neighbor, to avoid compiler warnings about zero-sized arrays.
+     * information for advanced output.
      */
-    unsigned int neighbors[dim > 0 ? GeometryInfo<dim>::faces_per_cell : 1];
+    std::array<unsigned int, GeometryInfo<dim>::faces_per_cell> neighbors;
 
     /**
      * Number of this patch. Since we are not sure patches are always
@@ -1983,7 +1987,7 @@ namespace DataOutBase
    *
    * For more information consult the Tecplot Users and Reference manuals.
    *
-   *  @deprecated Use the version using DataComponentInterpretation instead.
+   * @deprecated Use the version using DataComponentInterpretation instead.
    */
   template <int dim, int spacedim>
   DEAL_II_DEPRECATED void
@@ -3026,6 +3030,74 @@ public:
                     const std::vector<std::string> &piece_names) const;
 
   /**
+   * This function writes several .vtu files and a .pvtu record in parallel
+   * and constructs the filenames automatically. It is a combination of
+   * DataOutInterface::write_vtu() or
+   * DataOutInterface::write_vtu_in_parallel(), and
+   * DataOutInterface::write_pvtu_record().
+   *
+   * For example, running
+   * <code> write_vtu_with_pvtu_record("output/", "solution", 3, 4, comm, 2)
+   * </code> on 10 processes generates the files
+   * @code
+   * output/solution_0003.0.vtu
+   * output/solution_0003.1.vtu
+   * output/solution_0003.pvtu
+   * @endcode
+   * where the `.0.vtu` file contains the output of the first half of the
+   * proceses grouped together, and the `.1.vtu` the data from the remaining
+   * half.
+   *
+   * A specified @p directory and a @p filename_without_extension
+   * form the first part of the filename. The filename is then extended with
+   * a @p counter labeling the current timestep/iteration/etc., the processor ID,
+   * and finally the .vtu/.pvtu ending. Since the number of timesteps to be
+   * written depends on the application, the number of digits to be reserved in
+   * the filename can be specified as parameter @p n_digits_for_counter, and the number
+   * is not padded with leading zeros if this parameter is left at its default
+   * value numbers::invalid_unsigned_int. If more than one file identifier
+   * is needed (e.g. time step number and iteration counter of solver), the
+   * last identifier is used as @p counter, while all other identifiers have to be
+   * added to @p filename_without_extension when calling this function.
+   *
+   * In a
+   * parallel setting, several files are typically written per time step. The
+   * number of files written in parallel depends on the number of MPI processes
+   * (see parameter @p mpi_communicator with default value MPI_COMM_WORLD), and a
+   * specified number of @p n_groups with default value 0. The background is that
+   * VTU file output supports grouping files from several CPUs into a given
+   * number of files using MPI I/O when writing on a parallel filesystem. The
+   * default value of @p n_groups is 0, meaning that every MPI rank will write one
+   * file. A value of 1 will generate one big file containing the solution over
+   * the whole domain, while a larger value will create @p n_groups files (but not
+   * more than there are MPI ranks).
+   *
+   * Note that only one processor needs to
+   * generate the .pvtu file, where processor zero is chosen to take over this
+   * job.
+   *
+   * The return value is the filename of the master file for the pvtu record.
+   *
+   * @note The code simply combines the strings @p directory and
+   * @p filename_without_extension, i.e., the user has to make sure that
+   * @p directory contains a trailing character, e.g. "/", that separates the
+   * directory from the filename.
+   *
+   * @note Use an empty string "" for the first argument if output is to be
+   * written in the current working directory.
+   *
+   * @author Niklas Fehn, Martin Kronbichler, 2019
+   */
+  std::string
+  write_vtu_with_pvtu_record(
+    const std::string &directory,
+    const std::string &filename_without_extension,
+    const unsigned int counter,
+    const unsigned int n_digits_for_counter = numbers::invalid_unsigned_int,
+    const MPI_Comm &   mpi_communicator     = MPI_COMM_WORLD,
+    const unsigned int n_groups             = 0) const;
+
+  /**
    * Obtain data through get_patches() and write it to <tt>out</tt> in SVG
    * format. See DataOutBase::write_svg.
    */
@@ -3599,7 +3671,7 @@ public:
   serialize(Archive &ar, const unsigned int /*version*/)
   {
     ar &valid &h5_sol_filename &h5_mesh_filename &entry_time &num_nodes
-      &num_cells &dimension &attribute_dims;
+      &num_cells &dimension &space_dimension &attribute_dims;
   }
 
   /**

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_matrix_free_mapping_info_h
 #define dealii_matrix_free_mapping_info_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/aligned_vector.h>
 #include <deal.II/base/exceptions.h>
@@ -108,9 +110,16 @@ namespace internal
      *
      * @author Katharina Kormann, Martin Kronbichler, 2018
      */
-    template <int structdim, int spacedim, typename Number>
+    template <int structdim,
+              int spacedim,
+              typename Number,
+              typename VectorizedArrayType>
     struct MappingInfoStorage
     {
+      static_assert(
+        std::is_same<Number, typename VectorizedArrayType::value_type>::value,
+        "Type of Number and of VectorizedArrayType do not match.");
+
       struct QuadratureDescriptor
       {
         /**
@@ -187,15 +196,14 @@ namespace internal
        *
        * Indexed by @p data_index_offsets.
        */
-      AlignedVector<VectorizedArray<Number>> JxW_values;
+      AlignedVector<VectorizedArrayType> JxW_values;
 
       /**
        * Stores the normal vectors.
        *
        * Indexed by @p data_index_offsets.
        */
-      AlignedVector<Tensor<1, spacedim, VectorizedArray<Number>>>
-        normal_vectors;
+      AlignedVector<Tensor<1, spacedim, VectorizedArrayType>> normal_vectors;
 
       /**
        * The storage of covariant transformation on quadrature points, i.e.,
@@ -208,7 +216,7 @@ namespace internal
        * but the default case (cell integrals or boundary integrals) only
        * fills the zeroth component and ignores the first one.
        */
-      AlignedVector<Tensor<2, spacedim, VectorizedArray<Number>>> jacobians[2];
+      AlignedVector<Tensor<2, spacedim, VectorizedArrayType>> jacobians[2];
 
       /**
        * The storage of the gradients of the inverse Jacobian
@@ -227,7 +235,7 @@ namespace internal
        */
       AlignedVector<Tensor<1,
                            spacedim *(spacedim + 1) / 2,
-                           Tensor<1, spacedim, VectorizedArray<Number>>>>
+                           Tensor<1, spacedim, VectorizedArrayType>>>
         jacobian_gradients[2];
 
       /**
@@ -237,7 +245,7 @@ namespace internal
        *
        * Indexed by @p data_index_offsets.
        */
-      AlignedVector<Tensor<1, spacedim, VectorizedArray<Number>>>
+      AlignedVector<Tensor<1, spacedim, VectorizedArrayType>>
         normals_times_jacobians[2];
 
       /**
@@ -255,7 +263,7 @@ namespace internal
        *
        * Indexed by @p quadrature_point_offsets.
        */
-      AlignedVector<Point<spacedim, VectorizedArray<Number>>> quadrature_points;
+      AlignedVector<Point<spacedim, VectorizedArrayType>> quadrature_points;
 
       /**
        * Returns the quadrature index for a given number of quadrature
@@ -292,14 +300,9 @@ namespace internal
      *
      * @author Katharina Kormann and Martin Kronbichler, 2010, 2011, 2017
      */
-    template <int dim, typename Number>
+    template <int dim, typename Number, typename VectorizedArrayType>
     struct MappingInfo
     {
-      /**
-       * Empty constructor.
-       */
-      MappingInfo();
-
       /**
        * Compute the information in the given cells and faces. The cells are
        * specified by the level and the index within the level (as given by
@@ -310,9 +313,9 @@ namespace internal
        */
       void
       initialize(
-        const dealii::Triangulation<dim> &                         tria,
-        const std::vector<std::pair<unsigned int, unsigned int>> & cells,
-        const FaceInfo<VectorizedArray<Number>::n_array_elements> &faces,
+        const dealii::Triangulation<dim> &                        tria,
+        const std::vector<std::pair<unsigned int, unsigned int>> &cells,
+        const FaceInfo<VectorizedArrayType::n_array_elements> &   faces,
         const std::vector<unsigned int> &              active_fe_index,
         const Mapping<dim> &                           mapping,
         const std::vector<dealii::hp::QCollection<1>> &quad,
@@ -368,18 +371,26 @@ namespace internal
       /**
        * The data cache for the cells.
        */
-      std::vector<MappingInfoStorage<dim, dim, Number>> cell_data;
+      std::vector<MappingInfoStorage<dim, dim, Number, VectorizedArrayType>>
+        cell_data;
 
       /**
        * The data cache for the faces.
        */
-      std::vector<MappingInfoStorage<dim - 1, dim, Number>> face_data;
+      std::vector<MappingInfoStorage<dim - 1, dim, Number, VectorizedArrayType>>
+        face_data;
 
       /**
        * The data cache for the face-associated-with-cell topology, following
        * the @p cell_type variable for the cell types.
        */
-      std::vector<MappingInfoStorage<dim - 1, dim, Number>> face_data_by_cells;
+      std::vector<MappingInfoStorage<dim - 1, dim, Number, VectorizedArrayType>>
+        face_data_by_cells;
+
+      /**
+       * The pointer to the underlying Mapping object.
+       */
+      SmartPointer<const Mapping<dim>> mapping;
 
       /**
        * Computes the information in the given cells, called within
@@ -403,9 +414,9 @@ namespace internal
         const dealii::Triangulation<dim> &                        tria,
         const std::vector<std::pair<unsigned int, unsigned int>> &cells,
         const std::vector<
-          FaceToCellTopology<VectorizedArray<Number>::n_array_elements>> &faces,
-        const Mapping<dim> &                           mapping,
-        const std::vector<dealii::hp::QCollection<1>> &quad,
+          FaceToCellTopology<VectorizedArrayType::n_array_elements>> &faces,
+        const Mapping<dim> &                                          mapping,
+        const std::vector<dealii::hp::QCollection<1>> &               quad,
         const UpdateFlags update_flags_boundary_faces,
         const UpdateFlags update_flags_inner_faces);
 
@@ -439,27 +450,28 @@ namespace internal
      *
      * @author Katharina Kormann, Martin Kronbichler, 2018
      */
-    template <int, typename, bool>
+    template <int, typename, bool, typename>
     struct MappingInfoCellsOrFaces;
 
-    template <int dim, typename Number>
-    struct MappingInfoCellsOrFaces<dim, Number, false>
+    template <int dim, typename Number, typename VectorizedArrayType>
+    struct MappingInfoCellsOrFaces<dim, Number, false, VectorizedArrayType>
     {
-      static const MappingInfoStorage<dim, dim, Number> *
-      get(const MappingInfo<dim, Number> &mapping_info,
-          const unsigned int              quad_no)
+      static const MappingInfoStorage<dim, dim, Number, VectorizedArrayType> *
+      get(const MappingInfo<dim, Number, VectorizedArrayType> &mapping_info,
+          const unsigned int                                   quad_no)
       {
         AssertIndexRange(quad_no, mapping_info.cell_data.size());
         return &mapping_info.cell_data[quad_no];
       }
     };
 
-    template <int dim, typename Number>
-    struct MappingInfoCellsOrFaces<dim, Number, true>
+    template <int dim, typename Number, typename VectorizedArrayType>
+    struct MappingInfoCellsOrFaces<dim, Number, true, VectorizedArrayType>
     {
-      static const MappingInfoStorage<dim - 1, dim, Number> *
-      get(const MappingInfo<dim, Number> &mapping_info,
-          const unsigned int              quad_no)
+      static const MappingInfoStorage<dim - 1, dim, Number, VectorizedArrayType>
+        *
+        get(const MappingInfo<dim, Number, VectorizedArrayType> &mapping_info,
+            const unsigned int                                   quad_no)
       {
         AssertIndexRange(quad_no, mapping_info.face_data.size());
         return &mapping_info.face_data[quad_no];
@@ -479,7 +491,8 @@ namespace internal
      * satisfied). This is not a problem in the use cases for this class, but be
      * careful when using it in other contexts.
      */
-    template <typename Number>
+    template <typename Number,
+              typename VectorizedArrayType = VectorizedArray<Number>>
     struct FPArrayComparator
     {
       FPArrayComparator(const Number scaling);
@@ -490,35 +503,33 @@ namespace internal
 
       bool
       operator()(
-        const Tensor<1, VectorizedArray<Number>::n_array_elements, Number> &t1,
-        const Tensor<1, VectorizedArray<Number>::n_array_elements, Number> &t2)
+        const Tensor<1, VectorizedArrayType::n_array_elements, Number> &t1,
+        const Tensor<1, VectorizedArrayType::n_array_elements, Number> &t2)
         const;
 
       template <int dim>
       bool
       operator()(
-        const Tensor<
-          1,
-          dim,
-          Tensor<1, VectorizedArray<Number>::n_array_elements, Number>> &t1,
-        const Tensor<
-          1,
-          dim,
-          Tensor<1, VectorizedArray<Number>::n_array_elements, Number>> &t2)
-        const;
+        const Tensor<1,
+                     dim,
+                     Tensor<1, VectorizedArrayType::n_array_elements, Number>>
+          &t1,
+        const Tensor<1,
+                     dim,
+                     Tensor<1, VectorizedArrayType::n_array_elements, Number>>
+          &t2) const;
 
       template <int dim>
       bool
       operator()(
-        const Tensor<
-          2,
-          dim,
-          Tensor<1, VectorizedArray<Number>::n_array_elements, Number>> &t1,
-        const Tensor<
-          2,
-          dim,
-          Tensor<1, VectorizedArray<Number>::n_array_elements, Number>> &t2)
-        const;
+        const Tensor<2,
+                     dim,
+                     Tensor<1, VectorizedArrayType::n_array_elements, Number>>
+          &t1,
+        const Tensor<2,
+                     dim,
+                     Tensor<1, VectorizedArrayType::n_array_elements, Number>>
+          &t2) const;
 
       Number tolerance;
     };
@@ -527,10 +538,13 @@ namespace internal
 
     /* ------------------- inline functions ----------------------------- */
 
-    template <int structdim, int spacedim, typename Number>
+    template <int structdim,
+              int spacedim,
+              typename Number,
+              typename VectorizedArrayType>
     inline unsigned int
-    MappingInfoStorage<structdim, spacedim, Number>::quad_index_from_n_q_points(
-      const unsigned int n_q_points) const
+    MappingInfoStorage<structdim, spacedim, Number, VectorizedArrayType>::
+      quad_index_from_n_q_points(const unsigned int n_q_points) const
     {
       for (unsigned int i = 0; i < descriptor.size(); ++i)
         if (n_q_points == descriptor[i].n_q_points)
@@ -540,9 +554,10 @@ namespace internal
 
 
 
-    template <int dim, typename Number>
+    template <int dim, typename Number, typename VectorizedArrayType>
     inline GeometryType
-    MappingInfo<dim, Number>::get_cell_type(const unsigned int cell_no) const
+    MappingInfo<dim, Number, VectorizedArrayType>::get_cell_type(
+      const unsigned int cell_no) const
     {
       AssertIndexRange(cell_no, cell_type.size());
       return cell_type[cell_no];

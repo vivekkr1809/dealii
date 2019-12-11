@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -134,7 +134,7 @@ test()
   for (unsigned int step = 0; step < 10; ++step)
     {
       std::cout << "step " << step << std::endl;
-      for (auto cell : tria.active_cell_iterators())
+      for (auto &cell : tria.active_cell_iterators())
         {
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
                ++v)

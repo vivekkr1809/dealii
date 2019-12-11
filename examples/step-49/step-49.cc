@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2013 - 2018 by the deal.II authors
+ * Copyright (C) 2013 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -55,8 +55,8 @@ using namespace dealii;
 // - The number of boundary faces that use each boundary indicator, so that
 //   it can be compared with what we expect.
 //
-// Finally, the function outputs the mesh in encapsulated postscript (EPS)
-// format that can easily be visualized in the same way as was done in step-1.
+// Finally, the function outputs the mesh in VTU format that can easily be
+// visualized in Paraview or VisIt.
 template <int dim>
 void print_mesh_info(const Triangulation<dim> &triangulation,
                      const std::string &       filename)
@@ -72,13 +72,12 @@ void print_mesh_info(const Triangulation<dim> &triangulation,
   // we then increment it):
   {
     std::map<types::boundary_id, unsigned int> boundary_count;
-    for (auto cell : triangulation.active_cell_iterators())
+    for (const auto &cell : triangulation.active_cell_iterators())
       {
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
+        for (const auto &face : cell->face_iterators())
           {
-            if (cell->face(face)->at_boundary())
-              boundary_count[cell->face(face)->boundary_id()]++;
+            if (face->at_boundary())
+              boundary_count[face->boundary_id()]++;
           }
       }
 
@@ -95,7 +94,7 @@ void print_mesh_info(const Triangulation<dim> &triangulation,
   // file:
   std::ofstream out(filename);
   GridOut       grid_out;
-  grid_out.write_eps(triangulation, out);
+  grid_out.write_vtu(triangulation, out);
   std::cout << " written to " << filename << std::endl << std::endl;
 }
 
@@ -113,10 +112,10 @@ void grid_1()
 
   GridIn<2> gridin;
   gridin.attach_triangulation(triangulation);
-  std::ifstream f("untitled.msh");
+  std::ifstream f("example.msh");
   gridin.read_msh(f);
 
-  print_mesh_info(triangulation, "grid-1.eps");
+  print_mesh_info(triangulation, "grid-1.vtu");
 }
 
 
@@ -142,7 +141,7 @@ void grid_2()
   Triangulation<2> triangulation;
   GridGenerator::merge_triangulations(tria1, tria2, triangulation);
 
-  print_mesh_info(triangulation, "grid-2.eps");
+  print_mesh_info(triangulation, "grid-2.vtu");
 }
 
 
@@ -187,10 +186,11 @@ void grid_3()
   // a circle centered at the origin. Fortunately,
   // GridGenerator::hyper_cube_with_cylindrical_hole already attaches a
   // Manifold object to the interior boundary, so we do not need to do
-  // anything but refine the mesh (see the @ref Results results section for a
-  // fully worked example where we <em>do</em> attach a Manifold object).
+  // anything but refine the mesh (see the <a href="#Results">results
+  // section</a> for a fully worked example where we <em>do</em> attach a
+  // Manifold object).
   triangulation.refine_global(2);
-  print_mesh_info(triangulation, "grid-3.eps");
+  print_mesh_info(triangulation, "grid-3.vtu");
 }
 
 // There is one snag to doing things as shown above: If one moves the nodes on
@@ -220,7 +220,7 @@ void grid_4()
   GridGenerator::hyper_cube_with_cylindrical_hole(triangulation, 0.25, 1.0);
 
   GridGenerator::extrude_triangulation(triangulation, 3, 2.0, out);
-  print_mesh_info(out, "grid-4.eps");
+  print_mesh_info(out, "grid-4.vtu");
 }
 
 
@@ -236,8 +236,7 @@ void grid_4()
 // the address of a function that takes a point and returns a point, an object
 // that has an <code>operator()</code> like the code below, or for example, a
 // <code>std::function@<Point@<2@>(const Point@<2@>)@></code> object one can
-// get via <code>std::bind</code> in more complex cases. Here we have a simple
-// transformation and use the simplest method: a lambda function.
+// get as a lambda function. Here we choose the latter option.
 void grid_5()
 {
   Triangulation<2>          triangulation;
@@ -254,7 +253,7 @@ void grid_5()
       return {in[0], in[1] + std::sin(in[0] / 5.0 * numbers::PI)};
     },
     triangulation);
-  print_mesh_info(triangulation, "grid-5.eps");
+  print_mesh_info(triangulation, "grid-5.vtu");
 }
 
 
@@ -278,7 +277,7 @@ struct Grid6Func
 
   Point<2> operator()(const Point<2> &in) const
   {
-    return Point<2>(in(0), trans(in(1)));
+    return {in(0), trans(in(1))};
   }
 };
 
@@ -294,7 +293,7 @@ void grid_6()
                                             Point<2>(1.0, 1.0));
 
   GridTools::transform(Grid6Func(), triangulation);
-  print_mesh_info(triangulation, "grid-6.eps");
+  print_mesh_info(triangulation, "grid-6.vtu");
 }
 
 
@@ -317,14 +316,14 @@ void grid_7()
                                             Point<2>(1.0, 1.0));
 
   GridTools::distort_random(0.3, triangulation, true);
-  print_mesh_info(triangulation, "grid-7.eps");
+  print_mesh_info(triangulation, "grid-7.vtu");
 }
 
 
 // @sect3{The main function}
 
-// Finally, the main function. There isn't much to do here, only to call the
-// subfunctions.
+// Finally, the main function. There isn't much to do here, only to call all the
+// various functions we wrote above.
 int main()
 {
   try

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 
 #ifndef dealii_p4est_wrappers_h
 #define dealii_p4est_wrappers_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/geometry_info.h>
 
@@ -38,6 +40,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#  ifndef DOXYGEN
 namespace parallel
 {
   namespace distributed
@@ -46,7 +50,7 @@ namespace parallel
     class Triangulation;
   }
 } // namespace parallel
-
+#  endif
 
 namespace internal
 {
@@ -61,6 +65,20 @@ namespace internal
      */
     template <int>
     struct types;
+
+    // these struct mimics p4est for 1D
+    template <>
+    struct types<1>
+    {
+      // id of a quadrant is an integeger
+      using quadrant = int;
+
+      // maximum number of children
+      static const int max_n_child_indices_bits = 27;
+
+      // number of bits the data type of id has
+      static const int n_bits = std::numeric_limits<quadrant>::digits;
+    };
 
     template <>
     struct types<2>
@@ -158,7 +176,7 @@ namespace internal
         types<2>::locidx        min_quadrants,
         int                     min_level,
         int                     fill_uniform,
-        size_t                  data_size,
+        std::size_t             data_size,
         p4est_init_t            init_fn,
         void *                  user_pointer);
 
@@ -188,7 +206,7 @@ namespace internal
 
       static types<2>::forest *(&load_ext)(const char *filename,
                                            MPI_Comm    mpicomm,
-                                           size_t      data_size,
+                                           std::size_t data_size,
                                            int         load_data,
                                            int         autopartition,
                                            int         broadcasthead,
@@ -200,8 +218,8 @@ namespace internal
 
       static int (&connectivity_is_valid)(types<2>::connectivity *connectivity);
 
-      static types<2>::connectivity *(&connectivity_load)(const char *filename,
-                                                          size_t *    length);
+      static types<2>::connectivity *(&connectivity_load)(const char * filename,
+                                                          std::size_t *length);
 
       static unsigned int (&checksum)(types<2>::forest *p4est);
 
@@ -215,13 +233,14 @@ namespace internal
       static void (&ghost_destroy)(types<2>::ghost *ghost);
 
       static void (&reset_data)(types<2>::forest *p4est,
-                                size_t            data_size,
+                                std::size_t       data_size,
                                 p4est_init_t      init_fn,
                                 void *            user_pointer);
 
-      static size_t (&forest_memory_used)(types<2>::forest *p4est);
+      static std::size_t (&forest_memory_used)(types<2>::forest *p4est);
 
-      static size_t (&connectivity_memory_used)(types<2>::connectivity *p4est);
+      static std::size_t (&connectivity_memory_used)(
+        types<2>::connectivity *p4est);
 
       template <int spacedim>
       static void
@@ -237,7 +256,7 @@ namespace internal
                                     int                     tag,
                                     void *                  dest_data,
                                     const void *            src_data,
-                                    size_t                  data_size);
+                                    std::size_t             data_size);
 
       static types<2>::transfer_context *(&transfer_fixed_begin)(
         const types<2>::gloidx *dest_gfq,
@@ -246,7 +265,7 @@ namespace internal
         int                     tag,
         void *                  dest_data,
         const void *            src_data,
-        size_t                  data_size);
+        std::size_t             data_size);
 
       static void (&transfer_fixed_end)(types<2>::transfer_context *tc);
 
@@ -327,7 +346,7 @@ namespace internal
         types<3>::locidx        min_quadrants,
         int                     min_level,
         int                     fill_uniform,
-        size_t                  data_size,
+        std::size_t             data_size,
         p8est_init_t            init_fn,
         void *                  user_pointer);
 
@@ -369,8 +388,8 @@ namespace internal
 
       static int (&connectivity_is_valid)(types<3>::connectivity *connectivity);
 
-      static types<3>::connectivity *(&connectivity_load)(const char *filename,
-                                                          size_t *    length);
+      static types<3>::connectivity *(&connectivity_load)(const char * filename,
+                                                          std::size_t *length);
 
       static unsigned int (&checksum)(types<3>::forest *p8est);
 
@@ -383,13 +402,14 @@ namespace internal
       static void (&ghost_destroy)(types<3>::ghost *ghost);
 
       static void (&reset_data)(types<3>::forest *p4est,
-                                size_t            data_size,
+                                std::size_t       data_size,
                                 p8est_init_t      init_fn,
                                 void *            user_pointer);
 
-      static size_t (&forest_memory_used)(types<3>::forest *p4est);
+      static std::size_t (&forest_memory_used)(types<3>::forest *p4est);
 
-      static size_t (&connectivity_memory_used)(types<3>::connectivity *p4est);
+      static std::size_t (&connectivity_memory_used)(
+        types<3>::connectivity *p4est);
 
       static constexpr unsigned int max_level = P8EST_MAXLEVEL;
 
@@ -399,7 +419,7 @@ namespace internal
                                     int                     tag,
                                     void *                  dest_data,
                                     const void *            src_data,
-                                    size_t                  data_size);
+                                    std::size_t             data_size);
 
       static types<3>::transfer_context *(&transfer_fixed_begin)(
         const types<3>::gloidx *dest_gfq,
@@ -408,7 +428,7 @@ namespace internal
         int                     tag,
         void *                  dest_data,
         const void *            src_data,
-        size_t                  data_size);
+        std::size_t             data_size);
 
       static void (&transfer_fixed_end)(types<3>::transfer_context *tc);
 

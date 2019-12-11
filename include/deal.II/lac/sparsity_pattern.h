@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,7 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/array_view.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/linear_index_iterator.h>
 #include <deal.II/base/std_cxx14/memory.h>
@@ -40,7 +41,10 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 class SparsityPattern;
+class SparsityPatternBase;
 class DynamicSparsityPattern;
 class ChunkSparsityPattern;
 template <typename number>
@@ -51,14 +55,12 @@ template <typename number>
 class SparseLUDecomposition;
 template <typename number>
 class SparseILU;
-template <typename VectorType>
-class VectorSlice;
 
 namespace ChunkSparsityPatternIterators
 {
   class Accessor;
 }
-
+#endif
 
 /*! @addtogroup Sparsity
  *@{
@@ -140,12 +142,19 @@ namespace SparsityPatternIterators
     /**
      * Constructor.
      */
-    Accessor(const SparsityPattern *matrix, const std::size_t linear_index);
+    Accessor(const SparsityPatternBase *matrix, const std::size_t linear_index);
 
     /**
      * Constructor. Construct the end accessor for the given sparsity pattern.
      */
-    Accessor(const SparsityPattern *matrix);
+    Accessor(const SparsityPatternBase *matrix);
+
+    /**
+     * Default constructor creating a dummy accessor. This constructor is here
+     * only to be able to store accessors in STL containers such as
+     * `std::vector`.
+     */
+    Accessor();
 
     /**
      * Row number of the element represented by this object. This function can
@@ -210,10 +219,16 @@ namespace SparsityPatternIterators
     operator<(const Accessor &) const;
 
   protected:
+    DeclExceptionMsg(DummyAccessor,
+                     "The instance of this class was initialized"
+                     " without SparsityPattern object, which"
+                     " means that it is a dummy accessor that can"
+                     " not do any operations.");
+
     /**
      * The sparsity pattern we operate on accessed.
      */
-    const SparsityPattern *container;
+    const SparsityPatternBase *container;
 
     /**
      * Index in global sparsity pattern. This index represents the location
@@ -230,14 +245,10 @@ namespace SparsityPatternIterators
     void
     advance();
 
-    /**
-     * Grant access to iterator class.
-     */
+    // Grant access to iterator class.
     friend class LinearIndexIterator<Iterator, Accessor>;
 
-    /**
-     * Grant access to accessor class of ChunkSparsityPattern.
-     */
+    // Grant access to accessor class of ChunkSparsityPattern.
     friend class ChunkSparsityPatternIterators::Accessor;
   };
 
@@ -255,7 +266,7 @@ namespace SparsityPatternIterators
    * SparsityPattern class for more information.
    *
    * @note This class operates directly on the internal data structures of the
-   * SparsityPattern class. As a consequence, some operations are cheap and
+   * SparsityPatternBase class. As a consequence, some operations are cheap and
    * some are not. In particular, it is cheap to access the column index of
    * the sparsity pattern entry pointed to. On the other hand, it is expensive
    * to access the row index (this requires $O(\log(N))$ operations for a
@@ -278,14 +289,20 @@ namespace SparsityPatternIterators
     /**
      * Type of the stored pointer.
      */
-    using container_pointer_type = SparsityPattern *;
+    using container_pointer_type = SparsityPatternBase *;
 
     /**
      * Constructor. Create an iterator into the sparsity pattern @p sp for the
      * given global index (i.e., the index of the given element counting from
      * the zeroth row).
      */
-    Iterator(const SparsityPattern *sp, const std::size_t linear_index);
+    Iterator(const SparsityPatternBase *sp, const std::size_t linear_index);
+
+    /**
+     * Constructor. Create an iterator into the sparsity pattern @p sp for
+     * a given accessor.
+     */
+    Iterator(const Accessor &accessor);
   };
 } // namespace SparsityPatternIterators
 
@@ -298,6 +315,514 @@ namespace SparsityPatternIterators
  * patters (see
  * @ref Sparsity).
  * It uses the <a
+ * href="https://en.wikipedia.org/wiki/Sparse_matrix">compressed row storage
+ * (CSR)</a> format to store data, and is used as the basis for the
+ * derived SparsityPattern class and SparseMatrix class.
+ *
+ * The elements of a SparsityPatternBase, corresponding to the places where
+ * SparseMatrix objects can store nonzero entries, are stored row-by-row.
+ * The ordering of non-zero elements within each row (i.e. increasing
+ * column index order) depends on the derived classes.
+ *
+ * @author Wolfgang Bangerth, Guido Kanschat and others
+ */
+class SparsityPatternBase : public Subscriptor
+{
+public:
+  /**
+   * Declare type for container size.
+   */
+  using size_type = types::global_dof_index;
+
+  /**
+   * Typedef an iterator class that allows to walk over all nonzero elements
+   * of a sparsity pattern.
+   */
+  using const_iterator = SparsityPatternIterators::Iterator;
+
+  /**
+   * Typedef an iterator class that allows to walk over all nonzero elements
+   * of a sparsity pattern.
+   *
+   * Since the iterator does not allow to modify the sparsity pattern, this
+   * type is the same as that for @p const_iterator.
+   */
+  using iterator = SparsityPatternIterators::Iterator;
+
+  /**
+   * Define a value which is used to indicate that a certain value in the
+   * #colnums array is unused, i.e. does not represent a certain column number
+   * index.
+   *
+   * Indices with this invalid value are used to insert new entries to the
+   * sparsity pattern using the add() member function, and are removed when
+   * calling compress().
+   *
+   * You should not assume that the variable declared here has a certain
+   * value. The initialization is given here only to enable the compiler to
+   * perform some optimizations, but the actual value of the variable may
+   * change over time.
+   */
+  static const size_type invalid_entry = numbers::invalid_size_type;
+
+  /**
+   * @name Construction and Initialization
+   *
+   * Constructors, destructor, functions initializing, copying and filling an
+   * object.
+   */
+  // @{
+  /**
+   * Initialize the matrix empty, that is with no memory allocated. This is
+   * useful if you want such objects as member variables in other classes. You
+   * can make the structure usable by calling the reinit() function.
+   */
+  SparsityPatternBase();
+
+  /**
+   * Destructor.
+   */
+  ~SparsityPatternBase() override = default;
+
+  /**
+   * Reallocate memory and set up data structures for a new matrix with @p m
+   * rows and @p n columns, with at most @p max_per_row
+   * nonzero entries per row.
+   *
+   * This function simply maps its operations to the other reinit()
+   * function.
+   */
+  void
+  reinit(const size_type m, const size_type n, const unsigned int max_per_row);
+
+  /**
+   * Reallocate memory for a matrix of size @p m times @p n. The number of
+   * entries for each row is taken from the array @p row_lengths which
+   * has to give this number of each row $i=1\ldots m$.
+   *
+   * If <tt>m*n==0</tt> all memory is freed, resulting in a total
+   * reinitialization of the object. If it is nonzero, new memory is only
+   * allocated if the new size extends the old one. This is done to save time
+   * and to avoid fragmentation of the heap.
+   */
+  void
+  reinit(const size_type                  m,
+         const size_type                  n,
+         const std::vector<unsigned int> &row_lengths);
+
+  /**
+   * Same as above, but with an ArrayView argument instead.
+   *
+   * The derived classes are responsible for implementation of this function.
+   */
+  virtual void
+  reinit(const size_type                      m,
+         const size_type                      n,
+         const ArrayView<const unsigned int> &row_lengths) = 0;
+
+  /**
+   * Make the sparsity pattern symmetric by adding the sparsity pattern of the
+   * transpose object.
+   *
+   * This function throws an exception if the sparsity pattern does not
+   * represent a quadratic matrix.
+   */
+  void
+  symmetrize();
+
+  /**
+   * Add a nonzero entry to the matrix.  This function may only be called for
+   * non-compressed sparsity patterns.
+   *
+   * If the entry already exists, nothing bad happens.
+   */
+  void
+  add(const size_type i, const size_type j);
+
+  // @}
+
+  /**
+   * @name Iterators
+   */
+  // @{
+
+  /**
+   * Iterator starting at the first entry of the matrix. The resulting
+   * iterator can be used to walk over all nonzero entries of the sparsity
+   * pattern.
+   *
+   * The order in which elements are accessed depends on the storage scheme
+   * implemented by derived classes.
+   */
+  iterator
+  begin() const;
+
+  /**
+   * Final iterator.
+   */
+  iterator
+  end() const;
+
+  /**
+   * Iterator starting at the first entry of row <tt>r</tt>.
+   *
+   * Note that if the given row is empty, i.e. does not contain any nonzero
+   * entries, then the iterator returned by this function equals
+   * <tt>end(r)</tt>. Note also that the iterator may not be dereferenceable in
+   * that case.
+   *
+   * The order in which elements are accessed depends on the storage scheme
+   * implemented by derived classes.
+   */
+  iterator
+  begin(const size_type r) const;
+
+  /**
+   * Final iterator of row <tt>r</tt>. It points to the first element past the
+   * end of line @p r, or past the end of the entire sparsity pattern.
+   *
+   * Note that the end iterator is not necessarily dereferenceable. This is in
+   * particular the case if it is the end iterator for the last row of a
+   * matrix.
+   */
+  iterator
+  end(const size_type r) const;
+
+
+  // @}
+
+  /**
+   * @name Querying information
+   */
+  // @{
+
+  /**
+   * Test for equality of two SparsityPatterns.
+   */
+  bool
+  operator==(const SparsityPatternBase &) const;
+
+  /**
+   * Return whether the object is empty. It is empty if no memory is
+   * allocated, which is the same as that both dimensions are zero.
+   */
+  bool
+  empty() const;
+
+  /**
+   * Check if a value at a certain position may be non-zero.
+   */
+  bool
+  exists(const size_type i, const size_type j) const;
+
+  /**
+   * Return the maximum number of entries per row. Before compression, this
+   * equals the number given to the constructor, while after compression, it
+   * equals the maximum number of entries actually allocated by the user.
+   */
+  size_type
+  max_entries_per_row() const;
+
+  /**
+   * Compute the bandwidth of the matrix represented by this structure. The
+   * bandwidth is the maximum of $|i-j|$ for which the index pair $(i,j)$
+   * represents a nonzero entry of the matrix. Consequently, the maximum
+   * bandwidth a $n\times m$ matrix can have is $\max\{n-1,m-1\}$, a diagonal
+   * matrix has bandwidth 0, and there are at most $2*q+1$ entries per row if
+   * the bandwidth is $q$. The returned quantity is sometimes called "half
+   * bandwidth" in the literature.
+   */
+  size_type
+  bandwidth() const;
+
+  /**
+   * Return the number of nonzero elements of this matrix. Actually, it
+   * returns the number of entries in the sparsity pattern; if any of the
+   * entries should happen to be zero, it is counted anyway.
+   *
+   * This function may only be called if the matrix struct is compressed. It
+   * does not make too much sense otherwise anyway.
+   */
+  std::size_t
+  n_nonzero_elements() const;
+
+  /**
+   * Return whether the structure is compressed or not.
+   */
+  bool
+  is_compressed() const;
+
+  /**
+   * Return number of rows of this matrix, which equals the dimension of the
+   * image space.
+   */
+  size_type
+  n_rows() const;
+
+  /**
+   * Return number of columns of this matrix, which equals the dimension of
+   * the range space.
+   */
+  size_type
+  n_cols() const;
+
+  /**
+   * Number of entries in a specific row.
+   */
+  unsigned int
+  row_length(const size_type row) const;
+
+  /**
+   * Determine an estimate for the memory consumption (in bytes) of this
+   * object. See MemoryConsumption.
+   */
+  std::size_t
+  memory_consumption() const;
+
+  // @}
+
+  /**
+   * @name Accessing entries
+   */
+  // @{
+
+  /**
+   * Access to column number field.  Return the column number of the
+   * <tt>index</tt>th entry in <tt>row</tt>. Note that if diagonal elements
+   * are optimized, the first element in each row is the diagonal element,
+   * i.e. <tt>column_number(row,0)==row</tt>.
+   *
+   * If the sparsity pattern is already compressed, then (except for the
+   * diagonal element), the entries are sorted by columns, i.e.
+   * <tt>column_number(row,i)</tt> <tt><</tt> <tt>column_number(row,i+1)</tt>.
+   */
+  size_type
+  column_number(const size_type row, const unsigned int index) const;
+
+  /**
+   * The index of a global matrix entry in its row.
+   *
+   * This function is analogous to operator(), but it computes the index not
+   * with respect to the total field, but only with respect to the row
+   * <tt>j</tt>.
+   */
+  size_type
+  row_position(const size_type i, const size_type j) const;
+
+  /**
+   * This is the inverse operation to operator()(): given a global index, find
+   * out row and column of the matrix entry to which it belongs. The returned
+   * value is the pair composed of row and column index.
+   *
+   * This function may only be called if the sparsity pattern is closed. The
+   * global index must then be between zero and n_nonzero_elements().
+   *
+   * If <tt>N</tt> is the number of rows of this matrix, then the complexity
+   * of this function is <i>log(N)</i>.
+   */
+  std::pair<size_type, size_type>
+  matrix_position(const std::size_t global_index) const;
+
+  // @}
+
+  /**
+   * @name Input/Output
+   */
+  // @{
+
+  /**
+   * Print the sparsity of the matrix. The output consists of one line per row
+   * of the format <tt>[i,j1,j2,j3,...]</tt>. <i>i</i> is the row number and
+   * <i>jn</i> are the allocated columns in this row.
+   */
+  void
+  print(std::ostream &out) const;
+
+  /**
+   * Print the sparsity of the matrix in a format that <tt>gnuplot</tt>
+   * understands and which can be used to plot the sparsity pattern in a
+   * graphical way. The format consists of pairs <tt>i j</tt> of nonzero
+   * elements, each representing one entry of this matrix, one per line of the
+   * output file. Indices are counted from zero on, as usual. Since sparsity
+   * patterns are printed in the same way as matrices are displayed, we print
+   * the negative of the column index, which means that the <tt>(0,0)</tt>
+   * element is in the top left rather than in the bottom left corner.
+   *
+   * Print the sparsity pattern in gnuplot by setting the data style to dots
+   * or points and use the <tt>plot</tt> command.
+   */
+  void
+  print_gnuplot(std::ostream &out) const;
+
+  /**
+   * Prints the sparsity of the matrix in a .svg file which can be opened in a
+   * web browser. The .svg file contains squares which correspond to the
+   * entries in the matrix. An entry in the matrix which contains a non-zero
+   * value corresponds with a red square while a zero-valued entry in the
+   * matrix correspond with a white square.
+   */
+  void
+  print_svg(std::ostream &out) const;
+
+  /**
+   * Write the data of this object to a stream for the purpose of
+   * serialization
+   */
+  template <class Archive>
+  void
+  save(Archive &ar, const unsigned int version) const;
+
+  /**
+   * Read the data of this object from a stream for the purpose of
+   * serialization
+   */
+  template <class Archive>
+  void
+  load(Archive &ar, const unsigned int version);
+
+  BOOST_SERIALIZATION_SPLIT_MEMBER()
+
+  // @}
+
+  /**
+   * @addtogroup Exceptions
+   * @{
+   */
+
+  /**
+   * The operation is only allowed after the SparsityPattern has been set up
+   * and compress() was called.
+   */
+  DeclExceptionMsg(
+    ExcNotCompressed,
+    "The operation you attempted is only allowed after the SparsityPattern "
+    "has been set up and compress() was called.");
+
+  /**
+   * You tried to add an element to a row, but there was no space left.
+   */
+  DeclException2(ExcNotEnoughSpace,
+                 int,
+                 int,
+                 << "Upon entering a new entry to row " << arg1
+                 << ": there was no free entry any more. " << std::endl
+                 << "(Maximum number of entries for this row: " << arg2
+                 << "; maybe the matrix is already compressed?)");
+
+  /**
+   * This operation changes the structure of the SparsityPattern and is not
+   * possible after compress() has been called.
+   */
+  DeclExceptionMsg(
+    ExcMatrixIsCompressed,
+    "The operation you attempted changes the structure of the SparsityPattern "
+    "and is not possible after compress() has been called.");
+
+  // @}
+
+
+protected:
+  /**
+   * Maximum number of rows that can be stored in the #rowstart array.  Since
+   * reallocation of that array only happens if the present one is too small,
+   * but never when the size of this matrix structure shrinks, #max_dim might
+   * be larger than #rows and in this case #rowstart has more elements than
+   * are used.
+   */
+  size_type max_dim;
+
+  /**
+   * Number of rows that this sparsity structure shall represent.
+   */
+  size_type rows;
+
+  /**
+   * Number of columns that this sparsity structure shall represent.
+   */
+  size_type cols;
+
+  /**
+   * Size of the actually allocated array #colnums. Here, the same applies as
+   * for the #rowstart array, i.e. it may be larger than the actually used
+   * part of the array.
+   */
+  std::size_t max_vec_len;
+
+  /**
+   * Maximum number of elements per row. This is set to the value given to the
+   * reinit() function (or to the constructor), or to the maximum row length
+   * computed from the vectors in case the more flexible constructors or
+   * reinit versions are called. Its value is more or less meaningless after
+   * compress() has been called.
+   */
+  unsigned int max_row_length;
+
+  /**
+   * Array which hold for each row which is the first element in #colnums
+   * belonging to that row. Note that the size of the array is one larger than
+   * the number of rows, because the last element is used for
+   * <tt>row</tt>=#rows, i.e. the row past the last used one. The value of
+   * #rowstart[#rows]} equals the index of the element past the end in
+   * #colnums; this way, we are able to write loops like <tt>for
+   * (i=rowstart[k]; i<rowstart[k+1]; ++i)</tt> also for the last row.
+   *
+   * Note that the actual size of the allocated memory may be larger than the
+   * region that is used. The actual number of elements that was allocated is
+   * stored in #max_dim.
+   */
+  std::unique_ptr<std::size_t[]> rowstart;
+
+  /**
+   * Array of column numbers. In this array, we store for each non-zero
+   * element its column number. The column numbers for the elements in row
+   * <i>r</i> are stored within the index range
+   * #rowstart[<i>r</i>]...#rowstart[<i>r+1</i>]. Therefore to find out
+   * whether a given element (<i>r,c</i>) exists, we have to check whether the
+   * column number <i>c</i> exists in the above-mentioned range within this
+   * array. If it exists, say at position <i>p</i> within this array, the
+   * value of the respective element in the sparse matrix will also be at
+   * position <i>p</i> of the values array of that class.
+   *
+   * At the beginning, all elements of this array are set to @p -1 indicating
+   * invalid (unused) column numbers (diagonal elements are preset if
+   * optimized storage is requested, though). Now, if nonzero elements are
+   * added, one column number in the row's respective range after the other is
+   * set to the column number of the added element. When compress is called,
+   * unused elements (indicated by column numbers @p -1) are eliminated by
+   * copying the column number of subsequent rows and the column numbers
+   * within each row (with possible exception of the diagonal element) are
+   * sorted, such that finding whether an element exists and determining its
+   * position can be done by a binary search.
+   */
+  std::unique_ptr<size_type[]> colnums;
+
+  /**
+   * Store whether the compress() function was called for this object.
+   */
+  bool compressed;
+
+  // Make all sparse matrices friends of this class.
+  template <typename number>
+  friend class SparseMatrix;
+  template <typename number>
+  friend class SparseLUDecomposition;
+  template <typename number>
+  friend class SparseILU;
+  template <typename number>
+  friend class ChunkSparseMatrix;
+
+  friend class ChunkSparsityPattern;
+  friend class DynamicSparsityPattern;
+
+  // Also give access to internal details to the iterator/accessor classes.
+  friend class SparsityPatternIterators::Iterator;
+  friend class SparsityPatternIterators::Accessor;
+  friend class ChunkSparsityPatternIterators::Accessor;
+};
+
+/**
+ * This class stores a sparsity pattern in
+ * the <a
  * href="https://en.wikipedia.org/wiki/Sparse_matrix">compressed row storage
  * (CSR)</a> format to store data, and is used as the basis for the
  * SparseMatrix class.
@@ -325,19 +850,19 @@ namespace SparsityPatternIterators
  *
  * @author Wolfgang Bangerth, Guido Kanschat and others
  */
-class SparsityPattern : public Subscriptor
+class SparsityPattern : public SparsityPatternBase
 {
 public:
   /**
    * Declare type for container size.
    */
-  using size_type = types::global_dof_index;
+  using size_type = SparsityPatternBase::size_type;
 
   /**
    * Typedef an iterator class that allows to walk over all nonzero elements
    * of a sparsity pattern.
    */
-  using const_iterator = SparsityPatternIterators::Iterator;
+  using const_iterator = SparsityPatternBase::const_iterator;
 
   /**
    * Typedef an iterator class that allows to walk over all nonzero elements
@@ -346,28 +871,20 @@ public:
    * Since the iterator does not allow to modify the sparsity pattern, this
    * type is the same as that for @p const_iterator.
    */
-  using iterator = SparsityPatternIterators::Iterator;
-
+  using iterator = SparsityPatternBase::iterator;
 
   /**
-   * Define a value which is used to indicate that a certain value in the
-   * #colnums array is unused, i.e. does not represent a certain column number
-   * index.
-   *
-   * Indices with this invalid value are used to insert new entries to the
-   * sparsity pattern using the add() member function, and are removed when
-   * calling compress().
-   *
-   * You should not assume that the variable declared here has a certain
-   * value. The initialization is given here only to enable the compiler to
-   * perform some optimizations, but the actual value of the variable may
-   * change over time.
+   * Since this class has to implement only one reinit() function, we need to
+   * bring all base reinit() functions into the scope so that the compiler can
+   * find them.
    */
-  static const size_type invalid_entry = numbers::invalid_size_type;
+  using SparsityPatternBase::reinit;
 
   /**
-   * @name Construction and setup Constructors, destructor; functions
-   * initializing, copying and filling an object.
+   * @name Construction and setup
+   *
+   * Constructors, destructor, functions initializing, copying and filling an
+   * object.
    */
   // @{
   /**
@@ -478,44 +995,14 @@ public:
   operator=(const SparsityPattern &);
 
   /**
-   * Reallocate memory and set up data structures for a new matrix with @p m
-   * rows and @p n columns, with at most @p max_per_row
-   * nonzero entries per row.
-   *
-   * This function simply maps its operations to the other reinit()
-   * function.
-   */
-  void
-  reinit(const size_type m, const size_type n, const unsigned int max_per_row);
-
-
-  /**
    * Reallocate memory for a matrix of size @p m times @p n. The number of
-   * entries for each row is taken from the array @p row_lengths which
-   * has to give this number of each row $i=1\ldots m$.
-   *
-   * If <tt>m*n==0</tt> all memory is freed, resulting in a total
-   * reinitialization of the object. If it is nonzero, new memory is only
-   * allocated if the new size extends the old one. This is done to save time
-   * and to avoid fragmentation of the heap.
-   *
-   * If the number of rows equals the number of columns and the last parameter
-   * is true, diagonal elements are stored first in each row to allow
-   * optimized access in relaxation methods of SparseMatrix.
+   * entries for each row is taken from the ArrayView @p row_lengths which
+   * has to give this number of each row $i=0\ldots m-1$.
    */
-  void
-  reinit(const size_type                  m,
-         const size_type                  n,
-         const std::vector<unsigned int> &row_lengths);
-
-
-  /**
-   * Same as above, but with a VectorSlice argument instead.
-   */
-  void
-  reinit(const size_type                                     m,
-         const size_type                                     n,
-         const VectorSlice<const std::vector<unsigned int>> &row_lengths);
+  virtual void
+  reinit(const size_type                      m,
+         const size_type                      n,
+         const ArrayView<const unsigned int> &row_lengths) override;
 
   /**
    * This function compresses the sparsity structure that this object
@@ -642,25 +1129,6 @@ public:
   copy_from(const FullMatrix<number> &matrix);
 
   /**
-   * Make the sparsity pattern symmetric by adding the sparsity pattern of the
-   * transpose object.
-   *
-   * This function throws an exception if the sparsity pattern does not
-   * represent a quadratic matrix.
-   */
-  void
-  symmetrize();
-
-  /**
-   * Add a nonzero entry to the matrix.  This function may only be called for
-   * non-compressed sparsity patterns.
-   *
-   * If the entry already exists, nothing bad happens.
-   */
-  void
-  add(const size_type i, const size_type j);
-
-  /**
    * Add several nonzero entries to the specified matrix row.  This function
    * may only be called for non-compressed sparsity patterns.
    *
@@ -676,56 +1144,6 @@ public:
   // @}
 
 
-
-  /**
-   * @name Iterators
-   */
-  // @{
-
-  /**
-   * Iterator starting at the first entry of the matrix. The resulting
-   * iterator can be used to walk over all nonzero entries of the sparsity
-   * pattern.
-   *
-   * Note the discussion in the general documentation of this class about the
-   * order in which elements are accessed.
-   */
-  iterator
-  begin() const;
-
-  /**
-   * Final iterator.
-   */
-  iterator
-  end() const;
-
-  /**
-   * Iterator starting at the first entry of row <tt>r</tt>.
-   *
-   * Note that if the given row is empty, i.e. does not contain any nonzero
-   * entries, then the iterator returned by this function equals
-   * <tt>end(r)</tt>. Note also that the iterator may not be dereferenceable in
-   * that case.
-   *
-   * Note also the discussion in the general documentation of this class about
-   * the order in which elements are accessed.
-   */
-  iterator
-  begin(const size_type r) const;
-
-  /**
-   * Final iterator of row <tt>r</tt>. It points to the first element past the
-   * end of line @p r, or past the end of the entire sparsity pattern.
-   *
-   * Note that the end iterator is not necessarily dereferenceable. This is in
-   * particular the case if it is the end iterator for the last row of a
-   * matrix.
-   */
-  iterator
-  end(const size_type r) const;
-
-
-  // @}
   /**
    * @name Querying information
    */
@@ -735,70 +1153,6 @@ public:
    */
   bool
   operator==(const SparsityPattern &) const;
-
-  /**
-   * Return whether the object is empty. It is empty if no memory is
-   * allocated, which is the same as that both dimensions are zero.
-   */
-  bool
-  empty() const;
-
-  /**
-   * Return the maximum number of entries per row. Before compression, this
-   * equals the number given to the constructor, while after compression, it
-   * equals the maximum number of entries actually allocated by the user.
-   */
-  size_type
-  max_entries_per_row() const;
-
-  /**
-   * Compute the bandwidth of the matrix represented by this structure. The
-   * bandwidth is the maximum of $|i-j|$ for which the index pair $(i,j)$
-   * represents a nonzero entry of the matrix. Consequently, the maximum
-   * bandwidth a $n\times m$ matrix can have is $\max\{n-1,m-1\}$, a diagonal
-   * matrix has bandwidth 0, and there are at most $2*q+1$ entries per row if
-   * the bandwidth is $q$. The returned quantity is sometimes called "half
-   * bandwidth" in the literature.
-   */
-  size_type
-  bandwidth() const;
-
-  /**
-   * Return the number of nonzero elements of this matrix. Actually, it
-   * returns the number of entries in the sparsity pattern; if any of the
-   * entries should happen to be zero, it is counted anyway.
-   *
-   * This function may only be called if the matrix struct is compressed. It
-   * does not make too much sense otherwise anyway.
-   */
-  std::size_t
-  n_nonzero_elements() const;
-
-  /**
-   * Return whether the structure is compressed or not.
-   */
-  bool
-  is_compressed() const;
-
-  /**
-   * Return number of rows of this matrix, which equals the dimension of the
-   * image space.
-   */
-  size_type
-  n_rows() const;
-
-  /**
-   * Return number of columns of this matrix, which equals the dimension of
-   * the range space.
-   */
-  size_type
-  n_cols() const;
-
-  /**
-   * Number of entries in a specific row.
-   */
-  unsigned int
-  row_length(const size_type row) const;
 
   /**
    * Return whether this object stores only those entries that have been added
@@ -852,55 +1206,12 @@ public:
   size_type
   operator()(const size_type i, const size_type j) const;
 
-  /**
-   * This is the inverse operation to operator()(): given a global index, find
-   * out row and column of the matrix entry to which it belongs. The returned
-   * value is the pair composed of row and column index.
-   *
-   * This function may only be called if the sparsity pattern is closed. The
-   * global index must then be between zero and n_nonzero_elements().
-   *
-   * If <tt>N</tt> is the number of rows of this matrix, then the complexity
-   * of this function is <i>log(N)</i>.
-   */
-  std::pair<size_type, size_type>
-  matrix_position(const std::size_t global_index) const;
-
-  /**
-   * Check if a value at a certain position may be non-zero.
-   */
-  bool
-  exists(const size_type i, const size_type j) const;
-
-  /**
-   * The index of a global matrix entry in its row.
-   *
-   * This function is analogous to operator(), but it computes the index not
-   * with respect to the total field, but only with respect to the row
-   * <tt>j</tt>.
-   */
-  size_type
-  row_position(const size_type i, const size_type j) const;
-
-  /**
-   * Access to column number field.  Return the column number of the
-   * <tt>index</tt>th entry in <tt>row</tt>. Note that if diagonal elements
-   * are optimized, the first element in each row is the diagonal element,
-   * i.e. <tt>column_number(row,0)==row</tt>.
-   *
-   * If the sparsity pattern is already compressed, then (except for the
-   * diagonal element), the entries are sorted by columns, i.e.
-   * <tt>column_number(row,i)</tt> <tt><</tt> <tt>column_number(row,i+1)</tt>.
-   */
-  size_type
-  column_number(const size_type row, const unsigned int index) const;
-
-
   // @}
   /**
    * @name Input/Output
    */
   // @{
+
   /**
    * Write the data of this object en bloc to a file. This is done in a binary
    * mode, so the output is neither readable by humans nor (probably) by other
@@ -931,41 +1242,6 @@ public:
   block_read(std::istream &in);
 
   /**
-   * Print the sparsity of the matrix. The output consists of one line per row
-   * of the format <tt>[i,j1,j2,j3,...]</tt>. <i>i</i> is the row number and
-   * <i>jn</i> are the allocated columns in this row.
-   */
-  void
-  print(std::ostream &out) const;
-
-  /**
-   * Print the sparsity of the matrix in a format that <tt>gnuplot</tt>
-   * understands and which can be used to plot the sparsity pattern in a
-   * graphical way. The format consists of pairs <tt>i j</tt> of nonzero
-   * elements, each representing one entry of this matrix, one per line of the
-   * output file. Indices are counted from zero on, as usual. Since sparsity
-   * patterns are printed in the same way as matrices are displayed, we print
-   * the negative of the column index, which means that the <tt>(0,0)</tt>
-   * element is in the top left rather than in the bottom left corner.
-   *
-   * Print the sparsity pattern in gnuplot by setting the data style to dots
-   * or points and use the <tt>plot</tt> command.
-   */
-  void
-  print_gnuplot(std::ostream &out) const;
-
-  /**
-   * Prints the sparsity of the matrix in a .svg file which can be opened in a
-   * web browser. The .svg file contains squares which correspond to the
-   * entries in the matrix. An entry in the matrix which contains a non-zero
-   * value corresponds with a red square while a zero-valued entry in the
-   * matrix correspond with a white square.
-   */
-  void
-  print_svg(std::ostream &out) const;
-
-
-  /**
    * Write the data of this object to a stream for the purpose of
    * serialization
    */
@@ -990,32 +1266,6 @@ public:
    * @{
    */
   /**
-   * You tried to add an element to a row, but there was no space left.
-   */
-  DeclException2(ExcNotEnoughSpace,
-                 int,
-                 int,
-                 << "Upon entering a new entry to row " << arg1
-                 << ": there was no free entry any more. " << std::endl
-                 << "(Maximum number of entries for this row: " << arg2
-                 << "; maybe the matrix is already compressed?)");
-  /**
-   * The operation is only allowed after the SparsityPattern has been set up
-   * and compress() was called.
-   */
-  DeclExceptionMsg(
-    ExcNotCompressed,
-    "The operation you attempted is only allowed after the SparsityPattern "
-    "has been set up and compress() was called.");
-  /**
-   * This operation changes the structure of the SparsityPattern and is not
-   * possible after compress() has been called.
-   */
-  DeclExceptionMsg(
-    ExcMatrixIsCompressed,
-    "The operation you attempted changes the structure of the SparsityPattern "
-    "and is not possible after compress() has been called.");
-  /**
    * Exception
    */
   DeclException2(ExcIteratorRange,
@@ -1033,92 +1283,11 @@ public:
   //@}
 private:
   /**
-   * Maximum number of rows that can be stored in the #rowstart array.  Since
-   * reallocation of that array only happens if the present one is too small,
-   * but never when the size of this matrix structure shrinks, #max_dim might
-   * be larger than #rows and in this case #rowstart has more elements than
-   * are used.
-   */
-  size_type max_dim;
-
-  /**
-   * Number of rows that this sparsity structure shall represent.
-   */
-  size_type rows;
-
-  /**
-   * Number of columns that this sparsity structure shall represent.
-   */
-  size_type cols;
-
-  /**
-   * Size of the actually allocated array #colnums. Here, the same applies as
-   * for the #rowstart array, i.e. it may be larger than the actually used
-   * part of the array.
-   */
-  std::size_t max_vec_len;
-
-  /**
-   * Maximum number of elements per row. This is set to the value given to the
-   * reinit() function (or to the constructor), or to the maximum row length
-   * computed from the vectors in case the more flexible constructors or
-   * reinit versions are called. Its value is more or less meaningless after
-   * compress() has been called.
-   */
-  unsigned int max_row_length;
-
-  /**
-   * Array which hold for each row which is the first element in #colnums
-   * belonging to that row. Note that the size of the array is one larger than
-   * the number of rows, because the last element is used for
-   * <tt>row</tt>=#rows, i.e. the row past the last used one. The value of
-   * #rowstart[#rows]} equals the index of the element past the end in
-   * #colnums; this way, we are able to write loops like <tt>for
-   * (i=rowstart[k]; i<rowstart[k+1]; ++i)</tt> also for the last row.
-   *
-   * Note that the actual size of the allocated memory may be larger than the
-   * region that is used. The actual number of elements that was allocated is
-   * stored in #max_dim.
-   */
-  std::unique_ptr<std::size_t[]> rowstart;
-
-  /**
-   * Array of column numbers. In this array, we store for each non-zero
-   * element its column number. The column numbers for the elements in row
-   * <i>r</i> are stored within the index range
-   * #rowstart[<i>r</i>]...#rowstart[<i>r+1</i>]. Therefore to find out
-   * whether a given element (<i>r,c</i>) exists, we have to check whether the
-   * column number <i>c</i> exists in the above-mentioned range within this
-   * array. If it exists, say at position <i>p</i> within this array, the
-   * value of the respective element in the sparse matrix will also be at
-   * position <i>p</i> of the values array of that class.
-   *
-   * At the beginning, all elements of this array are set to @p -1 indicating
-   * invalid (unused) column numbers (diagonal elements are preset if
-   * optimized storage is requested, though). Now, if nonzero elements are
-   * added, one column number in the row's respective range after the other is
-   * set to the column number of the added element. When compress is called,
-   * unused elements (indicated by column numbers @p -1) are eliminated by
-   * copying the column number of subsequent rows and the column numbers
-   * within each row (with possible exception of the diagonal element) are
-   * sorted, such that finding whether an element exists and determining its
-   * position can be done by a binary search.
-   */
-  std::unique_ptr<size_type[]> colnums;
-
-  /**
-   * Store whether the compress() function was called for this object.
-   */
-  bool compressed;
-
-  /**
    * Is special treatment of diagonals enabled?
    */
   bool store_diagonal_first_in_row;
 
-  /**
-   * Make all sparse matrices friends of this class.
-   */
+  // Make all sparse matrices friends of this class.
   template <typename number>
   friend class SparseMatrix;
   template <typename number>
@@ -1131,9 +1300,7 @@ private:
   friend class ChunkSparsityPattern;
   friend class DynamicSparsityPattern;
 
-  /**
-   * Also give access to internal details to the iterator/accessor classes.
-   */
+  // Also give access to internal details to the iterator/accessor classes.
   friend class SparsityPatternIterators::Iterator;
   friend class SparsityPatternIterators::Accessor;
   friend class ChunkSparsityPatternIterators::Accessor;
@@ -1148,17 +1315,24 @@ private:
 
 namespace SparsityPatternIterators
 {
-  inline Accessor::Accessor(const SparsityPattern *sparsity_pattern,
-                            const std::size_t      i)
+  inline Accessor::Accessor(const SparsityPatternBase *sparsity_pattern,
+                            const std::size_t          i)
     : container(sparsity_pattern)
     , linear_index(i)
   {}
 
 
 
-  inline Accessor::Accessor(const SparsityPattern *sparsity_pattern)
+  inline Accessor::Accessor(const SparsityPatternBase *sparsity_pattern)
     : container(sparsity_pattern)
     , linear_index(container->rowstart[container->rows])
+  {}
+
+
+
+  inline Accessor::Accessor()
+    : container(nullptr)
+    , linear_index(numbers::invalid_size_type)
   {}
 
 
@@ -1166,6 +1340,7 @@ namespace SparsityPatternIterators
   inline bool
   Accessor::is_valid_entry() const
   {
+    Assert(container != nullptr, DummyAccessor());
     return (linear_index < container->rowstart[container->rows] &&
             container->colnums[linear_index] != SparsityPattern::invalid_entry);
   }
@@ -1219,6 +1394,8 @@ namespace SparsityPatternIterators
   inline bool
   Accessor::operator==(const Accessor &other) const
   {
+    Assert(container != nullptr, DummyAccessor());
+    Assert(other.container != nullptr, DummyAccessor());
     return (container == other.container && linear_index == other.linear_index);
   }
 
@@ -1227,6 +1404,8 @@ namespace SparsityPatternIterators
   inline bool
   Accessor::operator<(const Accessor &other) const
   {
+    Assert(container != nullptr, DummyAccessor());
+    Assert(other.container != nullptr, DummyAccessor());
     Assert(container == other.container, ExcInternalError());
 
     return linear_index < other.linear_index;
@@ -1237,72 +1416,80 @@ namespace SparsityPatternIterators
   inline void
   Accessor::advance()
   {
+    Assert(container != nullptr, DummyAccessor());
     Assert(linear_index < container->rowstart[container->rows],
            ExcIteratorPastEnd());
     ++linear_index;
   }
 
 
-  inline Iterator::Iterator(const SparsityPattern *sp,
-                            const std::size_t      linear_index)
+  inline Iterator::Iterator(const SparsityPatternBase *sp,
+                            const std::size_t          linear_index)
     : LinearIndexIterator<Iterator, Accessor>(Accessor(sp, linear_index))
   {}
+
+
+  inline Iterator::Iterator(const Accessor &accessor)
+    : LinearIndexIterator<Iterator, Accessor>(accessor)
+  {}
+
+
 } // namespace SparsityPatternIterators
 
 
 
-inline SparsityPattern::iterator
-SparsityPattern::begin() const
+inline SparsityPatternBase::iterator
+SparsityPatternBase::begin() const
 {
   if (n_rows() > 0)
-    return iterator(this, rowstart[0]);
+    return {this, rowstart[0]};
   else
     return end();
 }
 
 
 
-inline SparsityPattern::iterator
-SparsityPattern::end() const
+inline SparsityPatternBase::iterator
+SparsityPatternBase::end() const
 {
   if (n_rows() > 0)
-    return iterator(this, rowstart[rows]);
+    return {this, rowstart[rows]};
   else
-    return iterator(nullptr, 0);
+    return {nullptr, 0};
 }
 
 
 
-inline SparsityPattern::iterator
-SparsityPattern::begin(const size_type r) const
+inline SparsityPatternBase::iterator
+SparsityPatternBase::begin(const size_type r) const
 {
   Assert(r < n_rows(), ExcIndexRangeType<size_type>(r, 0, n_rows()));
 
-  return iterator(this, rowstart[r]);
+  return {this, rowstart[r]};
 }
 
 
 
-inline SparsityPattern::iterator
-SparsityPattern::end(const size_type r) const
+inline SparsityPatternBase::iterator
+SparsityPatternBase::end(const size_type r) const
 {
   Assert(r < n_rows(), ExcIndexRangeType<size_type>(r, 0, n_rows()));
 
-  return iterator(this, rowstart[r + 1]);
+  return {this, rowstart[r + 1]};
 }
 
 
 
-inline SparsityPattern::size_type
-SparsityPattern::n_rows() const
+inline SparsityPatternBase::size_type
+SparsityPatternBase::n_rows() const
 {
   return rows;
 }
 
 
 
-inline SparsityPattern::size_type
-SparsityPattern::n_cols() const
+inline SparsityPatternBase::size_type
+SparsityPatternBase::n_cols() const
 {
   return cols;
 }
@@ -1310,7 +1497,7 @@ SparsityPattern::n_cols() const
 
 
 inline bool
-SparsityPattern::is_compressed() const
+SparsityPatternBase::is_compressed() const
 {
   return compressed;
 }
@@ -1326,7 +1513,7 @@ SparsityPattern::stores_only_added_elements() const
 
 
 inline unsigned int
-SparsityPattern::row_length(const size_type row) const
+SparsityPatternBase::row_length(const size_type row) const
 {
   Assert(row < rows, ExcIndexRangeType<size_type>(row, 0, rows));
   return rowstart[row + 1] - rowstart[row];
@@ -1335,8 +1522,8 @@ SparsityPattern::row_length(const size_type row) const
 
 
 inline SparsityPattern::size_type
-SparsityPattern::column_number(const size_type    row,
-                               const unsigned int index) const
+SparsityPatternBase::column_number(const size_type    row,
+                                   const unsigned int index) const
 {
   Assert(row < rows, ExcIndexRangeType<size_type>(row, 0, rows));
   Assert(index < row_length(row), ExcIndexRange(index, 0, row_length(row)));
@@ -1347,7 +1534,7 @@ SparsityPattern::column_number(const size_type    row,
 
 
 inline std::size_t
-SparsityPattern::n_nonzero_elements() const
+SparsityPatternBase::n_nonzero_elements() const
 {
   Assert(compressed, ExcNotCompressed());
 
@@ -1362,13 +1549,12 @@ SparsityPattern::n_nonzero_elements() const
 
 template <class Archive>
 inline void
-SparsityPattern::save(Archive &ar, const unsigned int) const
+SparsityPatternBase::save(Archive &ar, const unsigned int) const
 {
   // forward to serialization function in the base class.
-  ar &static_cast<const Subscriptor &>(*this);
+  ar &boost::serialization::base_object<const Subscriptor>(*this);
 
-  ar &max_dim &rows &cols &max_vec_len &max_row_length &compressed
-    &store_diagonal_first_in_row;
+  ar &max_dim &rows &cols &max_vec_len &max_row_length &compressed;
 
   ar &boost::serialization::make_array(rowstart.get(), max_dim + 1);
   ar &boost::serialization::make_array(colnums.get(), max_vec_len);
@@ -1378,13 +1564,12 @@ SparsityPattern::save(Archive &ar, const unsigned int) const
 
 template <class Archive>
 inline void
-SparsityPattern::load(Archive &ar, const unsigned int)
+SparsityPatternBase::load(Archive &ar, const unsigned int)
 {
   // forward to serialization function in the base class.
-  ar &static_cast<Subscriptor &>(*this);
+  ar &boost::serialization::base_object<Subscriptor>(*this);
 
-  ar &max_dim &rows &cols &max_vec_len &max_row_length &compressed
-    &store_diagonal_first_in_row;
+  ar &max_dim &rows &cols &max_vec_len &max_row_length &compressed;
 
   rowstart = std_cxx14::make_unique<std::size_t[]>(max_dim + 1);
   colnums  = std_cxx14::make_unique<size_type[]>(max_vec_len);
@@ -1395,15 +1580,36 @@ SparsityPattern::load(Archive &ar, const unsigned int)
 
 
 
+template <class Archive>
+inline void
+SparsityPattern::save(Archive &ar, const unsigned int) const
+{
+  // forward to serialization function in the base class.
+  ar &boost::serialization::base_object<const SparsityPatternBase>(*this);
+  ar &store_diagonal_first_in_row;
+}
+
+
+
+template <class Archive>
+inline void
+SparsityPattern::load(Archive &ar, const unsigned int)
+{
+  // forward to serialization function in the base class.
+  ar &boost::serialization::base_object<SparsityPatternBase>(*this);
+  ar &store_diagonal_first_in_row;
+}
+
+
+
 inline bool
-SparsityPattern::operator==(const SparsityPattern &sp2) const
+SparsityPatternBase::operator==(const SparsityPatternBase &sp2) const
 {
   // it isn't quite necessary to compare *all* member variables. by only
   // comparing the essential ones, we can say that two sparsity patterns are
   // equal even if one is compressed and the other is not (in which case some
   // of the member variables are not yet set correctly)
-  if (rows != sp2.rows || cols != sp2.cols || compressed != sp2.compressed ||
-      store_diagonal_first_in_row != sp2.store_diagonal_first_in_row)
+  if (rows != sp2.rows || cols != sp2.cols || compressed != sp2.compressed)
     return false;
 
   for (size_type i = 0; i < rows + 1; ++i)
@@ -1415,6 +1621,15 @@ SparsityPattern::operator==(const SparsityPattern &sp2) const
       return false;
 
   return true;
+}
+
+
+
+inline bool
+SparsityPattern::operator==(const SparsityPattern &sp2) const
+{
+  return (static_cast<const SparsityPatternBase &>(*this) == sp2) &&
+         (store_diagonal_first_in_row == sp2.store_diagonal_first_in_row);
 }
 
 

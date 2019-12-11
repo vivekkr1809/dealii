@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -54,7 +54,7 @@ print_matrix(Triangulation<dim> &      tr,
 {
   DoFHandler<dim> dof(tr);
   dof.distribute_dofs(finel);
-  dof.distribute_mg_dofs(finel);
+  dof.distribute_mg_dofs();
 
   MGTransferPrebuilt<Vector<double>> transfer;
   transfer.build_matrices(dof);

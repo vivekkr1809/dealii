@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -87,6 +87,16 @@ test(const unsigned int size, const unsigned int block_size)
 int
 main(int argc, char **argv)
 {
+  // tests.h enables floating point exceptions in debug mode, but this test
+  // generates an (irrelevant) exception when run with more than one MPI
+  // process so disable them again:
+#if defined(DEBUG) && defined(DEAL_II_HAVE_FP_EXCEPTIONS)
+  {
+    const int current_fe_except = fegetexcept();
+    fedisableexcept(current_fe_except);
+  }
+#endif
+
   Utilities::MPI::MPI_InitFinalize mpi_initialization(
     argc, argv, numbers::invalid_unsigned_int);
 

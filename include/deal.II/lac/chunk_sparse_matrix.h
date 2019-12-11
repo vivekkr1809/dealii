@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2017 by the deal.II authors
+// Copyright (C) 2008 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,10 +31,13 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 template <typename number>
 class Vector;
 template <typename number>
 class FullMatrix;
+#  endif
 
 /*! @addtogroup Matrix1
  *@{
@@ -141,9 +144,7 @@ namespace ChunkSparseMatrixIterators
      */
     using ChunkSparsityPatternIterators::Accessor::advance;
 
-    /**
-     * Make iterator class a friend.
-     */
+    // Make iterator class a friend.
     template <typename, bool>
     friend class Iterator;
   };
@@ -274,9 +275,7 @@ namespace ChunkSparseMatrixIterators
      */
     using ChunkSparsityPatternIterators::Accessor::advance;
 
-    /**
-     * Make iterator class a friend.
-     */
+    // Make iterator class a friend.
     template <typename, bool>
     friend class Iterator;
   };
@@ -1340,7 +1339,7 @@ public:
                  int,
                  << "You are trying to access the matrix entry with index <"
                  << arg1 << ',' << arg2
-                 << ">, but this entry does not exist in the sparsity pattern"
+                 << ">, but this entry does not exist in the sparsity pattern "
                     "of this matrix."
                     "\n\n"
                     "The most common cause for this problem is that you used "
@@ -1409,9 +1408,7 @@ private:
   template <typename somenumber>
   friend class ChunkSparseMatrix;
 
-  /**
-   * Also give access to internal details to the iterator/accessor classes.
-   */
+  // Also give access to internal details to the iterator/accessor classes.
   template <typename, bool>
   friend class ChunkSparseMatrixIterators::Iterator;
   template <typename, bool>

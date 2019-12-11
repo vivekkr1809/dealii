@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,7 @@
 #include <deal.II/base/point.h>
 #include <deal.II/base/tensor.h>
 
+#include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/distributed/shared_tria.h>
 #include <deal.II/distributed/tria.h>
 
@@ -704,7 +705,7 @@ namespace GridTools
 
         const double original_distance_to_unit_cell =
           GeometryInfo<dim>::distance_to_unit_cell(unit_point);
-        for (auto cell : cells_to_add)
+        for (const auto &cell : cells_to_add)
           {
             if (cell != my_cell)
               try
@@ -1064,7 +1065,7 @@ namespace GridTools
       contains_artificial_cells<MeshType>(ghost_cell_layer_within_distance) ==
         false,
       ExcMessage(
-        "Ghost cells within layer_thickness contains artificial cells."
+        "Ghost cells within layer_thickness contains artificial cells. "
         "The function compute_ghost_cell_layer_within_distance "
         "is probably called while using parallel::distributed::Triangulation. "
         "In such case please refer to the description of this function."));
@@ -1135,21 +1136,37 @@ namespace GridTools
     Assert(have_same_coarse_mesh(mesh_1, mesh_2),
            ExcMessage("The two meshes must be represent triangulations that "
                       "have the same coarse meshes"));
+    // We will allow the output to contain ghost cells when we have shared
+    // Triangulations (i.e., so that each processor will get exactly the same
+    // list of cell pairs), but not when we have two distributed
+    // Triangulations (so that all active cells are partitioned by processor).
+    // Non-parallel Triangulations have no ghost or artificial cells, so they
+    // work the same way as shared Triangulations here.
+    bool remove_ghost_cells = false;
+#ifdef DEAL_II_WITH_MPI
+    {
+      constexpr int dim      = MeshType::dimension;
+      constexpr int spacedim = MeshType::space_dimension;
+      if (dynamic_cast<const parallel::distributed::Triangulation<dim, spacedim>
+                         *>(&mesh_1.get_triangulation()) != nullptr ||
+          dynamic_cast<const parallel::distributed::Triangulation<dim, spacedim>
+                         *>(&mesh_2.get_triangulation()) != nullptr)
+        {
+          Assert(&mesh_1.get_triangulation() == &mesh_2.get_triangulation(),
+                 ExcMessage("This function can only be used with meshes "
+                            "corresponding to distributed Triangulations when "
+                            "both Triangulations are equal."));
+          remove_ghost_cells = true;
+        }
+    }
+#endif
 
-    // the algorithm goes as follows:
-    // first, we fill a list with pairs
-    // of iterators common to the two
-    // meshes on the coarsest
-    // level. then we traverse the
-    // list; each time, we find a pair
-    // of iterators for which both
-    // correspond to non-active cells,
-    // we delete this item and push the
-    // pairs of iterators to their
-    // children to the back. if these
-    // again both correspond to
-    // non-active cells, we will get to
-    // the later on for further
+    // the algorithm goes as follows: first, we fill a list with pairs of
+    // iterators common to the two meshes on the coarsest level. then we
+    // traverse the list; each time, we find a pair of iterators for which
+    // both correspond to non-active cells, we delete this item and push the
+    // pairs of iterators to their children to the back. if these again both
+    // correspond to non-active cells, we will get to the later on for further
     // consideration
     using CellList = std::list<std::pair<typename MeshType::cell_iterator,
                                          typename MeshType::cell_iterator>>;
@@ -1161,15 +1178,12 @@ namespace GridTools
     for (; cell_1 != mesh_1.end(0); ++cell_1, ++cell_2)
       cell_list.emplace_back(cell_1, cell_2);
 
-    // then traverse list as described
-    // above
+    // then traverse list as described above
     typename CellList::iterator cell_pair = cell_list.begin();
     while (cell_pair != cell_list.end())
       {
-        // if both cells in this pair
-        // have children, then erase
-        // this element and push their
-        // children instead
+        // if both cells in this pair have children, then erase this element
+        // and push their children instead
         if (cell_pair->first->has_children() &&
             cell_pair->second->has_children())
           {
@@ -1180,28 +1194,34 @@ namespace GridTools
               cell_list.emplace_back(cell_pair->first->child(c),
                                      cell_pair->second->child(c));
 
-            // erasing an iterator
-            // keeps other iterators
-            // valid, so already
-            // advance the present
-            // iterator by one and then
-            // delete the element we've
-            // visited before
-            const typename CellList::iterator previous_cell_pair = cell_pair;
+            // erasing an iterator keeps other iterators valid, so already
+            // advance the present iterator by one and then delete the element
+            // we've visited before
+            const auto previous_cell_pair = cell_pair;
             ++cell_pair;
-
             cell_list.erase(previous_cell_pair);
           }
         else
-          // both cells are active, do
-          // nothing
-          ++cell_pair;
+          {
+            // at least one cell is active
+            if (remove_ghost_cells &&
+                ((cell_pair->first->active() &&
+                  !cell_pair->first->is_locally_owned()) ||
+                 (cell_pair->second->active() &&
+                  !cell_pair->second->is_locally_owned())))
+              {
+                // we only exclude ghost cells for distributed Triangulations
+                const auto previous_cell_pair = cell_pair;
+                ++cell_pair;
+                cell_list.erase(previous_cell_pair);
+              }
+            else
+              ++cell_pair;
+          }
       }
 
-    // just to make sure everything is ok,
-    // validate that all pairs have at least one
-    // active iterator or have different
-    // refinement_cases
+    // just to make sure everything is ok, validate that all pairs have at
+    // least one active iterator or have different refinement_cases
     for (cell_pair = cell_list.begin(); cell_pair != cell_list.end();
          ++cell_pair)
       Assert(cell_pair->first->active() || cell_pair->second->active() ||
@@ -2044,8 +2064,26 @@ namespace GridTools
     Assert(0 <= direction && direction < space_dim,
            ExcIndexRange(direction, 0, space_dim));
 
-    Assert(pairs1.size() == pairs2.size(),
-           ExcMessage("Unmatched faces on periodic boundaries"));
+#ifdef DEBUG
+    {
+      constexpr int dim      = CellIterator::AccessorType::dimension;
+      constexpr int spacedim = CellIterator::AccessorType::space_dimension;
+      // For parallel::fullydistributed::Triangulation there might be unmatched
+      // faces on periodic boundaries on the coarse grid, which results that
+      // this assert is not fulfilled (not a bug!). See also the discussion in
+      // the method collect_periodic_faces.
+      if (!(((pairs1.size() > 0) &&
+             (dynamic_cast<const parallel::fullydistributed::
+                             Triangulation<dim, spacedim> *>(
+                &pairs1.begin()->first->get_triangulation()) != nullptr)) ||
+            ((pairs2.size() > 0) &&
+             (dynamic_cast<
+                const parallel::fullydistributed::Triangulation<dim, spacedim>
+                  *>(&pairs2.begin()->first->get_triangulation()) != nullptr))))
+        Assert(pairs1.size() == pairs2.size(),
+               ExcMessage("Unmatched faces on periodic boundaries"));
+    }
+#endif
 
     unsigned int n_matches = 0;
 
@@ -2081,9 +2119,25 @@ namespace GridTools
           }
       }
 
-    // Assure that all faces are matched
-    AssertThrow(n_matches == pairs1.size() && pairs2.size() == 0,
-                ExcMessage("Unmatched faces on periodic boundaries"));
+    // Assure that all faces are matched if not
+    // parallel::fullydistributed::Triangulation is used. This is related to the
+    // fact that the faces might not be successfully matched on the coarse grid
+    // (not a bug!). See also the comment above and in the
+    // method collect_periodic_faces.
+    {
+      constexpr int dim      = CellIterator::AccessorType::dimension;
+      constexpr int spacedim = CellIterator::AccessorType::space_dimension;
+      if (!(((pairs1.size() > 0) &&
+             (dynamic_cast<const parallel::fullydistributed::
+                             Triangulation<dim, spacedim> *>(
+                &pairs1.begin()->first->get_triangulation()) != nullptr)) ||
+            ((pairs2.size() > 0) &&
+             (dynamic_cast<
+                const parallel::fullydistributed::Triangulation<dim, spacedim>
+                  *>(&pairs2.begin()->first->get_triangulation()) != nullptr))))
+        AssertThrow(n_matches == pairs1.size() && pairs2.size() == 0,
+                    ExcMessage("Unmatched faces on periodic boundaries"));
+    }
   }
 
 
@@ -2218,13 +2272,31 @@ namespace GridTools
           }
       }
 
-    Assert(pairs1.size() == pairs2.size(),
-           ExcMessage("Unmatched faces on periodic boundaries"));
+    // Assure that all faces are matched on the coare grid. This requirement
+    // can only fulfilled if a process owns the complete coarse grid. This is
+    // not the case for a parallel::fullydistributed::Triangulation, i.e. this
+    // requirement has not to be met neither (consider faces on the outside of a
+    // ghost cell that are periodic but for which the ghost neighbor doesn't
+    // exist).
+    if (!(((pairs1.size() > 0) &&
+           (dynamic_cast<
+              const parallel::fullydistributed::Triangulation<dim, space_dim>
+                *>(&pairs1.begin()->first->get_triangulation()) != nullptr)) ||
+          ((pairs2.size() > 0) &&
+           (dynamic_cast<
+              const parallel::fullydistributed::Triangulation<dim, space_dim>
+                *>(&pairs2.begin()->first->get_triangulation()) != nullptr))))
+      Assert(pairs1.size() == pairs2.size(),
+             ExcMessage("Unmatched faces on periodic boundaries"));
 
-    Assert(pairs1.size() > 0,
-           ExcMessage("No new periodic face pairs have been found. "
-                      "Are you sure that you've selected the correct boundary "
-                      "id's and that the coarsest level mesh is colorized?"));
+    Assert(
+      (pairs1.size() > 0 ||
+       (dynamic_cast<
+          const parallel::fullydistributed::Triangulation<dim, space_dim> *>(
+          &mesh.begin()->get_triangulation()) != nullptr)),
+      ExcMessage("No new periodic face pairs have been found. "
+                 "Are you sure that you've selected the correct boundary "
+                 "id's and that the coarsest level mesh is colorized?"));
 
     // and call match_periodic_face_pairs that does the actual matching:
     match_periodic_face_pairs(

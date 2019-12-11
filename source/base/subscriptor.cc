@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,6 @@
 
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/subscriptor.h>
-#include <deal.II/base/thread_management.h>
 
 #include <algorithm>
 #include <iostream>
@@ -31,28 +30,11 @@ static const char *unknown_subscriber = "unknown subscriber";
 std::mutex Subscriptor::mutex;
 
 
-Subscriptor::Subscriptor()
-  : counter(0)
-  , object_info(nullptr)
-{
-  // this has to go somewhere to avoid an extra warning.
-  (void)unknown_subscriber;
-}
-
-
-
-Subscriptor::Subscriptor(const Subscriptor &)
-  : counter(0)
-  , object_info(nullptr)
-{}
-
-
-
 Subscriptor::Subscriptor(Subscriptor &&subscriptor) noexcept
   : counter(0)
   , object_info(subscriptor.object_info)
 {
-  for (auto validity_ptr : subscriptor.validity_pointers)
+  for (const auto validity_ptr : subscriptor.validity_pointers)
     *validity_ptr = false;
 }
 
@@ -60,7 +42,7 @@ Subscriptor::Subscriptor(Subscriptor &&subscriptor) noexcept
 
 Subscriptor::~Subscriptor()
 {
-  for (auto validity_ptr : validity_pointers)
+  for (const auto validity_ptr : validity_pointers)
     *validity_ptr = false;
   object_info = nullptr;
 }
@@ -91,18 +73,22 @@ Subscriptor::check_no_subscribers() const noexcept
   // just display a message and continue the program.
   if (counter != 0)
     {
+#  if __cpp_lib_uncaught_exceptions >= 201411
+      // std::uncaught_exception() is deprecated in c++17
+      if (std::uncaught_exceptions() == 0)
+#  else
       if (std::uncaught_exception() == false)
+#  endif
         {
           std::string infostring;
-          for (map_iterator it = counter_map.begin(); it != counter_map.end();
-               ++it)
+          for (const auto &map_entry : counter_map)
             {
-              if (it->second > 0)
-                infostring +=
-                  std::string("\n  from Subscriber ") + std::string(it->first);
+              if (map_entry.second > 0)
+                infostring += std::string("\n  from Subscriber ") +
+                              std::string(map_entry.first);
             }
 
-          if (infostring == "")
+          if (infostring.empty())
             infostring = "<none>";
 
           AssertNothrow(counter == 0,
@@ -134,18 +120,9 @@ Subscriptor::check_no_subscribers() const noexcept
 
 
 Subscriptor &
-Subscriptor::operator=(const Subscriptor &s)
-{
-  object_info = s.object_info;
-  return *this;
-}
-
-
-
-Subscriptor &
 Subscriptor::operator=(Subscriptor &&s) noexcept
 {
-  for (auto validity_ptr : s.validity_pointers)
+  for (const auto validity_ptr : s.validity_pointers)
     *validity_ptr = false;
   object_info = s.object_info;
   return *this;
@@ -154,7 +131,8 @@ Subscriptor::operator=(Subscriptor &&s) noexcept
 
 
 void
-Subscriptor::subscribe(std::atomic<bool> *const validity, const char *id) const
+Subscriptor::subscribe(std::atomic<bool> *const validity,
+                       const std::string &      id) const
 {
   std::lock_guard<std::mutex> lock(mutex);
 
@@ -162,43 +140,44 @@ Subscriptor::subscribe(std::atomic<bool> *const validity, const char *id) const
     object_info = &typeid(*this);
   ++counter;
 
-  const char *const name = (id != 0) ? id : unknown_subscriber;
+  const std::string &name = id.empty() ? unknown_subscriber : id;
 
-  map_iterator it = counter_map.find(name);
-  if (it == counter_map.end())
-    counter_map.insert(map_value_type(name, 1U));
-  else
-    it->second++;
+  ++counter_map[name];
 
   *validity = true;
   validity_pointers.push_back(validity);
 }
 
 
+
 void
 Subscriptor::unsubscribe(std::atomic<bool> *const validity,
-                         const char *             id) const
+                         const std::string &      id) const
 {
-  const char *name = (id != nullptr) ? id : unknown_subscriber;
-  AssertNothrow(counter > 0, ExcNoSubscriber(object_info->name(), name));
-  // This is for the case that we do
-  // not abort after the exception
+  const std::string &name = id.empty() ? unknown_subscriber : id;
+
   if (counter == 0)
-    return;
+    {
+      AssertNothrow(counter > 0, ExcNoSubscriber(object_info->name(), name));
+      // This is for the case that we do not abort after the exception
+      return;
+    }
 
   std::lock_guard<std::mutex> lock(mutex);
 
   map_iterator it = counter_map.find(name);
-  if (it == counter_map.end() || it->second == 0)
+  if (it == counter_map.end())
     {
       AssertNothrow(it != counter_map.end(),
                     ExcNoSubscriber(object_info->name(), name));
-      AssertNothrow(it->second > 0, ExcNoSubscriber(object_info->name(), name));
+      // This is for the case that we do not abort after the exception
+      return;
     }
-  else
+  if (it->second == 0)
     {
-      --counter;
-      it->second--;
+      AssertNothrow(it->second > 0, ExcNoSubscriber(object_info->name(), name));
+      // This is for the case that we do not abort after the exception
+      return;
     }
 
   auto validity_ptr_it =
@@ -209,17 +188,12 @@ Subscriptor::unsubscribe(std::atomic<bool> *const validity,
         validity_ptr_it != validity_pointers.end(),
         ExcMessage(
           "This Subscriptor object does not know anything about the supplied pointer!"));
+      return;
     }
-  else
-    validity_pointers.erase(validity_ptr_it);
-}
 
-
-
-unsigned int
-Subscriptor::n_subscriptions() const
-{
-  return counter;
+  validity_pointers.erase(validity_ptr_it);
+  --counter;
+  --it->second;
 }
 
 

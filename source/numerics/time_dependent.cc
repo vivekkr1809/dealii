@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,6 @@
 
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/parallel.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/grid/grid_refinement.h>
@@ -169,33 +168,33 @@ TimeDependent::delete_timestep(const unsigned int position)
 void
 TimeDependent::solve_primal_problem()
 {
-  do_loop(std::bind(&TimeStepBase::init_for_primal_problem,
-                    std::placeholders::_1),
-          std::bind(&TimeStepBase::solve_primal_problem, std::placeholders::_1),
-          timestepping_data_primal,
-          forward);
+  do_loop(
+    [](TimeStepBase *const time_step) { time_step->init_for_primal_problem(); },
+    [](TimeStepBase *const time_step) { time_step->solve_primal_problem(); },
+    timestepping_data_primal,
+    forward);
 }
 
 
 void
 TimeDependent::solve_dual_problem()
 {
-  do_loop(std::bind(&TimeStepBase::init_for_dual_problem,
-                    std::placeholders::_1),
-          std::bind(&TimeStepBase::solve_dual_problem, std::placeholders::_1),
-          timestepping_data_dual,
-          backward);
+  do_loop(
+    [](TimeStepBase *const time_step) { time_step->init_for_dual_problem(); },
+    [](TimeStepBase *const time_step) { time_step->init_for_dual_problem(); },
+    timestepping_data_dual,
+    backward);
 }
 
 
 void
 TimeDependent::postprocess()
 {
-  do_loop(std::bind(&TimeStepBase::init_for_postprocessing,
-                    std::placeholders::_1),
-          std::bind(&TimeStepBase::postprocess_timestep, std::placeholders::_1),
-          timestepping_data_postprocess,
-          forward);
+  do_loop(
+    [](TimeStepBase *const time_step) { time_step->init_for_postprocessing(); },
+    [](TimeStepBase *const time_step) { time_step->postprocess_timestep(); },
+    timestepping_data_postprocess,
+    forward);
 }
 
 
@@ -216,10 +215,10 @@ TimeDependent::start_sweep(const unsigned int s)
     {
       timesteps[step]->set_timestep_no(step);
       timesteps[step]->set_sweep_no(sweep_no);
-    };
+    }
 
-  for (unsigned int step = 0; step < timesteps.size(); ++step)
-    timesteps[step]->start_sweep();
+  for (const auto &timestep : timesteps)
+    timestep->start_sweep();
 }
 
 
@@ -227,13 +226,13 @@ TimeDependent::start_sweep(const unsigned int s)
 void
 TimeDependent::end_sweep()
 {
-  void (TimeDependent::*p)(const unsigned int, const unsigned int) =
-    &TimeDependent::end_sweep;
-  parallel::apply_to_subranges(
-    0U,
-    timesteps.size(),
-    std::bind(p, this, std::placeholders::_1, std::placeholders::_2),
-    1);
+  parallel::apply_to_subranges(0U,
+                               timesteps.size(),
+                               [this](const unsigned int begin,
+                                      const unsigned int end) {
+                                 this->end_sweep(begin, end);
+                               },
+                               1);
 }
 
 
@@ -255,8 +254,8 @@ TimeDependent::memory_consumption() const
      MemoryConsumption::memory_consumption(sweep_no) +
      sizeof(timestepping_data_primal) + sizeof(timestepping_data_dual) +
      sizeof(timestepping_data_postprocess));
-  for (unsigned int i = 0; i < timesteps.size(); ++i)
-    mem += MemoryConsumption::memory_consumption(*timesteps[i]);
+  for (const auto &timestep : timesteps)
+    mem += MemoryConsumption::memory_consumption(*timestep);
 
   return mem;
 }
@@ -545,10 +544,10 @@ TimeStepBase_Tria<dim>::restore_grid()
       //          if (static_cast<unsigned int>(cell->level()) >=
       //              flags.max_refinement_level)
       //            cell->clear_refine_flag();
-      //      };
+      //      }
 
       tria->execute_coarsening_and_refinement();
-    };
+    }
 }
 
 
@@ -592,10 +591,10 @@ namespace
               old_cell->clear_coarsen_flag();
 
             old_cell->set_refine_flag();
-          };
+          }
 
         return;
-      };
+      }
 
     if (old_cell->has_children() && new_cell->has_children())
       {
@@ -623,7 +622,7 @@ namespace
           grids_changed |=
             dealii::adapt_grid_cells<dim>(cell1->child(c), cell2->child(c));
         return grids_changed;
-      };
+      }
 
 
     if (!cell1->has_children() && !cell2->has_children())
@@ -641,10 +640,10 @@ namespace
           {
             cell1->clear_coarsen_flag();
             return true;
-          };
+          }
 
         return false;
-      };
+      }
 
 
     if (cell1->has_children() && !cell2->has_children())
@@ -671,7 +670,7 @@ namespace
           {
             cell2->clear_coarsen_flag();
             changed_grid = true;
-          };
+          }
 
         if (!cell2->refine_flag_set())
           for (unsigned int c = 0; c < cell1->n_children(); ++c)
@@ -681,9 +680,9 @@ namespace
                 cell2->set_refine_flag();
                 changed_grid = true;
                 break;
-              };
+              }
         return changed_grid;
-      };
+      }
 
     if (!cell1->has_children() && cell2->has_children())
       // same thing, other way round...
@@ -693,7 +692,7 @@ namespace
           {
             cell1->clear_coarsen_flag();
             changed_grid = true;
-          };
+          }
 
         if (!cell1->refine_flag_set())
           for (unsigned int c = 0; c < cell2->n_children(); ++c)
@@ -703,9 +702,9 @@ namespace
                 cell1->set_refine_flag();
                 changed_grid = true;
                 break;
-              };
+              }
         return changed_grid;
-      };
+      }
 
     Assert(false, ExcInternalError());
     return false;
@@ -789,7 +788,7 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
         std::upper_bound(sorted_criteria.begin(),
                          sorted_criteria.end(),
                          static_cast<float>(coarsening_threshold));
-    };
+    }
 
 
   // actually flag cells the first time
@@ -888,9 +887,9 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
           if (cell->refine_flag_set())
             previous_cells += (GeometryInfo<dim>::max_children_per_cell - 1);
           else if (cell->coarsen_flag_set())
-            previous_cells -=
-              (double)(GeometryInfo<dim>::max_children_per_cell - 1) /
-              GeometryInfo<dim>::max_children_per_cell;
+            previous_cells -= static_cast<double>(
+                                GeometryInfo<dim>::max_children_per_cell - 1) /
+                              GeometryInfo<dim>::max_children_per_cell;
 
         // @p{previous_cells} now gives the
         // number of cells which would result
@@ -915,9 +914,9 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
           if (cell->refine_flag_set())
             estimated_cells += (GeometryInfo<dim>::max_children_per_cell - 1);
           else if (cell->coarsen_flag_set())
-            estimated_cells -=
-              (double)(GeometryInfo<dim>::max_children_per_cell - 1) /
-              GeometryInfo<dim>::max_children_per_cell;
+            estimated_cells -= static_cast<double>(
+                                 GeometryInfo<dim>::max_children_per_cell - 1) /
+                               GeometryInfo<dim>::max_children_per_cell;
 
         // calculate the allowed delta in
         // cell numbers; be more lenient
@@ -935,7 +934,7 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
               delta_up *= relaxations[r].second;
               delta_down *= relaxations[r].second;
               break;
-            };
+            }
 
         // now, if the number of estimated
         // cells exceeds the number of cells
@@ -1061,7 +1060,7 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
             Assert(p_coarsening_threshold != p_refinement_threshold,
                    ExcInternalError());
             --p_refinement_threshold;
-          };
+          }
 
         coarsening_threshold = *p_coarsening_threshold;
         refinement_threshold = *p_refinement_threshold;
@@ -1079,13 +1078,13 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
           {
             cell->clear_refine_flag();
             cell->clear_coarsen_flag();
-          };
+          }
 
 
         // flag cells finally
         GridRefinement::refine(*tria, criteria, refinement_threshold);
         GridRefinement::coarsen(*tria, criteria, coarsening_threshold);
-      };
+      }
 
   // if step number is greater than
   // one: adapt this and the previous
@@ -1121,7 +1120,7 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
           endc     = tria->end(0);
           for (; new_cell != endc; ++new_cell, ++old_cell)
             dealii::mirror_refinement_flags<dim>(new_cell, old_cell);
-        };
+        }
 
       tria->prepare_coarsening_and_refinement();
       previous_tria->prepare_coarsening_and_refinement();
@@ -1132,7 +1131,7 @@ TimeStepBase_Tria<dim>::refine_grid(const RefinementData refinement_data)
       // to have cells refined twice more
       // than the present one and vica versa.
       dealii::adapt_grids<dim>(*previous_tria, *tria);
-    };
+    }
 }
 
 

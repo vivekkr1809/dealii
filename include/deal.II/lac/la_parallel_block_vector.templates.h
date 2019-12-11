@@ -31,8 +31,10 @@ DEAL_II_NAMESPACE_OPEN
 // Forward type declaration to have special treatment of
 // LAPACKFullMatrix<number>
 // in multivector_inner_product()
+#ifndef DOXYGEN
 template <typename Number>
 class LAPACKFullMatrix;
+#endif
 
 namespace LinearAlgebra
 {
@@ -260,10 +262,11 @@ namespace LinearAlgebra
           // start all requests for all blocks before finishing the transfers as
           // this saves repeated synchronizations. In order to avoid conflict
           // with possible other ongoing communication requests (from
-          // LA::distributed::Vector that supports unfinished requests), add an
-          // arbitrary number 8273 to the communication tag
+          // LA::distributed::Vector that supports unfinished requests), add
+          // 100 to the communication tag (the first 100 can be used by normal
+          // vectors).
           for (unsigned int block = start; block < end; ++block)
-            this->block(block).compress_start(block + 8273 - start, operation);
+            this->block(block).compress_start(block - start + 100, operation);
           for (unsigned int block = start; block < end; ++block)
             this->block(block).compress_finish(operation);
         }
@@ -286,10 +289,10 @@ namespace LinearAlgebra
 
           // In order to avoid conflict with possible other ongoing
           // communication requests (from LA::distributed::Vector that supports
-          // unfinished requests), add an arbitrary number 9923 to the
-          // communication tag
+          // unfinished requests), add 100 to the communication tag (the first
+          // 100 can be used by normal vectors)
           for (unsigned int block = start; block < end; ++block)
-            this->block(block).update_ghost_values_start(block - start + 9923);
+            this->block(block).update_ghost_values_start(block - start + 100);
           for (unsigned int block = start; block < end; ++block)
             this->block(block).update_ghost_values_finish();
         }
@@ -618,15 +621,16 @@ namespace LinearAlgebra
 
       Number local_result = Number();
       for (unsigned int i = 0; i < this->n_blocks(); ++i)
-        local_result += this->block(i).mean_value_local() *
-                        (real_type)this->block(i).partitioner->local_size();
+        local_result +=
+          this->block(i).mean_value_local() *
+          static_cast<real_type>(this->block(i).partitioner->local_size());
 
       if (this->block(0).partitioner->n_mpi_processes() > 1)
         return Utilities::MPI::sum(
                  local_result, this->block(0).partitioner->get_communicator()) /
-               (real_type)this->size();
+               static_cast<real_type>(this->size());
       else
-        return local_result / (real_type)this->size();
+        return local_result / static_cast<real_type>(this->size());
     }
 
 

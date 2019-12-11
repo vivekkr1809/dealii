@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,8 +15,11 @@
 
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/index_set.h>
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/mpi.templates.h>
+#include <deal.II/base/mpi_compute_index_owner_internal.h>
+#include <deal.II/base/mpi_tags.h>
 #include <deal.II/base/multithread_info.h>
 #include <deal.II/base/utilities.h>
 
@@ -26,6 +29,8 @@
 
 #include <iostream>
 #include <numeric>
+#include <set>
+#include <vector>
 
 #ifdef DEAL_II_WITH_TRILINOS
 #  ifdef DEAL_II_WITH_MPI
@@ -95,6 +100,16 @@ namespace Utilities
       const int ierr = MPI_Comm_dup(mpi_communicator, &new_communicator);
       AssertThrowMPI(ierr);
       return new_communicator;
+    }
+
+
+
+    void
+    free_communicator(MPI_Comm &mpi_communicator)
+    {
+      // MPI_Comm_free will set the argument to MPI_COMM_NULL automatically.
+      const int ierr = MPI_Comm_free(&mpi_communicator);
+      AssertThrowMPI(ierr);
     }
 
 
@@ -181,6 +196,90 @@ namespace Utilities
 
 
 
+    std::vector<IndexSet>
+    create_ascending_partitioning(const MPI_Comm &           comm,
+                                  const IndexSet::size_type &local_size)
+    {
+      const unsigned int                     n_proc = n_mpi_processes(comm);
+      const std::vector<IndexSet::size_type> sizes =
+        all_gather(comm, local_size);
+      const auto total_size =
+        std::accumulate(sizes.begin(), sizes.end(), IndexSet::size_type(0));
+
+      std::vector<IndexSet> res(n_proc, IndexSet(total_size));
+
+      IndexSet::size_type begin = 0;
+      for (unsigned int i = 0; i < n_proc; ++i)
+        {
+          res[i].add_range(begin, begin + sizes[i]);
+          begin = begin + sizes[i];
+        }
+
+      return res;
+    }
+
+
+
+    /**
+     * A re-implementation of compute_point_to_point_communication_pattern
+     * using the ConsensusAlgorithm.
+     */
+    class ConsensusAlgorithmProcessTargets
+      : public ConsensusAlgorithmProcess<int, int>
+    {
+    public:
+      ConsensusAlgorithmProcessTargets(const std::vector<unsigned int> &target)
+        : target(target)
+      {}
+
+      using T1 = int;
+      using T2 = int;
+
+      virtual void
+      process_request(const unsigned int other_rank,
+                      const std::vector<T1> &,
+                      std::vector<T2> &) override
+      {
+        this->sources.push_back(other_rank);
+      }
+
+      /**
+       * Simply return the user-provided list.
+       *
+       * @return List of processes this process wants to send requests to.
+       */
+      virtual std::vector<unsigned int>
+      compute_targets() override
+      {
+        return target;
+      }
+
+      /**
+       * The result of the consensus algorithm.
+       * @return Sorted list of ranks of processes wanting to send a request to
+       *         this process.
+       */
+      std::vector<unsigned int>
+      get_result()
+      {
+        std::sort(sources.begin(), sources.end());
+        return sources;
+      }
+
+    private:
+      /**
+       * List of processes this process wants to send requests to.
+       */
+      const std::vector<unsigned int> &target;
+
+      /**
+       * List of ranks of processes wanting to send a request to this process.
+       */
+      std::vector<unsigned int> sources;
+    };
+
+
+
     std::vector<unsigned int>
     compute_point_to_point_communication_pattern(
       const MPI_Comm &                 mpi_comm,
@@ -188,17 +287,35 @@ namespace Utilities
     {
       const unsigned int myid    = Utilities::MPI::this_mpi_process(mpi_comm);
       const unsigned int n_procs = Utilities::MPI::n_mpi_processes(mpi_comm);
+      (void)myid;
+      (void)n_procs;
 
-      for (unsigned int i = 0; i < destinations.size(); ++i)
+      for (const unsigned int destination : destinations)
         {
-          Assert(destinations[i] < n_procs,
-                 ExcIndexRange(destinations[i], 0, n_procs));
-          Assert(destinations[i] != myid,
+          (void)destination;
+          Assert(destination < n_procs, ExcIndexRange(destination, 0, n_procs));
+          Assert(destination != myid,
                  ExcMessage(
                    "There is no point in communicating with ourselves."));
         }
 
-#  if DEAL_II_MPI_VERSION_GTE(2, 2)
+#  if DEAL_II_MPI_VERSION_GTE(3, 0)
+
+      ConsensusAlgorithmProcessTargets process(destinations);
+      ConsensusAlgorithm_NBX<ConsensusAlgorithmProcessTargets::T1,
+                             ConsensusAlgorithmProcessTargets::T2>
+        consensus_algorithm(process, mpi_comm);
+      consensus_algorithm.run();
+      return process.get_result();
+
+#  elif DEAL_II_MPI_VERSION_GTE(2, 2)
+
+      static CollectiveMutex      mutex;
+      CollectiveMutex::ScopedLock lock(mutex, mpi_comm);
+
+      const int mpi_tag =
+        internal::Tags::compute_point_to_point_communication_pattern;
+
       // Calculate the number of messages to send to each process
       std::vector<unsigned int> dest_vector(n_procs);
       for (const auto &el : destinations)
@@ -209,41 +326,50 @@ namespace Utilities
       // results over all processes
       unsigned int n_recv_from;
       const int    ierr = MPI_Reduce_scatter_block(
-        &dest_vector[0], &n_recv_from, 1, MPI_UNSIGNED, MPI_SUM, mpi_comm);
+        dest_vector.data(), &n_recv_from, 1, MPI_UNSIGNED, MPI_SUM, mpi_comm);
 
       AssertThrowMPI(ierr);
 
       // Send myid to every process in `destinations` vector...
       std::vector<MPI_Request> send_requests(destinations.size());
       for (const auto &el : destinations)
-        MPI_Isend(&myid,
-                  1,
-                  MPI_UNSIGNED,
-                  el,
-                  32766,
-                  mpi_comm,
-                  &send_requests[&el - &destinations[0]]);
+        {
+          const int ierr =
+            MPI_Isend(&myid,
+                      1,
+                      MPI_UNSIGNED,
+                      el,
+                      mpi_tag,
+                      mpi_comm,
+                      send_requests.data() + (&el - destinations.data()));
+          AssertThrowMPI(ierr);
+        }
 
-      // if no one to receive from, return an empty vector
-      if (n_recv_from == 0)
-        return std::vector<unsigned int>();
 
-      // ...otherwise receive `n_recv_from` times from the processes
+      // Receive `n_recv_from` times from the processes
       // who communicate with this one. Store the obtained id's
       // in the resulting vector
       std::vector<unsigned int> origins(n_recv_from);
       for (auto &el : origins)
-        MPI_Recv(&el,
-                 1,
-                 MPI_UNSIGNED,
-                 MPI_ANY_SOURCE,
-                 32766,
-                 mpi_comm,
-                 MPI_STATUS_IGNORE);
+        {
+          const int ierr = MPI_Recv(&el,
+                                    1,
+                                    MPI_UNSIGNED,
+                                    MPI_ANY_SOURCE,
+                                    mpi_tag,
+                                    mpi_comm,
+                                    MPI_STATUS_IGNORE);
+          AssertThrowMPI(ierr);
+        }
 
-      MPI_Waitall(destinations.size(),
-                  send_requests.data(),
-                  MPI_STATUSES_IGNORE);
+      if (destinations.size() > 0)
+        {
+          const int ierr = MPI_Waitall(destinations.size(),
+                                       send_requests.data(),
+                                       MPI_STATUSES_IGNORE);
+          AssertThrowMPI(ierr);
+        }
+
       return origins;
 #  else
       // let all processors communicate the maximal number of destinations
@@ -302,11 +428,11 @@ namespace Utilities
     {
       const unsigned int n_procs = Utilities::MPI::n_mpi_processes(mpi_comm);
 
-      for (unsigned int i = 0; i < destinations.size(); ++i)
+      for (const unsigned int destination : destinations)
         {
-          Assert(destinations[i] < n_procs,
-                 ExcIndexRange(destinations[i], 0, n_procs));
-          Assert(destinations[i] != Utilities::MPI::this_mpi_process(mpi_comm),
+          (void)destination;
+          Assert(destination < n_procs, ExcIndexRange(destination, 0, n_procs));
+          Assert(destination != Utilities::MPI::this_mpi_process(mpi_comm),
                  ExcMessage(
                    "There is no point in communicating with ourselves."));
         }
@@ -322,7 +448,7 @@ namespace Utilities
       unsigned int n_recv_from = 0;
 
       const int ierr = MPI_Reduce_scatter_block(
-        &dest_vector[0], &n_recv_from, 1, MPI_UNSIGNED, MPI_SUM, mpi_comm);
+        dest_vector.data(), &n_recv_from, 1, MPI_UNSIGNED, MPI_SUM, mpi_comm);
 
       AssertThrowMPI(ierr);
 
@@ -334,14 +460,14 @@ namespace Utilities
       std::vector<unsigned int> buffer(dest_vector.size());
       unsigned int              n_recv_from = 0;
 
-      MPI_Reduce(&dest_vector[0],
-                 &buffer[0],
+      MPI_Reduce(dest_vector.data(),
+                 buffer.data(),
                  dest_vector.size(),
                  MPI_UNSIGNED,
                  MPI_SUM,
                  0,
                  mpi_comm);
-      MPI_Scatter(&buffer[0],
+      MPI_Scatter(buffer.data(),
                   1,
                   MPI_UNSIGNED,
                   &n_recv_from,
@@ -433,7 +559,10 @@ namespace Utilities
         dealii::Utilities::MPI::n_mpi_processes(mpi_communicator);
 
       MPI_Op op;
-      int    ierr = MPI_Op_create((MPI_User_function *)&max_reduce, true, &op);
+      int    ierr =
+        MPI_Op_create(reinterpret_cast<MPI_User_function *>(&max_reduce),
+                      true,
+                      &op);
       AssertThrowMPI(ierr);
 
       MinMaxAvg in;
@@ -445,7 +574,7 @@ namespace Utilities
       MPI_Aint     displacements[] = {0, offsetof(MinMaxAvg, min_index)};
       MPI_Datatype types[]         = {MPI_DOUBLE, MPI_INT};
 
-      ierr = MPI_Type_struct(2, lengths, displacements, types, &type);
+      ierr = MPI_Type_create_struct(2, lengths, displacements, types, &type);
       AssertThrowMPI(ierr);
 
       ierr = MPI_Type_commit(&type);
@@ -481,11 +610,27 @@ namespace Utilities
     }
 
 
+
+    std::vector<IndexSet>
+    create_ascending_partitioning(const MPI_Comm & /*comm*/,
+                                  const IndexSet::size_type &local_size)
+    {
+      return std::vector<IndexSet>(1, complete_index_set(local_size));
+    }
+
+
+
     MPI_Comm
     duplicate_communicator(const MPI_Comm &mpi_communicator)
     {
       return mpi_communicator;
     }
+
+
+
+    void
+    free_communicator(MPI_Comm & /*mpi_communicator*/)
+    {}
 
 
 
@@ -576,7 +721,8 @@ namespace Utilities
 
 #ifdef DEAL_II_WITH_P4EST
       // Initialize p4est and libsc components
-#  if !(DEAL_II_P4EST_VERSION_GTE(2, 0, 0, 0))
+#  if DEAL_II_P4EST_VERSION_GTE(2, 0, 0, 0)
+#  else
       // This feature is broken in version 2.0.0 for calls to
       // MPI_Comm_create_group (see cburstedde/p4est#30).
       // Disabling it leads to more verbose p4est error messages
@@ -603,7 +749,7 @@ namespace Utilities
 #ifdef DEAL_II_WITH_MPI
           // we need to figure out how many MPI processes there are on the
           // current node, as well as how many CPU cores we have. for the
-          // first task, check what get_hostname() returns and then to an
+          // first task, check what get_hostname() returns and then do an
           // allgather so each processor gets the answer
           //
           // in calculating the length of the string, don't forget the
@@ -666,6 +812,33 @@ namespace Utilities
     }
 
 
+
+    void
+    MPI_InitFinalize::register_request(MPI_Request &request)
+    {
+      // insert if it is not in the set already:
+      requests.insert(&request);
+    }
+
+
+
+    void
+    MPI_InitFinalize::unregister_request(MPI_Request &request)
+    {
+      Assert(
+        requests.find(&request) != requests.end(),
+        ExcMessage(
+          "You tried to call unregister_request() with an invalid request."));
+
+      requests.erase(&request);
+    }
+
+
+
+    std::set<MPI_Request *> MPI_InitFinalize::requests;
+
+
+
     MPI_InitFinalize::~MPI_InitFinalize()
     {
       // make memory pool release all PETSc/Trilinos/MPI-based vectors that
@@ -674,8 +847,14 @@ namespace Utilities
       // would run after MPI_Finalize is called, leading to errors
 
 #ifdef DEAL_II_WITH_MPI
-      // Start with the deal.II MPI vectors (need to do this before finalizing
-      // PETSc because it finalizes MPI).  Delete vectors from the pools:
+      // Before exiting, wait for nonblocking communication to complete:
+      for (auto request : requests)
+        {
+          const int ierr = MPI_Wait(request, MPI_STATUS_IGNORE);
+          AssertThrowMPI(ierr);
+        }
+
+      // Start with deal.II MPI vectors and delete vectors from the pools:
       GrowingVectorMemory<
         LinearAlgebra::distributed::Vector<double>>::release_unused_memory();
       GrowingVectorMemory<LinearAlgebra::distributed::BlockVector<double>>::
@@ -716,6 +895,18 @@ namespace Utilities
         }
 #endif
 
+// There is a similar issue with CUDA: The destructor of static objects might
+// run after the CUDA driver is unloaded. Hence, also release all memory
+// related to CUDA vectors.
+#ifdef DEAL_II_WITH_CUDA
+      GrowingVectorMemory<
+        LinearAlgebra::distributed::Vector<double, MemorySpace::CUDA>>::
+        release_unused_memory();
+      GrowingVectorMemory<
+        LinearAlgebra::distributed::Vector<float, MemorySpace::CUDA>>::
+        release_unused_memory();
+#endif
+
 #ifdef DEAL_II_WITH_P4EST
       // now end p4est and libsc
       // Note: p4est has no finalize function
@@ -729,7 +920,12 @@ namespace Utilities
 #ifdef DEAL_II_WITH_MPI
       if (job_supports_mpi() == true)
         {
-          if (std::uncaught_exception())
+#  if __cpp_lib_uncaught_exceptions >= 201411
+          // std::uncaught_exception() is deprecated in c++17
+          if (std::uncaught_exceptions() > 0)
+#  else
+          if (std::uncaught_exception() == true)
+#  endif
             {
               std::cerr
                 << "ERROR: Uncaught exception in MPI_InitFinalize on proc "
@@ -763,7 +959,681 @@ namespace Utilities
 #endif
     }
 
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithmProcess<T1, T2>::process_request(const unsigned int,
+                                                       const std::vector<T1> &,
+                                                       std::vector<T2> &)
+    {
+      // nothing to do
+    }
 
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithmProcess<T1, T2>::pack_recv_buffer(const int,
+                                                        std::vector<T1> &)
+    {
+      // nothing to do
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithmProcess<T1, T2>::prepare_recv_buffer(const int,
+                                                           std::vector<T2> &)
+    {
+      // nothing to do
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithmProcess<T1, T2>::unpack_recv_buffer(
+      const int,
+      const std::vector<T2> &)
+    {
+      // nothing to do
+    }
+
+
+
+    template <typename T1, typename T2>
+    ConsensusAlgorithm<T1, T2>::ConsensusAlgorithm(
+      ConsensusAlgorithmProcess<T1, T2> &process,
+      const MPI_Comm &                   comm)
+      : process(process)
+      , comm(comm)
+      , my_rank(this_mpi_process(comm))
+      , n_procs(n_mpi_processes(comm))
+    {}
+
+
+
+    template <typename T1, typename T2>
+    ConsensusAlgorithm_NBX<T1, T2>::ConsensusAlgorithm_NBX(
+      ConsensusAlgorithmProcess<T1, T2> &process,
+      const MPI_Comm &                   comm)
+      : ConsensusAlgorithm<T1, T2>(process, comm)
+    {}
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_NBX<T1, T2>::run()
+    {
+      static CollectiveMutex      mutex;
+      CollectiveMutex::ScopedLock lock(mutex, this->comm);
+
+      // 1) send requests and start receiving the answers
+      start_communication();
+
+      // 2) answer requests and check if all requests of this process have been
+      //    answered
+      while (!check_own_state())
+        process_requests();
+
+      // 3) signal to all other processes that all requests of this process have
+      //    been answered
+      signal_finish();
+
+      // 4) nevertheless, this process has to keep on answering (potential)
+      //    incoming requests until all processes have received the
+      //    answer to all requests
+      while (!check_global_state())
+        process_requests();
+
+      // 5) process the answer to all requests
+      clean_up_and_end_communication();
+    }
+
+
+
+    template <typename T1, typename T2>
+    bool
+    ConsensusAlgorithm_NBX<T1, T2>::check_own_state()
+    {
+#ifdef DEAL_II_WITH_MPI
+      int        all_receive_requests_are_done;
+      const auto ierr = MPI_Testall(recv_requests.size(),
+                                    recv_requests.data(),
+                                    &all_receive_requests_are_done,
+                                    MPI_STATUSES_IGNORE);
+      AssertThrowMPI(ierr);
+
+      return all_receive_requests_are_done;
+#else
+      return true;
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_NBX<T1, T2>::signal_finish()
+    {
+#ifdef DEAL_II_WITH_MPI
+#  if DEAL_II_MPI_VERSION_GTE(3, 0)
+      const auto ierr = MPI_Ibarrier(this->comm, &barrier_request);
+      AssertThrowMPI(ierr);
+#  else
+      AssertThrow(
+        false,
+        ExcMessage(
+          "ConsensusAlgorithm_NBX uses MPI 3.0 features. You should compile with at least MPI 3.0."));
+#  endif
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    bool
+    ConsensusAlgorithm_NBX<T1, T2>::check_global_state()
+    {
+#ifdef DEAL_II_WITH_MPI
+      int        all_ranks_reached_barrier;
+      const auto ierr = MPI_Test(&barrier_request,
+                                 &all_ranks_reached_barrier,
+                                 MPI_STATUSES_IGNORE);
+      AssertThrowMPI(ierr);
+      return all_ranks_reached_barrier;
+#else
+      return true;
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_NBX<T1, T2>::process_requests()
+    {
+#ifdef DEAL_II_WITH_MPI
+
+      const int tag_request =
+        Utilities::MPI::internal::Tags::consensus_algorithm_nbx_process_request;
+      const int tag_deliver =
+        Utilities::MPI::internal::Tags::consensus_algorithm_nbx_process_deliver;
+
+      // check if there is a request pending
+      MPI_Status status;
+      int        request_is_pending;
+      const auto ierr = MPI_Iprobe(
+        MPI_ANY_SOURCE, tag_request, this->comm, &request_is_pending, &status);
+      AssertThrowMPI(ierr);
+
+      if (request_is_pending) // request is pending
+        {
+          // get rank of requesting process
+          const auto other_rank = status.MPI_SOURCE;
+
+#  ifdef DEBUG
+          Assert(requesting_processes.find(other_rank) ==
+                   requesting_processes.end(),
+                 ExcMessage("Process is requesting a second time!"));
+          requesting_processes.insert(other_rank);
+#  endif
+
+          std::vector<T1> buffer_recv;
+          // get size of of incoming message
+          int  number_amount;
+          auto ierr = MPI_Get_count(&status, MPI_BYTE, &number_amount);
+          AssertThrowMPI(ierr);
+
+          // allocate memory for incoming message
+          Assert(number_amount % sizeof(T1) == 0, ExcInternalError());
+          buffer_recv.resize(number_amount / sizeof(T1));
+          ierr = MPI_Recv(buffer_recv.data(),
+                          number_amount,
+                          MPI_BYTE,
+                          other_rank,
+                          tag_request,
+                          this->comm,
+                          &status);
+          AssertThrowMPI(ierr);
+
+          // allocate memory for answer message
+          request_buffers.emplace_back(
+            std_cxx14::make_unique<std::vector<T2>>());
+          request_requests.emplace_back(std_cxx14::make_unique<MPI_Request>());
+
+          // process request
+          auto &request_buffer = *request_buffers.back();
+          this->process.process_request(other_rank,
+                                        buffer_recv,
+                                        request_buffer);
+
+          // start to send answer back
+          ierr = MPI_Isend(request_buffer.data(),
+                           request_buffer.size() * sizeof(T2),
+                           MPI_BYTE,
+                           other_rank,
+                           tag_deliver,
+                           this->comm,
+                           request_requests.back().get());
+          AssertThrowMPI(ierr);
+        }
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_NBX<T1, T2>::start_communication()
+    {
+#ifdef DEAL_II_WITH_MPI
+      // 1)
+      targets              = this->process.compute_targets();
+      const auto n_targets = targets.size();
+
+      const int tag_request =
+        Utilities::MPI::internal::Tags::consensus_algorithm_nbx_process_request;
+      const int tag_deliver =
+        Utilities::MPI::internal::Tags::consensus_algorithm_nbx_process_deliver;
+
+      // 2) allocate memory
+      recv_buffers.resize(n_targets);
+      recv_requests.resize(n_targets);
+      send_requests.resize(n_targets);
+      send_buffers.resize(n_targets);
+
+      {
+        // 4) send and receive
+        for (unsigned int i = 0; i < n_targets; i++)
+          {
+            const unsigned int rank  = targets[i];
+            const unsigned int index = i;
+
+            // translate index set to a list of pairs
+            auto &send_buffer = send_buffers[index];
+            this->process.pack_recv_buffer(rank, send_buffer);
+
+            // start to send data
+            auto ierr = MPI_Isend(send_buffer.data(),
+                                  send_buffer.size() * sizeof(T1),
+                                  MPI_BYTE,
+                                  rank,
+                                  tag_request,
+                                  this->comm,
+                                  &send_requests[index]);
+            AssertThrowMPI(ierr);
+
+            // start to receive data
+            auto &recv_buffer = recv_buffers[index];
+            this->process.prepare_recv_buffer(rank, recv_buffer);
+            ierr = MPI_Irecv(recv_buffer.data(),
+                             recv_buffer.size() * sizeof(T2),
+                             MPI_BYTE,
+                             rank,
+                             tag_deliver,
+                             this->comm,
+                             &recv_requests[index]);
+            AssertThrowMPI(ierr);
+          }
+      }
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_NBX<T1, T2>::clean_up_and_end_communication()
+    {
+#ifdef DEAL_II_WITH_MPI
+      // clean up
+      {
+        if (send_requests.size() > 0)
+          {
+            const int ierr = MPI_Waitall(send_requests.size(),
+                                         send_requests.data(),
+                                         MPI_STATUSES_IGNORE);
+            AssertThrowMPI(ierr);
+          }
+
+        if (recv_requests.size() > 0)
+          {
+            const int ierr = MPI_Waitall(recv_requests.size(),
+                                         recv_requests.data(),
+                                         MPI_STATUSES_IGNORE);
+            AssertThrowMPI(ierr);
+          }
+
+
+        const int ierr = MPI_Wait(&barrier_request, MPI_STATUS_IGNORE);
+        AssertThrowMPI(ierr);
+
+        for (auto &i : request_requests)
+          {
+            const auto ierr = MPI_Wait(i.get(), MPI_STATUS_IGNORE);
+            AssertThrowMPI(ierr);
+          }
+
+#  ifdef DEBUG
+        // note: IBarrier seems to make problem during testing, this additional
+        // Barrier seems to help
+        MPI_Barrier(this->comm);
+#  endif
+      }
+
+      // unpack data
+      {
+        for (unsigned int i = 0; i < targets.size(); i++)
+          this->process.unpack_recv_buffer(targets[i], recv_buffers[i]);
+      }
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    ConsensusAlgorithm_PEX<T1, T2>::ConsensusAlgorithm_PEX(
+      ConsensusAlgorithmProcess<T1, T2> &process,
+      const MPI_Comm &                   comm)
+      : ConsensusAlgorithm<T1, T2>(process, comm)
+    {}
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_PEX<T1, T2>::run()
+    {
+      static CollectiveMutex      mutex;
+      CollectiveMutex::ScopedLock lock(mutex, this->comm);
+
+      // 1) send requests and start receiving the answers
+      //    especially determine how many requests are expected
+      const unsigned int n_requests = start_communication();
+
+      // 2) answer requests
+      for (unsigned int request = 0; request < n_requests; request++)
+        process_requests(request);
+
+      // 3) process answers
+      clean_up_and_end_communication();
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_PEX<T1, T2>::process_requests(int index)
+    {
+#ifdef DEAL_II_WITH_MPI
+      const int tag_request =
+        Utilities::MPI::internal::Tags::consensus_algorithm_pex_process_request;
+      const int tag_deliver =
+        Utilities::MPI::internal::Tags::consensus_algorithm_pex_process_deliver;
+
+      MPI_Status status;
+      MPI_Probe(MPI_ANY_SOURCE, tag_request, this->comm, &status);
+
+      // get rank of incoming message
+      const auto other_rank = status.MPI_SOURCE;
+
+      std::vector<T1> buffer_recv;
+
+      // get size of incoming message
+      int  number_amount;
+      auto ierr = MPI_Get_count(&status, MPI_BYTE, &number_amount);
+      AssertThrowMPI(ierr);
+
+      // allocate memory for incoming message
+      Assert(number_amount % sizeof(T1) == 0, ExcInternalError());
+      buffer_recv.resize(number_amount / sizeof(T1));
+      ierr = MPI_Recv(buffer_recv.data(),
+                      number_amount,
+                      MPI_BYTE,
+                      other_rank,
+                      tag_request,
+                      this->comm,
+                      &status);
+      AssertThrowMPI(ierr);
+
+      // process request
+      auto &request_buffer = requests_buffers[index];
+      this->process.process_request(other_rank, buffer_recv, request_buffer);
+
+      // start to send answer back
+      ierr = MPI_Isend(request_buffer.data(),
+                       request_buffer.size() * sizeof(T2),
+                       MPI_BYTE,
+                       other_rank,
+                       tag_deliver,
+                       this->comm,
+                       &requests_answers[index]);
+      AssertThrowMPI(ierr);
+#else
+      (void)index;
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    unsigned int
+    ConsensusAlgorithm_PEX<T1, T2>::start_communication()
+    {
+#ifdef DEAL_II_WITH_MPI
+      // 1) determine with which processes this process wants to communicate
+      targets = this->process.compute_targets();
+
+      const int tag_request =
+        Utilities::MPI::internal::Tags::consensus_algorithm_pex_process_request;
+      const int tag_deliver =
+        Utilities::MPI::internal::Tags::consensus_algorithm_pex_process_deliver;
+
+      // 2) determine who wants to communicate with this process
+      sources =
+        compute_point_to_point_communication_pattern(this->comm, targets);
+
+      const auto n_targets = targets.size();
+      const auto n_sources = sources.size();
+
+      // 2) allocate memory
+      recv_buffers.resize(n_targets);
+      send_buffers.resize(n_targets);
+      send_and_recv_buffers.resize(2 * n_targets);
+
+      requests_answers.resize(n_sources);
+      requests_buffers.resize(n_sources);
+
+      // 4) send and receive
+      for (unsigned int i = 0; i < n_targets; i++)
+        {
+          const unsigned int rank = targets[i];
+
+          // pack data which should be sent
+          auto &send_buffer = send_buffers[i];
+          this->process.pack_recv_buffer(rank, send_buffer);
+
+          // start to send data
+          auto ierr = MPI_Isend(send_buffer.data(),
+                                send_buffer.size() * sizeof(T1),
+                                MPI_BYTE,
+                                rank,
+                                tag_request,
+                                this->comm,
+                                &send_and_recv_buffers[n_targets + i]);
+          AssertThrowMPI(ierr);
+
+          // start to receive data
+          auto &recv_buffer = recv_buffers[i];
+          this->process.prepare_recv_buffer(rank, recv_buffer);
+          ierr = MPI_Irecv(recv_buffer.data(),
+                           recv_buffer.size() * sizeof(T2),
+                           MPI_BYTE,
+                           rank,
+                           tag_deliver,
+                           this->comm,
+                           &send_and_recv_buffers[i]);
+          AssertThrowMPI(ierr);
+        }
+
+      return sources.size();
+#else
+      return 0;
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithm_PEX<T1, T2>::clean_up_and_end_communication()
+    {
+#ifdef DEAL_II_WITH_MPI
+      // finalize all MPI_Requests
+      if (send_and_recv_buffers.size() > 0)
+        {
+          auto ierr = MPI_Waitall(send_and_recv_buffers.size(),
+                                  send_and_recv_buffers.data(),
+                                  MPI_STATUSES_IGNORE);
+          AssertThrowMPI(ierr);
+        }
+
+      if (requests_answers.size() > 0)
+        {
+          auto ierr = MPI_Waitall(requests_answers.size(),
+                                  requests_answers.data(),
+                                  MPI_STATUSES_IGNORE);
+          AssertThrowMPI(ierr);
+        }
+
+      // unpack received data
+      for (unsigned int i = 0; i < targets.size(); i++)
+        this->process.unpack_recv_buffer(targets[i], recv_buffers[i]);
+#endif
+    }
+
+
+
+    template <typename T1, typename T2>
+    ConsensusAlgorithmSelector<T1, T2>::ConsensusAlgorithmSelector(
+      ConsensusAlgorithmProcess<T1, T2> &process,
+      const MPI_Comm &                   comm)
+      : ConsensusAlgorithm<T1, T2>(process, comm)
+    {
+      // Depending on the number of processes we switch between implementations.
+      // We reduce the threshold for debug mode to be able to test also the
+      // non-blocking implementation. This feature is tested by:
+      // tests/multigrid/transfer_matrix_free_06.with_mpi=true.with_p4est=true.with_trilinos=true.mpirun=15.output
+#ifdef DEAL_II_WITH_MPI
+#  if DEAL_II_MPI_VERSION_GTE(3, 0)
+#    ifdef DEBUG
+      if (Utilities::MPI::n_mpi_processes(comm) > 14)
+#    else
+      if (Utilities::MPI::n_mpi_processes(comm) > 99)
+#    endif
+        consensus_algo.reset(new ConsensusAlgorithm_NBX<T1, T2>(process, comm));
+      else
+#  endif
+#endif
+        consensus_algo.reset(new ConsensusAlgorithm_PEX<T1, T2>(process, comm));
+    }
+
+
+
+    template <typename T1, typename T2>
+    void
+    ConsensusAlgorithmSelector<T1, T2>::run()
+    {
+      consensus_algo->run();
+    }
+
+
+
+    std::vector<unsigned int>
+    compute_index_owner(const IndexSet &owned_indices,
+                        const IndexSet &indices_to_look_up,
+                        const MPI_Comm &comm)
+    {
+      Assert(owned_indices.size() == indices_to_look_up.size(),
+             ExcMessage("IndexSets have to have the same sizes."));
+
+      Assert(
+        owned_indices.size() == Utilities::MPI::max(owned_indices.size(), comm),
+        ExcMessage("IndexSets have to have the same size on all processes."));
+
+      std::vector<unsigned int> owning_ranks(indices_to_look_up.n_elements());
+
+      // Step 1: setup dictionary
+      // The input owned_indices can be partitioned arbitrarily. In the
+      // dictionary, the index set is statically repartitioned among the
+      // processes again and extended with information with the actual owner
+      // of that the index.
+      internal::ComputeIndexOwner::ConsensusAlgorithmPayload process(
+        owned_indices, indices_to_look_up, comm, owning_ranks);
+
+      // Step 2: read dictionary
+      // Communicate with the process who owns the index in the static
+      // partition (i.e. in the dictionary). This process returns the actual
+      // owner of the index.
+      ConsensusAlgorithmSelector<
+        std::pair<types::global_dof_index, types::global_dof_index>,
+        unsigned int>
+        consensus_algorithm(process, comm);
+      consensus_algorithm.run();
+
+      return owning_ranks;
+    }
+
+    template class ConsensusAlgorithmSelector<
+      std::pair<types::global_dof_index, types::global_dof_index>,
+      unsigned int>;
+
+
+
+    CollectiveMutex::CollectiveMutex()
+      : locked(false)
+      , request(MPI_REQUEST_NULL)
+    {
+      Utilities::MPI::MPI_InitFinalize::register_request(request);
+    }
+
+
+
+    CollectiveMutex::~CollectiveMutex()
+    {
+      Assert(
+        !locked,
+        ExcMessage(
+          "Error: MPI::CollectiveMutex is still locked while being destroyed!"));
+
+      Utilities::MPI::MPI_InitFinalize::unregister_request(request);
+    }
+
+
+
+    void
+    CollectiveMutex::lock(MPI_Comm comm)
+    {
+      (void)comm;
+
+      Assert(
+        !locked,
+        ExcMessage(
+          "Error: MPI::CollectiveMutex needs to be unlocked before lock()"));
+
+#ifdef DEAL_II_WITH_MPI
+
+      // TODO: For now, we implement this mutex with a blocking barrier
+      // in the lock and unlock. It needs to be tested, if we can move
+      // to a nonblocking barrier (code disabled below).
+
+      const int ierr = MPI_Barrier(comm);
+      AssertThrowMPI(ierr);
+
+#  if 0 && DEAL_II_MPI_VERSION_GTE(3, 0)
+      // wait for non-blocking barrier to finish. This is a noop the
+      // first time we lock().
+      const int ierr = MPI_Wait(&request, MPI_STATUS_IGNORE);
+      AssertThrowMPI(ierr);
+#  else
+      // nothing to do as blocking barrier already completed
+#  endif
+#endif
+
+      locked = true;
+    }
+
+
+
+    void
+    CollectiveMutex::unlock(MPI_Comm comm)
+    {
+      (void)comm;
+
+      Assert(
+        locked,
+        ExcMessage(
+          "Error: MPI::CollectiveMutex needs to be locked before unlock()"));
+
+#ifdef DEAL_II_WITH_MPI
+
+      // TODO: For now, we implement this mutex with a blocking barrier
+      // in the lock and unlock. It needs to be tested, if we can move
+      // to a nonblocking barrier (code disabled below):
+
+#  if 0 && DEAL_II_MPI_VERSION_GTE(3, 0)
+      const int ierr = MPI_Ibarrier(comm, &request);
+      AssertThrowMPI(ierr);
+#  else
+      const int ierr = MPI_Barrier(comm);
+      AssertThrowMPI(ierr);
+#  endif
+#endif
+
+      locked = false;
+    }
 
 #include "mpi.inst"
   } // end of namespace MPI

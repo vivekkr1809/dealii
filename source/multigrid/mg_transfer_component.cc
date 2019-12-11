@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -113,8 +113,8 @@ namespace
       {
         selected.resize(target_component.size());
         std::fill_n(selected.begin(), ncomp, false);
-        for (unsigned int i = 0; i < target_component.size(); ++i)
-          selected[target_component[i]] = true;
+        for (const unsigned int component : target_component)
+          selected[component] = true;
       }
 
     Assert(selected.size() == target_component.size(),
@@ -329,13 +329,13 @@ MGTransferComponentBase::build_matrices(const DoFHandler<dim, spacedim> &,
   // for later use.
   mg_component_start = sizes;
   // Compute start indices from sizes
-  for (unsigned int l = 0; l < mg_component_start.size(); ++l)
+  for (auto &level_components : mg_component_start)
     {
       types::global_dof_index k = 0;
-      for (unsigned int i = 0; i < mg_component_start[l].size(); ++i)
+      for (types::global_dof_index &level_component_start : level_components)
         {
-          const types::global_dof_index t = mg_component_start[l][i];
-          mg_component_start[l][i]        = k;
+          const types::global_dof_index t = level_component_start;
+          level_component_start           = k;
           k += t;
         }
     }
@@ -345,10 +345,10 @@ MGTransferComponentBase::build_matrices(const DoFHandler<dim, spacedim> &,
   DoFTools::count_dofs_per_block(mg_dof, component_start, target_component);
 
   types::global_dof_index k = 0;
-  for (unsigned int i = 0; i < component_start.size(); ++i)
+  for (types::global_dof_index &first_index : component_start)
     {
-      const types::global_dof_index t = component_start[i];
-      component_start[i]              = k;
+      const types::global_dof_index t = first_index;
+      first_index                     = k;
       k += t;
     }
 
@@ -452,9 +452,9 @@ MGTransferComponentBase::build_matrices(const DoFHandler<dim, spacedim> &,
                         if ((icomp == jcomp) && mg_component_mask[icomp])
                           prolongation_sparsities[level]->add(
                             dof_indices_child[i], dof_indices_parent[j]);
-                      };
-              };
-          };
+                      }
+              }
+          }
       prolongation_sparsities[level]->compress();
 
       prolongation_matrices[level]->reinit(*prolongation_sparsities[level]);
@@ -683,9 +683,9 @@ MGTransferSelect<number>::build_matrices(
       const types::global_dof_index n_active_dofs =
         std::count_if(temp_copy_indices.begin(),
                       temp_copy_indices.end(),
-                      std::bind(std::not_equal_to<types::global_dof_index>(),
-                                std::placeholders::_1,
-                                numbers::invalid_dof_index));
+                      [](const types::global_dof_index index) {
+                        return index != numbers::invalid_dof_index;
+                      });
       copy_to_and_from_indices[level].resize(n_active_dofs);
       types::global_dof_index counter = 0;
       for (types::global_dof_index i = 0; i < temp_copy_indices.size(); ++i)

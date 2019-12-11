@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,16 +19,17 @@
 #include <deal.II/base/tensor.h>
 
 #include <deal.II/differentiation/ad/adolc_product_types.h>
+#include <deal.II/differentiation/ad/sacado_number_types.h>
 #include <deal.II/differentiation/ad/sacado_product_types.h>
 
 DEAL_II_NAMESPACE_OPEN
 
 
 template <int dim, typename Number>
-const unsigned int Tensor<0, dim, Number>::n_independent_components;
+constexpr unsigned int Tensor<0, dim, Number>::n_independent_components;
 
 template <int rank, int dim, typename Number>
-const unsigned int Tensor<rank, dim, Number>::n_independent_components;
+constexpr unsigned int Tensor<rank, dim, Number>::n_independent_components;
 
 
 #include "tensor.inst"

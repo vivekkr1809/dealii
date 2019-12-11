@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_particles_particle_accessor_h
 #define dealii_particles_particle_accessor_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/array_view.h>
 
 #include <deal.II/grid/tria.h>
@@ -26,11 +28,17 @@ DEAL_II_NAMESPACE_OPEN
 
 namespace Particles
 {
+  // Forward declarations
+#ifndef DOXYGEN
   template <int, int>
   class ParticleIterator;
   template <int, int>
   class ParticleHandler;
+#endif
 
+  /**
+   * Accessor class used by ParticleIterator to access particle data.
+   */
   template <int dim, int spacedim = dim>
   class ParticleAccessor
   {
@@ -41,7 +49,7 @@ namespace Particles
      * point to the first element in which the data should be written. This
      * function is meant for serializing all particle properties and
      * afterwards de-serializing the properties by calling the appropriate
-     * constructor Particle(void *&data, PropertyPool *property_pool = NULL);
+     * constructor Particle(void *&data, PropertyPool *property_pool = nullptr);
      *
      * @param [in,out] data The memory location to write particle data
      * into. This pointer points to the begin of the memory, in which the
@@ -211,10 +219,8 @@ namespace Particles
     typename std::multimap<internal::LevelInd,
                            Particle<dim, spacedim>>::iterator particle;
 
-    /**
-     * Make ParticleIterator a friend to allow it constructing
-     * ParticleAccessors.
-     */
+    // Make ParticleIterator a friend to allow it constructing
+    // ParticleAccessors.
     template <int, int>
     friend class ParticleIterator;
     template <int, int>

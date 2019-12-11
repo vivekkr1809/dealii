@@ -32,8 +32,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#  ifndef DOXYGEN
 template <class VectorType>
 class FilteredMatrixBlock;
+#  endif
 
 /*! @addtogroup Matrix2
  *@{
@@ -252,10 +255,8 @@ public:
      * Current row number.
      */
     size_type index;
-    /*
-     * Make enclosing class a
-     * friend.
-     */
+
+    // Make enclosing class a friend.
     friend class const_iterator;
   };
 
@@ -563,9 +564,7 @@ private:
   post_filter(const VectorType &in, VectorType &out) const;
 
   friend class Accessor;
-  /**
-   * FilteredMatrixBlock accesses pre_filter() and post_filter().
-   */
+  // FilteredMatrixBlock accesses pre_filter() and post_filter().
   friend class FilteredMatrixBlock<VectorType>;
 };
 

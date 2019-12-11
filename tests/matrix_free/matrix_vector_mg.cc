@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2013 - 2017 by the deal.II authors
+// Copyright (C) 2013 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -55,7 +55,7 @@ test()
   // setup DoFs
   DoFHandler<dim> dof(tria);
   dof.distribute_dofs(fe);
-  dof.distribute_mg_dofs(fe);
+  dof.distribute_mg_dofs();
   AffineConstraints<double> constraints;
   VectorTools::interpolate_boundary_values(dof,
                                            0,
@@ -109,7 +109,7 @@ test()
         mg_constraints[level].add_line(*bc_it);
       mg_constraints[level].close();
       typename MatrixFree<dim>::AdditionalData data;
-      data.level_mg_handler = level;
+      data.mg_level = level;
       mg_matrices[level].reinit(
         mapping, dof, mg_constraints[level], quad, data);
 

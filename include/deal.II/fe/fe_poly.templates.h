@@ -17,6 +17,8 @@
 #define dealii_fe_poly_templates_h
 
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/polynomial_space.h>
 #include <deal.II/base/qprojector.h>
 #include <deal.II/base/tensor_product_polynomials.h>
@@ -268,10 +270,9 @@ FE_Poly<PolynomialType, dim, spacedim>::fill_fe_values(
 
       for (unsigned int k = 0; k < this->dofs_per_cell; ++k)
         for (unsigned int i = 0; i < quadrature.size(); ++i)
-          for (unsigned int j = 0; j < spacedim; ++j)
-            output_data.shape_hessians[k][i] -=
-              mapping_data.jacobian_pushed_forward_grads[i][j] *
-              output_data.shape_gradients[k][i][j];
+          output_data.shape_hessians[k][i] -=
+            output_data.shape_gradients[k][i] *
+            mapping_data.jacobian_pushed_forward_grads[i];
     }
 
   if (flags & update_3rd_derivatives &&

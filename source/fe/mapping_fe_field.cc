@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/std_cxx14/memory.h>
 #include <deal.II/base/tensor_product_polynomials.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/dofs/dof_accessor.h>
@@ -43,7 +42,9 @@
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 
@@ -238,7 +239,8 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::MappingFEField(
   const DoFHandlerType &euler_dof_handler,
   const VectorType &    euler_vector,
   const ComponentMask & mask)
-  : euler_vector(&euler_vector)
+  : uses_level_dofs(false)
+  , euler_vector({&euler_vector})
   , euler_dof_handler(&euler_dof_handler)
   , fe_mask(mask.size() ?
               mask :
@@ -260,10 +262,92 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::MappingFEField(
 }
 
 
+
+template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
+MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::MappingFEField(
+  const DoFHandlerType &         euler_dof_handler,
+  const std::vector<VectorType> &euler_vector,
+  const ComponentMask &          mask)
+  : uses_level_dofs(true)
+  , euler_dof_handler(&euler_dof_handler)
+  , fe_mask(mask.size() ?
+              mask :
+              ComponentMask(
+                euler_dof_handler.get_fe().get_nonzero_components(0).size(),
+                true))
+  , fe_to_real(fe_mask.size(), numbers::invalid_unsigned_int)
+  , fe_values(this->euler_dof_handler->get_fe(),
+              get_vertex_quadrature<dim>(),
+              update_values)
+{
+  unsigned int size = 0;
+  for (unsigned int i = 0; i < fe_mask.size(); ++i)
+    {
+      if (fe_mask[i])
+        fe_to_real[i] = size++;
+    }
+  AssertDimension(size, spacedim);
+
+  Assert(euler_dof_handler.has_level_dofs(),
+         ExcMessage("The underlying DoFHandler object did not call "
+                    "distribute_mg_dofs(). In this case, the construction via "
+                    "level vectors does not make sense."));
+  AssertDimension(euler_vector.size(),
+                  euler_dof_handler.get_triangulation().n_global_levels());
+  this->euler_vector.clear();
+  this->euler_vector.resize(euler_vector.size());
+  for (unsigned int i = 0; i < euler_vector.size(); ++i)
+    this->euler_vector[i] = &euler_vector[i];
+}
+
+
+
+template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
+MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::MappingFEField(
+  const DoFHandlerType &           euler_dof_handler,
+  const MGLevelObject<VectorType> &euler_vector,
+  const ComponentMask &            mask)
+  : uses_level_dofs(true)
+  , euler_dof_handler(&euler_dof_handler)
+  , fe_mask(mask.size() ?
+              mask :
+              ComponentMask(
+                euler_dof_handler.get_fe().get_nonzero_components(0).size(),
+                true))
+  , fe_to_real(fe_mask.size(), numbers::invalid_unsigned_int)
+  , fe_values(this->euler_dof_handler->get_fe(),
+              get_vertex_quadrature<dim>(),
+              update_values)
+{
+  unsigned int size = 0;
+  for (unsigned int i = 0; i < fe_mask.size(); ++i)
+    {
+      if (fe_mask[i])
+        fe_to_real[i] = size++;
+    }
+  AssertDimension(size, spacedim);
+
+  Assert(euler_dof_handler.has_level_dofs(),
+         ExcMessage("The underlying DoFHandler object did not call "
+                    "distribute_mg_dofs(). In this case, the construction via "
+                    "level vectors does not make sense."));
+  AssertDimension(euler_vector.max_level() + 1,
+                  euler_dof_handler.get_triangulation().n_global_levels());
+  this->euler_vector.clear();
+  this->euler_vector.resize(
+    euler_dof_handler.get_triangulation().n_global_levels());
+  for (unsigned int i = euler_vector.min_level(); i <= euler_vector.max_level();
+       ++i)
+    this->euler_vector[i] = &euler_vector[i];
+}
+
+
+
 template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::MappingFEField(
   const MappingFEField<dim, spacedim, VectorType, DoFHandlerType> &mapping)
-  : euler_vector(mapping.euler_vector)
+  : uses_level_dofs(mapping.uses_level_dofs)
+  , euler_vector(mapping.euler_vector)
   , euler_dof_handler(mapping.euler_dof_handler)
   , fe_mask(mapping.fe_mask)
   , fe_to_real(mapping.fe_to_real)
@@ -309,28 +393,51 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::get_vertices(
   const typename DoFHandler<dim, spacedim>::cell_iterator dof_cell(
     *cell, euler_dof_handler);
 
-  Assert(dof_cell->active() == true, ExcInactiveCell());
+  Assert(uses_level_dofs || dof_cell->active() == true, ExcInactiveCell());
   AssertDimension(GeometryInfo<dim>::vertices_per_cell,
                   fe_values.n_quadrature_points);
   AssertDimension(fe_to_real.size(),
                   euler_dof_handler->get_fe().n_components());
-
-  std::vector<Vector<typename VectorType::value_type>> values(
-    fe_values.n_quadrature_points,
-    Vector<typename VectorType::value_type>(
-      euler_dof_handler->get_fe().n_components()));
+  if (uses_level_dofs)
+    {
+      AssertIndexRange(cell->level(), euler_vector.size());
+      AssertDimension(euler_vector[cell->level()]->size(),
+                      euler_dof_handler->n_dofs(cell->level()));
+    }
+  else
+    AssertDimension(euler_vector[0]->size(), euler_dof_handler->n_dofs());
 
   {
     std::lock_guard<std::mutex> lock(fe_values_mutex);
     fe_values.reinit(dof_cell);
-    fe_values.get_function_values(*euler_vector, values);
   }
-  std::array<Point<spacedim>, GeometryInfo<dim>::vertices_per_cell> vertices;
+  const unsigned int dofs_per_cell = euler_dof_handler->get_fe().dofs_per_cell;
+  std::vector<types::global_dof_index> dof_indices(dofs_per_cell);
+  if (uses_level_dofs)
+    dof_cell->get_mg_dof_indices(dof_indices);
+  else
+    dof_cell->get_dof_indices(dof_indices);
 
-  for (unsigned int i = 0; i < GeometryInfo<dim>::vertices_per_cell; ++i)
-    for (unsigned int j = 0; j < fe_to_real.size(); ++j)
-      if (fe_to_real[j] != numbers::invalid_unsigned_int)
-        vertices[i][fe_to_real[j]] = values[i][j];
+  const VectorType &vector =
+    uses_level_dofs ? *euler_vector[cell->level()] : *euler_vector[0];
+
+  std::array<Point<spacedim>, GeometryInfo<dim>::vertices_per_cell> vertices;
+  for (unsigned int i = 0; i < dofs_per_cell; ++i)
+    {
+      const unsigned int comp = fe_to_real
+        [euler_dof_handler->get_fe().system_to_component_index(i).first];
+      if (comp != numbers::invalid_unsigned_int)
+        {
+          typename VectorType::value_type value =
+            internal::ElementAccess<VectorType>::get(vector, dof_indices[i]);
+          if (euler_dof_handler->get_fe().is_primitive(i))
+            for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
+                 ++v)
+              vertices[v][comp] += fe_values.shape_value(i, v) * value;
+          else
+            Assert(false, ExcNotImplemented());
+        }
+    }
 
   return vertices;
 }
@@ -565,10 +672,12 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::get_data(
   const UpdateFlags      update_flags,
   const Quadrature<dim> &quadrature) const
 {
-  auto data =
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
     std_cxx14::make_unique<InternalData>(euler_dof_handler->get_fe(), fe_mask);
-  this->compute_data(update_flags, quadrature, quadrature.size(), *data);
-  return std::move(data);
+  auto &data = dynamic_cast<InternalData &>(*data_ptr);
+  this->compute_data(update_flags, quadrature, quadrature.size(), data);
+
+  return data_ptr;
 }
 
 
@@ -579,12 +688,13 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::get_face_data(
   const UpdateFlags          update_flags,
   const Quadrature<dim - 1> &quadrature) const
 {
-  auto data =
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
     std_cxx14::make_unique<InternalData>(euler_dof_handler->get_fe(), fe_mask);
+  auto &                data = dynamic_cast<InternalData &>(*data_ptr);
   const Quadrature<dim> q(QProjector<dim>::project_to_all_faces(quadrature));
-  this->compute_face_data(update_flags, q, quadrature.size(), *data);
+  this->compute_face_data(update_flags, q, quadrature.size(), data);
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -594,12 +704,13 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::get_subface_data(
   const UpdateFlags          update_flags,
   const Quadrature<dim - 1> &quadrature) const
 {
-  auto data =
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
     std_cxx14::make_unique<InternalData>(euler_dof_handler->get_fe(), fe_mask);
+  auto &                data = dynamic_cast<InternalData &>(*data_ptr);
   const Quadrature<dim> q(QProjector<dim>::project_to_all_subfaces(quadrature));
-  this->compute_face_data(update_flags, q, quadrature.size(), *data);
+  this->compute_face_data(update_flags, q, quadrature.size(), data);
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -726,7 +837,8 @@ namespace internal
 
         if (update_flags & update_volume_elements)
           {
-            AssertDimension(data.covariant.size(), data.volume_elements.size());
+            AssertDimension(data.contravariant.size(),
+                            data.volume_elements.size());
             if (cell_similarity != CellSimilarity::translation)
               for (unsigned int point = 0; point < data.contravariant.size();
                    ++point)
@@ -1853,7 +1965,7 @@ namespace internal
       void
       transform_fields(
         const ArrayView<const Tensor<rank, dim>> &               input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<rank, spacedim>> &                output)
       {
@@ -1872,7 +1984,7 @@ namespace internal
               MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::
                 InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_contravariant:
               {
@@ -1939,7 +2051,7 @@ namespace internal
       void
       transform_differential_forms(
         const ArrayView<const DerivativeForm<rank, dim, spacedim>> &input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<rank + 1, spacedim>> &            output)
       {
@@ -1958,7 +2070,7 @@ namespace internal
               MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::
                 InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_covariant:
               {
@@ -1986,7 +2098,7 @@ template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 void
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
   const ArrayView<const Tensor<1, dim>> &                  input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<1, spacedim>> &                   output) const
 {
@@ -1994,7 +2106,7 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
 
   internal::MappingFEFieldImplementation::
     transform_fields<dim, spacedim, 1, VectorType, DoFHandlerType>(input,
-                                                                   mapping_type,
+                                                                   mapping_kind,
                                                                    mapping_data,
                                                                    output);
 }
@@ -2005,7 +2117,7 @@ template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 void
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
   const ArrayView<const DerivativeForm<1, dim, spacedim>> &input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<2, spacedim>> &                   output) const
 {
@@ -2013,7 +2125,7 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
 
   internal::MappingFEFieldImplementation::
     transform_differential_forms<dim, spacedim, 1, VectorType, DoFHandlerType>(
-      input, mapping_type, mapping_data, output);
+      input, mapping_kind, mapping_data, output);
 }
 
 
@@ -2022,7 +2134,7 @@ template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 void
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
   const ArrayView<const Tensor<2, dim>> &input,
-  const MappingType,
+  const MappingKind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<2, spacedim>> &                   output) const
 {
@@ -2040,7 +2152,7 @@ template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 void
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
   const ArrayView<const DerivativeForm<2, dim, spacedim>> &input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<3, spacedim>> &                   output) const
 {
@@ -2049,7 +2161,7 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
          ExcInternalError());
   const InternalData &data = static_cast<const InternalData &>(mapping_data);
 
-  switch (mapping_type)
+  switch (mapping_kind)
     {
       case mapping_covariant_gradient:
         {
@@ -2088,7 +2200,7 @@ template <int dim, int spacedim, typename VectorType, typename DoFHandlerType>
 void
 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::transform(
   const ArrayView<const Tensor<3, dim>> &input,
-  const MappingType /*mapping_type*/,
+  const MappingKind /*mapping_kind*/,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<3, spacedim>> &                   output) const
 {
@@ -2343,13 +2455,27 @@ MappingFEField<dim, spacedim, VectorType, DoFHandlerType>::update_internal_dofs(
          ExcMessage("euler_dof_handler is empty"));
 
   typename DoFHandlerType::cell_iterator dof_cell(*cell, euler_dof_handler);
-  Assert(dof_cell->active() == true, ExcInactiveCell());
+  Assert(uses_level_dofs || dof_cell->active() == true, ExcInactiveCell());
+  if (uses_level_dofs)
+    {
+      AssertIndexRange(cell->level(), euler_vector.size());
+      AssertDimension(euler_vector[cell->level()]->size(),
+                      euler_dof_handler->n_dofs(cell->level()));
+    }
+  else
+    AssertDimension(euler_vector[0]->size(), euler_dof_handler->n_dofs());
 
-  dof_cell->get_dof_indices(data.local_dof_indices);
+  if (uses_level_dofs)
+    dof_cell->get_mg_dof_indices(data.local_dof_indices);
+  else
+    dof_cell->get_dof_indices(data.local_dof_indices);
+
+  const VectorType &vector =
+    uses_level_dofs ? *euler_vector[cell->level()] : *euler_vector[0];
 
   for (unsigned int i = 0; i < data.local_dof_values.size(); ++i)
     data.local_dof_values[i] =
-      internal::ElementAccess<VectorType>::get(*euler_vector,
+      internal::ElementAccess<VectorType>::get(vector,
                                                data.local_dof_indices[i]);
 }
 

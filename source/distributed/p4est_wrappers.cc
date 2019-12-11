@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -84,11 +84,11 @@ namespace internal
         typename dealii::internal::p4est::iter<dim>::corner_info *info,
         void *                                                    user_data)
       {
-        int i, j;
-        int nsides = info->sides.elem_count;
-        typename dealii::internal::p4est::iter<dim>::corner_side *sides =
-          (typename dealii::internal::p4est::iter<dim>::corner_side
-             *)(info->sides.array);
+        int   i, j;
+        int   nsides = info->sides.elem_count;
+        auto *sides  = reinterpret_cast<
+          typename dealii::internal::p4est::iter<dim>::corner_side *>(
+          info->sides.array);
         FindGhosts<dim, spacedim> *fg =
           static_cast<FindGhosts<dim, spacedim> *>(user_data);
         sc_array_t *subids = fg->subids;
@@ -123,8 +123,9 @@ namespace internal
             return;
           }
 
-        nsubs         = (int)subids->elem_count;
-        subdomain_ids = (dealii::types::subdomain_id *)(subids->array);
+        nsubs = static_cast<int>(subids->elem_count);
+        subdomain_ids =
+          reinterpret_cast<dealii::types::subdomain_id *>(subids->array);
 
         for (i = 0; i < nsides; i++)
           {
@@ -160,13 +161,12 @@ namespace internal
         typename dealii::internal::p4est::iter<dim>::edge_info *info,
         void *                                                  user_data)
       {
-        int i, j, k;
-        int nsides = info->sides.elem_count;
-        typename dealii::internal::p4est::iter<dim>::edge_side *sides =
-          (typename dealii::internal::p4est::iter<dim>::edge_side *)(info->sides
-                                                                       .array);
-        FindGhosts<dim, spacedim> *fg =
-          static_cast<FindGhosts<dim, spacedim> *>(user_data);
+        int   i, j, k;
+        int   nsides = info->sides.elem_count;
+        auto *sides  = reinterpret_cast<
+          typename dealii::internal::p4est::iter<dim>::edge_side *>(
+          info->sides.array);
+        auto *      fg = static_cast<FindGhosts<dim, spacedim> *>(user_data);
         sc_array_t *subids = fg->subids;
         const dealii::parallel::distributed::Triangulation<dim, spacedim>
           *                          triangulation = fg->triangulation;
@@ -203,8 +203,9 @@ namespace internal
             return;
           }
 
-        nsubs         = (int)subids->elem_count;
-        subdomain_ids = (dealii::types::subdomain_id *)(subids->array);
+        nsubs = static_cast<int>(subids->elem_count);
+        subdomain_ids =
+          reinterpret_cast<dealii::types::subdomain_id *>(subids->array);
 
         for (i = 0; i < nsides; i++)
           {
@@ -244,11 +245,11 @@ namespace internal
         typename dealii::internal::p4est::iter<dim>::face_info *info,
         void *                                                  user_data)
       {
-        int i, j, k;
-        int nsides = info->sides.elem_count;
-        typename dealii::internal::p4est::iter<dim>::face_side *sides =
-          (typename dealii::internal::p4est::iter<dim>::face_side *)(info->sides
-                                                                       .array);
+        int   i, j, k;
+        int   nsides = info->sides.elem_count;
+        auto *sides  = reinterpret_cast<
+          typename dealii::internal::p4est::iter<dim>::face_side *>(
+          info->sides.array);
         FindGhosts<dim, spacedim> *fg =
           static_cast<FindGhosts<dim, spacedim> *>(user_data);
         sc_array_t *subids = fg->subids;
@@ -288,8 +289,9 @@ namespace internal
             return;
           }
 
-        nsubs         = (int)subids->elem_count;
-        subdomain_ids = (dealii::types::subdomain_id *)(subids->array);
+        nsubs = static_cast<int>(subids->elem_count);
+        subdomain_ids =
+          reinterpret_cast<dealii::types::subdomain_id *>(subids->array);
 
         for (i = 0; i < nsides; i++)
           {
@@ -395,7 +397,7 @@ namespace internal
       types<2>::locidx        min_quadrants,
       int                     min_level,
       int                     fill_uniform,
-      size_t                  data_size,
+      std::size_t             data_size,
       p4est_init_t            init_fn,
       void *                  user_pointer) = p4est_new_ext;
 
@@ -442,8 +444,8 @@ namespace internal
       types<2>::connectivity *connectivity) = p4est_connectivity_is_valid;
 
     types<2>::connectivity *(&functions<2>::connectivity_load)(
-      const char *filename,
-      size_t *    length) = p4est_connectivity_load;
+      const char * filename,
+      std::size_t *length) = p4est_connectivity_load;
 
     unsigned int (&functions<2>::checksum)(types<2>::forest *p4est) =
       p4est_checksum;
@@ -461,14 +463,14 @@ namespace internal
       p4est_ghost_destroy;
 
     void (&functions<2>::reset_data)(types<2>::forest *p4est,
-                                     size_t            data_size,
+                                     std::size_t       data_size,
                                      p4est_init_t      init_fn,
                                      void *user_pointer) = p4est_reset_data;
 
-    size_t (&functions<2>::forest_memory_used)(types<2>::forest *p4est) =
+    std::size_t (&functions<2>::forest_memory_used)(types<2>::forest *p4est) =
       p4est_memory_used;
 
-    size_t (&functions<2>::connectivity_memory_used)(
+    std::size_t (&functions<2>::connectivity_memory_used)(
       types<2>::connectivity *p4est) = p4est_connectivity_memory_used;
 
     template <int dim, int spacedim>
@@ -531,7 +533,7 @@ namespace internal
                                          int                     tag,
                                          void *                  dest_data,
                                          const void *            src_data,
-                                         size_t                  data_size) =
+                                         std::size_t             data_size) =
       p4est_transfer_fixed;
 
     types<2>::transfer_context *(&functions<2>::transfer_fixed_begin)(
@@ -541,7 +543,7 @@ namespace internal
       int                     tag,
       void *                  dest_data,
       const void *            src_data,
-      size_t                  data_size) = p4est_transfer_fixed_begin;
+      std::size_t             data_size) = p4est_transfer_fixed_begin;
 
     void (&functions<2>::transfer_fixed_end)(types<2>::transfer_context *tc) =
       p4est_transfer_fixed_end;
@@ -634,7 +636,7 @@ namespace internal
       types<3>::locidx        min_quadrants,
       int                     min_level,
       int                     fill_uniform,
-      size_t                  data_size,
+      std::size_t             data_size,
       p8est_init_t            init_fn,
       void *                  user_pointer) = p8est_new_ext;
 
@@ -681,8 +683,8 @@ namespace internal
       types<3>::connectivity *connectivity) = p8est_connectivity_is_valid;
 
     types<3>::connectivity *(&functions<3>::connectivity_load)(
-      const char *filename,
-      size_t *    length) = p8est_connectivity_load;
+      const char * filename,
+      std::size_t *length) = p8est_connectivity_load;
 
     unsigned int (&functions<3>::checksum)(types<3>::forest *p8est) =
       p8est_checksum;
@@ -700,14 +702,14 @@ namespace internal
       p8est_ghost_destroy;
 
     void (&functions<3>::reset_data)(types<3>::forest *p4est,
-                                     size_t            data_size,
+                                     std::size_t       data_size,
                                      p8est_init_t      init_fn,
                                      void *user_pointer) = p8est_reset_data;
 
-    size_t (&functions<3>::forest_memory_used)(types<3>::forest *p4est) =
+    std::size_t (&functions<3>::forest_memory_used)(types<3>::forest *p4est) =
       p8est_memory_used;
 
-    size_t (&functions<3>::connectivity_memory_used)(
+    std::size_t (&functions<3>::connectivity_memory_used)(
       types<3>::connectivity *p4est) = p8est_connectivity_memory_used;
 
     constexpr unsigned int functions<3>::max_level;
@@ -718,7 +720,7 @@ namespace internal
                                          int                     tag,
                                          void *                  dest_data,
                                          const void *            src_data,
-                                         size_t                  data_size) =
+                                         std::size_t             data_size) =
       p8est_transfer_fixed;
 
     types<3>::transfer_context *(&functions<3>::transfer_fixed_begin)(
@@ -728,7 +730,7 @@ namespace internal
       int                     tag,
       void *                  dest_data,
       const void *            src_data,
-      size_t                  data_size) = p8est_transfer_fixed_begin;
+      std::size_t             data_size) = p8est_transfer_fixed_begin;
 
     void (&functions<3>::transfer_fixed_end)(types<3>::transfer_context *tc) =
       p8est_transfer_fixed_end;
@@ -832,6 +834,73 @@ namespace internal
       return ((coarse_grid_cell >= parallel_forest->first_local_tree) &&
               (coarse_grid_cell <= parallel_forest->last_local_tree));
     }
+
+
+
+    template <>
+    bool
+    quadrant_is_equal<1>(const typename types<1>::quadrant &q1,
+                         const typename types<1>::quadrant &q2)
+    {
+      return q1 == q2;
+    }
+
+
+
+    template <>
+    bool quadrant_is_ancestor<1>(types<1>::quadrant const &q1,
+                                 types<1>::quadrant const &q2)
+    {
+      // determine level of quadrants
+      const int level_1 = (q1 << types<1>::max_n_child_indices_bits) >>
+                          types<1>::max_n_child_indices_bits;
+      const int level_2 = (q2 << types<1>::max_n_child_indices_bits) >>
+                          types<1>::max_n_child_indices_bits;
+
+      // q1 can be an ancestor of q2 if q1's level is smaller
+      if (level_1 >= level_2)
+        return false;
+
+      // extract path of quadrants up to level of possible ancestor q1
+      const int truncated_id_1 = (q1 >> (types<1>::n_bits - 1 - level_1))
+                                 << (types<1>::n_bits - 1 - level_1);
+      const int truncated_id_2 = (q2 >> (types<1>::n_bits - 1 - level_1))
+                                 << (types<1>::n_bits - 1 - level_1);
+
+      // compare paths
+      return truncated_id_1 == truncated_id_2;
+    }
+
+
+
+    template <>
+    void
+    init_quadrant_children<1>(
+      const typename types<1>::quadrant &q,
+      typename types<1>::quadrant (
+        &p4est_children)[dealii::GeometryInfo<1>::max_children_per_cell])
+    {
+      // determine the current level of quadrant
+      const int level_parent = (q << types<1>::max_n_child_indices_bits) >>
+                               types<1>::max_n_child_indices_bits;
+      const int level_child = level_parent + 1;
+
+      // left child: only n_child_indices has to be incremented
+      p4est_children[0] = (q + 1);
+
+      // right child: increment and set a bit to 1 indicating that it is a right
+      // child
+      p4est_children[1] = (q + 1) | (1 << (types<1>::n_bits - 1 - level_child));
+    }
+
+
+
+    template <>
+    void init_coarse_quadrant<1>(typename types<1>::quadrant &quad)
+    {
+      quad = 0;
+    }
+
   } // namespace p4est
 } // namespace internal
 

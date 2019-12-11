@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2000 - 2018 by the deal.II authors
+ * Copyright (C) 2000 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -269,7 +269,7 @@ namespace Step8
   template <int dim>
   void ElasticProblem<dim>::assemble_system()
   {
-    QGauss<dim> quadrature_formula(2);
+    QGauss<dim> quadrature_formula(fe.degree + 1);
 
     FEValues<dim> fe_values(fe,
                             quadrature_formula,
@@ -490,7 +490,7 @@ namespace Step8
 
     KellyErrorEstimator<dim>::estimate(
       dof_handler,
-      QGauss<dim - 1>(2),
+      QGauss<dim - 1>(fe.degree + 1),
       std::map<types::boundary_id, const Function<dim> *>(),
       solution,
       estimated_error_per_cell);
@@ -622,7 +622,7 @@ namespace Step8
         if (cycle == 0)
           {
             GridGenerator::hyper_cube(triangulation, -1, 1);
-            triangulation.refine_global(2);
+            triangulation.refine_global(4);
           }
         else
           refine_grid();

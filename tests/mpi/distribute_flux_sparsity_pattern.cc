@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -134,7 +134,7 @@ namespace LinearAdvectionTest
                                          flux_integral_mask);
     SparsityTools::distribute_sparsity_pattern(
       dynamic_sparsity_pattern,
-      dof_handler.n_locally_owned_dofs_per_processor(),
+      dof_handler.compute_n_locally_owned_dofs_per_processor(),
       MPI_COMM_WORLD,
       locally_relevant_dofs);
 

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -93,7 +93,7 @@ main()
   }
 
   {
-    deallog << "Checking move assignement" << std::endl;
+    deallog << "Checking move assignment" << std::endl;
 
     Subscriptor               subscriptor_1;
     Subscriptor               subscriptor_2;

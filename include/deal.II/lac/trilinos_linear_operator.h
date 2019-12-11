@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,6 +28,7 @@ DEAL_II_NAMESPACE_OPEN
 namespace TrilinosWrappers
 {
   // Forward declarations:
+#  ifndef DOXYGEN
   class SparseMatrix;
   class PreconditionBase;
   class BlockSparseMatrix;
@@ -45,7 +46,7 @@ namespace TrilinosWrappers
       class TrilinosBlockPayload;
     }
   } // namespace internal
-
+#  endif
 
   /**
    * @name Creation of a LinearOperator
@@ -168,7 +169,10 @@ namespace TrilinosWrappers
    *
    * @ingroup TrilinosWrappers
    */
-  template <size_t m, size_t n, typename Range, typename Domain = Range>
+  template <std::size_t m,
+            std::size_t n,
+            typename Range,
+            typename Domain = Range>
   inline BlockLinearOperator<
     Range,
     Domain,
@@ -246,7 +250,7 @@ namespace TrilinosWrappers
    *
    * @ingroup TrilinosWrappers
    */
-  template <size_t m, typename Range, typename Domain = Range>
+  template <std::size_t m, typename Range, typename Domain = Range>
   inline BlockLinearOperator<
     Range,
     Domain,

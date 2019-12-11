@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -170,7 +170,7 @@ do_test(const DoFHandler<dim> &dof)
       typename MatrixFree<dim, number>::AdditionalData mg_additional_data;
       mg_additional_data.tasks_parallel_scheme =
         MatrixFree<dim, number>::AdditionalData::none;
-      mg_additional_data.level_mg_handler = level;
+      mg_additional_data.mg_level = level;
 
       AffineConstraints<double> level_constraints;
       IndexSet                  relevant_dofs;
@@ -264,7 +264,7 @@ test()
       FE_Q<dim>       fe(fe_degree);
       DoFHandler<dim> dof(tria);
       dof.distribute_dofs(fe);
-      dof.distribute_mg_dofs(fe);
+      dof.distribute_mg_dofs();
 
       do_test<dim, fe_degree, fe_degree + 1, double>(dof);
     }

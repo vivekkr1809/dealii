@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,10 +31,12 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class BlockSparseMatrix;
 class BlockDynamicSparsityPattern;
+#endif
 
 /*! @addtogroup Sparsity
  *@{
@@ -377,10 +379,8 @@ private:
    */
   std::vector<std::vector<size_type>> block_column_indices;
 
-  /**
-   * Make the block sparse matrix a friend, so that it can use our
-   * #row_indices and #column_indices objects.
-   */
+  // Make the block sparse matrix a friend, so that it can use our
+  // #row_indices and #column_indices objects.
   template <typename number>
   friend class BlockSparseMatrix;
 };

@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -58,16 +58,30 @@ MACRO(FEATURE_BOOST_CONFIGURE_COMMON)
   # Older boost versions can't know about this but provide a possibility to
   # circumvent the issue. Hence, we just check ourselves.
   ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_VERSION_FLAG}")
-  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror")
+  IF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "/WX /EHsc")
+  ELSE()
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror")
+  ENDIF()
+  # The configure function is called only once. In case an externally provided
+  # boost library is detected, BOOST_INCLUDE_DIRS contains the include paths to
+  # be used and BOOST_BUNDLED_INCLUDE_DIRS is empty. For the bundled library, it
+  # is the other way around.
+  LIST(APPEND CMAKE_REQUIRED_INCLUDES ${BOOST_INCLUDE_DIRS} ${BOOST_BUNDLED_INCLUDE_DIRS})
 
+  # In case, the boost library already sets BOOST_NO_AUTO_PTR we report
+  # DEAL_II_HAS_AUTO_PTR to be true to avoid redefining the macro.
   CHECK_CXX_SOURCE_COMPILES(
     "
     #include <memory>
+    #include <boost/config.hpp>
 
     int main()
     {
+    #ifndef BOOST_NO_AUTO_PTR
       int *i = new int;
       std::auto_ptr<int> x(i);
+    #endif
       return 0;
     }
     "
@@ -96,9 +110,11 @@ MACRO(FEATURE_BOOST_CONFIGURE_BUNDLED)
     ENDIF()
   ENDIF()
 
-  FEATURE_BOOST_CONFIGURE_COMMON()
-
+  # We need to set this path before calling the configure function
+  # to be able to use the include paths in the checks.
   SET(BOOST_BUNDLED_INCLUDE_DIRS ${BOOST_FOLDER}/include)
+
+  FEATURE_BOOST_CONFIGURE_COMMON()
 
   IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
     #

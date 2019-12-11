@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -35,6 +35,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 template <typename number>
 class Vector;
 template <typename number>
@@ -43,7 +45,7 @@ template <typename Matrix>
 class BlockMatrixBase;
 template <typename number>
 class SparseILU;
-#  ifdef DEAL_II_WITH_MPI
+#    ifdef DEAL_II_WITH_MPI
 namespace Utilities
 {
   namespace MPI
@@ -53,13 +55,14 @@ namespace Utilities
     sum(const SparseMatrix<Number> &, const MPI_Comm &, SparseMatrix<Number> &);
   }
 } // namespace Utilities
-#  endif
+#    endif
 
-#  ifdef DEAL_II_WITH_TRILINOS
+#    ifdef DEAL_II_WITH_TRILINOS
 namespace TrilinosWrappers
 {
   class SparseMatrix;
 }
+#    endif
 #  endif
 
 /**
@@ -173,9 +176,7 @@ namespace SparseMatrixIterators
      */
     using SparsityPatternIterators::Accessor::advance;
 
-    /**
-     * Make iterator class a friend.
-     */
+    // Make iterator class a friend.
     template <typename, bool>
     friend class Iterator;
   };
@@ -308,9 +309,7 @@ namespace SparseMatrixIterators
      */
     using SparsityPatternIterators::Accessor::advance;
 
-    /**
-     * Make iterator class a friend.
-     */
+    // Make iterator class a friend.
     template <typename, bool>
     friend class Iterator;
   };
@@ -377,6 +376,12 @@ namespace SparseMatrixIterators
      * iterator.
      */
     Iterator(const SparseMatrixIterators::Iterator<number, false> &i);
+
+    /**
+     * Copy assignment operator from a non-const iterator to a const iterator.
+     */
+    const Iterator<number, Constness> &
+    operator=(const SparseMatrixIterators::Iterator<number, false> &i);
 
     /**
      * Prefix increment.
@@ -1578,6 +1583,18 @@ public:
   print_pattern(std::ostream &out, const double threshold = 0.) const;
 
   /**
+   * Print the matrix to the output stream @p out in a format that can be
+   * read by numpy::readtxt(). To load the matrix in python just do
+   * <code>
+   *  [data, row, column] = numpy.loadtxt('my_matrix.txt')
+   *  sparse_matrix = scipy.sparse.csr_matrix((data, (row, column)))
+   * </code>
+   */
+  void
+  print_as_numpy_arrays(std::ostream &     out,
+                        const unsigned int precision = 9) const;
+
+  /**
    * Write the data of this object en bloc to a file. This is done in a binary
    * mode, so the output is neither readable by humans nor (probably) by other
    * computers using a different operating system of number format.
@@ -1715,24 +1732,18 @@ private:
   template <typename>
   friend class SparseILU;
 
-  /**
-   * To allow it calling private prepare_add() and prepare_set().
-   */
+  // To allow it calling private prepare_add() and prepare_set().
   template <typename>
   friend class BlockMatrixBase;
 
-  /**
-   * Also give access to internal details to the iterator/accessor classes.
-   */
+  // Also give access to internal details to the iterator/accessor classes.
   template <typename, bool>
   friend class SparseMatrixIterators::Iterator;
   template <typename, bool>
   friend class SparseMatrixIterators::Accessor;
 
 #  ifdef DEAL_II_WITH_MPI
-  /**
-   * Give access to internal datastructures to perform MPI operations.
-   */
+  // Give access to internal datastructures to perform MPI operations.
   template <typename Number>
   friend void
   Utilities::MPI::sum(const SparseMatrix<Number> &,
@@ -2259,6 +2270,17 @@ namespace SparseMatrixIterators
     const SparseMatrixIterators::Iterator<number, false> &i)
     : accessor(*i)
   {}
+
+
+
+  template <typename number, bool Constness>
+  inline const Iterator<number, Constness> &
+  Iterator<number, Constness>::
+  operator=(const SparseMatrixIterators::Iterator<number, false> &i)
+  {
+    accessor = *i;
+    return *this;
+  }
 
 
 

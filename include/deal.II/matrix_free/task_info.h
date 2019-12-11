@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_matrix_free_task_info_h
 #define dealii_matrix_free_task_info_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/index_set.h>
@@ -44,8 +46,7 @@ namespace internal
   struct MFWorkerInterface
   {
   public:
-    virtual ~MFWorkerInterface()
-    {}
+    virtual ~MFWorkerInterface() = default;
 
     /// Starts the communication for the update ghost values operation
     virtual void
@@ -67,6 +68,12 @@ namespace internal
     /// DoFInfo
     virtual void
     zero_dst_vector_range(const unsigned int range_index) = 0;
+
+    virtual void
+    cell_loop_pre_range(const unsigned int range_index) = 0;
+
+    virtual void
+    cell_loop_post_range(const unsigned int range_index) = 0;
 
     /// Runs the cell work specified by MatrixFree::loop or
     /// MatrixFree::cell_loop
@@ -231,11 +238,6 @@ namespace internal
        * chunks within the same color, can work independently). One task is
        * represented by a chunk of cells. The cell chunks are formed before
        * subdivision into partitions and colors.
-       *
-       * @param cell_active_fe_index The active FE index corresponding to the
-       * individual indices in the list of all cell indices, in order to be
-       * able to not place cells with different indices into the same cell
-       * batch with vectorization.
        *
        * @param connectivity (in/out) Determines whether cells `i` and `j` are
        * conflicting, expressed by an entry in position (i,j).

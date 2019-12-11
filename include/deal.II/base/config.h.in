@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2016 by the deal.II authors
+// Copyright (C) 2012 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -42,11 +42,13 @@
 #cmakedefine DEAL_II_WITH_CUDA
 #cmakedefine DEAL_II_WITH_CXX14
 #cmakedefine DEAL_II_WITH_CXX17
+#cmakedefine DEAL_II_WITH_GINKGO
 #cmakedefine DEAL_II_WITH_GSL
 #cmakedefine DEAL_II_WITH_GMSH
 #cmakedefine DEAL_II_WITH_HDF5
 #cmakedefine DEAL_II_WITH_LAPACK
 #cmakedefine LAPACK_WITH_64BIT_BLAS_INDICES
+#cmakedefine DEAL_II_LAPACK_WITH_MKL
 #cmakedefine DEAL_II_WITH_METIS
 #cmakedefine DEAL_II_WITH_MPI
 #cmakedefine DEAL_II_WITH_MUPARSER
@@ -58,6 +60,7 @@
 #cmakedefine DEAL_II_WITH_SCALAPACK
 #cmakedefine DEAL_II_WITH_SLEPC
 #cmakedefine DEAL_II_WITH_SUNDIALS
+#cmakedefine DEAL_II_WITH_SYMENGINE
 #cmakedefine DEAL_II_WITH_THREADS
 #cmakedefine DEAL_II_WITH_TRILINOS
 #cmakedefine DEAL_II_WITH_UMFPACK
@@ -96,6 +99,7 @@
 #cmakedefine DEAL_II_ALWAYS_INLINE @DEAL_II_ALWAYS_INLINE@
 #cmakedefine DEAL_II_RESTRICT @DEAL_II_RESTRICT@
 #cmakedefine DEAL_II_COMPILER_HAS_DIAGNOSTIC_PRAGMA
+#cmakedefine DEAL_II_CONSTEXPR @DEAL_II_CONSTEXPR@
 
 /*
  * A variable to tell if the compiler used in the current compilation process
@@ -124,7 +128,6 @@
 
 #cmakedefine DEAL_II_HAVE_CXX11_IS_TRIVIALLY_COPYABLE
 #cmakedefine DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR
-#cmakedefine DEAL_II_HAVE_CXX17_SPECIAL_MATH_FUNCTIONS
 #cmakedefine DEAL_II_HAVE_FP_EXCEPTIONS
 #cmakedefine DEAL_II_HAVE_COMPLEX_OPERATOR_OVERLOADS
 #cmakedefine DEAL_II_FALLTHROUGH @DEAL_II_FALLTHROUGH@
@@ -161,11 +164,15 @@
 #cmakedefine DEAL_II_ARPACK_WITH_PARPACK
 
 /* cmake/modules/FindPETSC.cmake */
+#cmakedefine DEAL_II_PETSC_WITH_COMPLEX
 #cmakedefine DEAL_II_PETSC_WITH_HYPRE
 #cmakedefine DEAL_II_PETSC_WITH_MUMPS
 
 /* cmake/modules/FindSUNDIALS.cmake */
 #cmakedefine DEAL_II_SUNDIALS_WITH_IDAS
+
+/* cmake/modules/FindSYMENGINE.cmake */
+#cmakedefine DEAL_II_SYMENGINE_WITH_LLVM
 
 /* cmake/configure/configure_1_threads.cmake */
 #cmakedefine DEAL_II_USE_MT_POSIX
@@ -176,6 +183,7 @@
 #cmakedefine DEAL_II_TRILINOS_WITH_EPETRAEXT
 #cmakedefine DEAL_II_TRILINOS_WITH_ROL
 #cmakedefine DEAL_II_TRILINOS_WITH_SACADO
+#cmakedefine DEAL_II_TRILINOS_WITH_TPETRA
 #cmakedefine DEAL_II_TRILINOS_WITH_ZOLTAN
 
 
@@ -235,30 +243,29 @@
     (major)*1000000 + (minor)*10000 + (subminor)*100 + (patch))
 #endif
 
- /*
-  * SUNDIALS:
-  *
-  *  Note: The following definitions will be set in sundials_config.h,
-  *        so we don't repeat them here.
-  *
-  *  SUNDIALS_VERSION_MAJOR
-  *  SUNDIALS_VERSION_MINOR
-  *  SUNDIALS_VERSION_PATCH
-  */
+/*
+ * SUNDIALS:
+ */
 
- #define DEAL_II_SUNDIALS_VERSION_GTE(major,minor,subminor) \
-   ((SUNDIALS_VERSION_MAJOR * 10000 + \
-     SUNDIALS_VERSION_MINOR * 100 + \
-     SUNDIALS_VERSION_SUBMINOR) \
+#ifdef DEAL_II_WITH_SUNDIALS
+ #  define DEAL_II_SUNDIALS_VERSION_MAJOR @SUNDIALS_VERSION_MAJOR@
+ #  define DEAL_II_SUNDIALS_VERSION_MINOR @SUNDIALS_VERSION_MINOR@
+ #  define DEAL_II_SUNDIALS_VERSION_PATCH @SUNDIALS_VERSION_PATCH@
+
+ #define DEAL_II_SUNDIALS_VERSION_GTE(major,minor,patch) \
+   ((DEAL_II_SUNDIALS_VERSION_MAJOR * 10000 + \
+     DEAL_II_SUNDIALS_VERSION_MINOR * 100 + \
+     DEAL_II_SUNDIALS_VERSION_PATCH) \
      >=  \
-     (major)*10000 + (minor)*100 + (subminor))
+     (major)*10000 + (minor)*100 + (patch))
 
- #define DEAL_II_SUNDIALS_VERSION_LT(major,minor,subminor) \
-   ((SUNDIALS_VERSION_MAJOR * 10000 + \
-     SUNDIALS_VERSION_MINOR * 100 + \
-     SUNDIALS_VERSION_SUBMINOR) \
+ #define DEAL_II_SUNDIALS_VERSION_LT(major,minor,patch) \
+   ((DEAL_II_SUNDIALS_VERSION_MAJOR * 10000 + \
+     DEAL_II_SUNDIALS_VERSION_MINOR * 100 + \
+     DEAL_II_SUNDIALS_VERSION_PATCH) \
      <  \
-     (major)*10000 + (minor)*100 + (subminor))
+     (major)*10000 + (minor)*100 + (patch))
+#endif
 
 /*
  * PETSc:
@@ -331,6 +338,8 @@
     (major)*100 + (minor))
 #endif
 
+#cmakedefine DEAL_II_MPI_WITH_CUDA_SUPPORT
+
 /***********************************************************************
  * Two macro names that we put at the top and bottom of all deal.II files
  * and that will be expanded to "namespace dealii {" and "}".
@@ -358,6 +367,7 @@ _Pragma("GCC diagnostic ignored \"-Wunknown-warning-option\"")    /*!*/ \
 _Pragma("GCC diagnostic ignored \"-Wunknown-warning\"")           /*!*/ \
 _Pragma("GCC diagnostic ignored \"-Wextra\"")                     /*!*/ \
 _Pragma("GCC diagnostic ignored \"-Waddress-of-packed-member\"")        \
+_Pragma("GCC diagnostic ignored \"-Wdeprecated-copy\"")                 \
 _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")         \
 _Pragma("GCC diagnostic ignored \"-Wexpansion-to-defined\"")            \
 _Pragma("GCC diagnostic ignored \"-Wexpansion-to-defined\"")            \

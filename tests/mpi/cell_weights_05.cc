@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -54,7 +54,7 @@ cell_weight(
     (cell->center()[0] < 1) && (cell->center()[1] < 1) &&
         (dim == 3 ? (cell->center()[2] < 1) : true) ?
       // one cell has more weight than all others together
-      std::pow(16, dim) * 1000 :
+      Utilities::pow(16, dim) * 1000 :
       0);
 }
 
@@ -80,10 +80,12 @@ test()
 
   tr.repartition();
 
+  const auto n_locally_owned_active_cells_per_processor =
+    tr.compute_n_locally_owned_active_cells_per_processor();
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
     for (unsigned int p = 0; p < numproc; ++p)
       deallog << "processor " << p << ": "
-              << tr.n_locally_owned_active_cells_per_processor()[p]
+              << n_locally_owned_active_cells_per_processor[p]
               << " locally owned active cells" << std::endl;
 
   // let each processor sum up its weights

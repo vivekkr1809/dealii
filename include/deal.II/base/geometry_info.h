@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -41,182 +41,300 @@ namespace internal
     template <>
     struct Initializers<1>
     {
-      static constexpr std::array<unsigned int, 2> ucd_to_deal{{0, 1}};
+      static constexpr std::array<unsigned int, 2>
+      ucd_to_deal()
+      {
+        return {{0, 1}};
+      }
 
-      static constexpr std::array<unsigned int, 2> unit_normal_direction{
-        {0, 0}};
+      static constexpr std::array<unsigned int, 2>
+      unit_normal_direction()
+      {
+        return {{0, 0}};
+      }
 
-      static constexpr std::array<int, 2> unit_normal_orientation{{-1, 1}};
+      static constexpr std::array<int, 2>
+      unit_normal_orientation()
+      {
+        return {{-1, 1}};
+      }
 
-      static constexpr std::array<unsigned int, 2> opposite_face{{1, 0}};
+      static constexpr std::array<Tensor<1, 1>, 2>
+      unit_normal_vector()
+      {
+        return {{Tensor<1, 1>{{-1}}, Tensor<1, 1>{{1}}}};
+      }
 
-      static constexpr std::array<unsigned int, 2> dx_to_deal{{0, 1}};
+      static constexpr std::array<unsigned int, 2>
+      opposite_face()
+      {
+        return {{1, 0}};
+      }
+
+      static constexpr std::array<unsigned int, 2>
+      dx_to_deal()
+      {
+        return {{0, 1}};
+      }
 
       static constexpr std::array<std::array<unsigned int, 1>, 2>
-        vertex_to_face{{{{0}}, {{1}}}};
+      vertex_to_face()
+      {
+        return {{{{0}}, {{1}}}};
+      }
     };
 
     template <>
     struct Initializers<2>
     {
-      static constexpr std::array<unsigned int, 4> ucd_to_deal{{0, 1, 3, 2}};
+      static constexpr std::array<unsigned int, 4>
+      ucd_to_deal()
+      {
+        return {{0, 1, 3, 2}};
+      }
 
-      static constexpr std::array<unsigned int, 4> unit_normal_direction{
-        {0, 0, 1, 1}};
+      static constexpr std::array<unsigned int, 4>
+      unit_normal_direction()
+      {
+        return {{0, 0, 1, 1}};
+      }
 
-      static constexpr std::array<int, 4> unit_normal_orientation{
-        {-1, 1, -1, 1}};
+      static constexpr std::array<int, 4>
+      unit_normal_orientation()
+      {
+        return {{-1, 1, -1, 1}};
+      }
 
-      static constexpr std::array<unsigned int, 4> opposite_face{{1, 0, 3, 2}};
+      static constexpr std::array<Tensor<1, 2>, 4>
+      unit_normal_vector()
+      {
+        return {{Tensor<1, 2>{{-1., 0.}},
+                 Tensor<1, 2>{{1., 0.}},
+                 Tensor<1, 2>{{0., -1.}},
+                 Tensor<1, 2>{{0., 1.}}}};
+      }
 
-      static constexpr std::array<unsigned int, 4> dx_to_deal{{0, 2, 1, 3}};
+      static constexpr std::array<unsigned int, 4>
+      opposite_face()
+      {
+        return {{1, 0, 3, 2}};
+      }
+
+      static constexpr std::array<unsigned int, 4>
+      dx_to_deal()
+      {
+        return {{0, 2, 1, 3}};
+      }
 
       static constexpr std::array<std::array<unsigned int, 2>, 4>
-        vertex_to_face{{{{0, 2}}, {{1, 2}}, {{0, 3}}, {{1, 3}}}};
+      vertex_to_face()
+      {
+        return {{{{0, 2}}, {{1, 2}}, {{0, 3}}, {{1, 3}}}};
+      }
     };
 
     template <>
     struct Initializers<3>
     {
-      static constexpr std::array<unsigned int, 8> ucd_to_deal{
-        {0, 1, 5, 4, 2, 3, 7, 6}};
+      static constexpr std::array<unsigned int, 8>
+      ucd_to_deal()
+      {
+        return {{0, 1, 5, 4, 2, 3, 7, 6}};
+      }
 
-      static constexpr std::array<unsigned int, 6> unit_normal_direction{
-        {0, 0, 1, 1, 2, 2}};
+      static constexpr std::array<unsigned int, 6>
+      unit_normal_direction()
+      {
+        return {{0, 0, 1, 1, 2, 2}};
+      }
 
-      static constexpr std::array<int, 6> unit_normal_orientation{
-        {-1, 1, -1, 1, -1, 1}};
+      static constexpr std::array<int, 6>
+      unit_normal_orientation()
+      {
+        return {{-1, 1, -1, 1, -1, 1}};
+      }
 
-      static constexpr std::array<unsigned int, 6> opposite_face{
-        {1, 0, 3, 2, 5, 4}};
+      static constexpr std::array<Tensor<1, 3>, 6>
+      unit_normal_vector()
+      {
+        return {{Tensor<1, 3>{{-1, 0, 0}},
+                 Tensor<1, 3>{{1, 0, 0}},
+                 Tensor<1, 3>{{0, -1, 0}},
+                 Tensor<1, 3>{{0, 1, 0}},
+                 Tensor<1, 3>{{0, 0, -1}},
+                 Tensor<1, 3>{{0, 0, 1}}}};
+      }
 
-      static constexpr std::array<unsigned int, 8> dx_to_deal{
-        {0, 4, 2, 6, 1, 5, 3, 7}};
+      static constexpr std::array<unsigned int, 6>
+      opposite_face()
+      {
+        return {{1, 0, 3, 2, 5, 4}};
+      }
+
+      static constexpr std::array<unsigned int, 8>
+      dx_to_deal()
+      {
+        return {{0, 4, 2, 6, 1, 5, 3, 7}};
+      }
 
       static constexpr std::array<std::array<unsigned int, 3>, 8>
-        vertex_to_face{{{{0, 2, 4}},
-                        {{1, 2, 4}},
-                        {{0, 3, 4}},
-                        {{1, 3, 4}},
-                        {{0, 2, 5}},
-                        {{1, 2, 5}},
-                        {{0, 3, 5}},
-                        {{1, 3, 5}}}};
+      vertex_to_face()
+      {
+        return {{{{0, 2, 4}},
+                 {{1, 2, 4}},
+                 {{0, 3, 4}},
+                 {{1, 3, 4}},
+                 {{0, 2, 5}},
+                 {{1, 2, 5}},
+                 {{0, 3, 5}},
+                 {{1, 3, 5}}}};
+      }
     };
 
     template <>
     struct Initializers<4>
     {
-      static constexpr std::array<unsigned int, 16> ucd_to_deal{
-        {numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int}};
+      static constexpr std::array<unsigned int, 16>
+      ucd_to_deal()
+      {
+        return {{numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int}};
+      }
 
-      static constexpr std::array<unsigned int, 8> unit_normal_direction{
-        {0, 0, 1, 1, 2, 2, 3, 3}};
+      static constexpr std::array<unsigned int, 8>
+      unit_normal_direction()
+      {
+        return {{0, 0, 1, 1, 2, 2, 3, 3}};
+      }
 
-      static constexpr std::array<int, 8> unit_normal_orientation{
-        {-1, 1, -1, 1, -1, 1, -1, 1}};
+      static constexpr std::array<int, 8>
+      unit_normal_orientation()
+      {
+        return {{-1, 1, -1, 1, -1, 1, -1, 1}};
+      }
 
-      static constexpr std::array<unsigned int, 8> opposite_face{
-        {1, 0, 3, 2, 5, 4, 7, 6}};
+      static constexpr std::array<Tensor<1, 4>, 8>
+      unit_normal_vector()
+      {
+        return {{Tensor<1, 4>{{-1, 0, 0, 0}},
+                 Tensor<1, 4>{{1, 0, 0, 0}},
+                 Tensor<1, 4>{{0, -1, 0, 0}},
+                 Tensor<1, 4>{{0, 1, 0, 0}},
+                 Tensor<1, 4>{{0, 0, -1, 0}},
+                 Tensor<1, 4>{{0, 0, 1, 0}},
+                 Tensor<1, 4>{{0, 0, 0, -1}},
+                 Tensor<1, 4>{{0, 0, 0, 1}}}};
+      }
 
-      static constexpr std::array<unsigned int, 16> dx_to_deal{
-        {numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int,
-         numbers::invalid_unsigned_int}};
+      static constexpr std::array<unsigned int, 8>
+      opposite_face()
+      {
+        return {{1, 0, 3, 2, 5, 4, 7, 6}};
+      }
+
+      static constexpr std::array<unsigned int, 16>
+      dx_to_deal()
+      {
+        return {{numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int,
+                 numbers::invalid_unsigned_int}};
+      }
 
       static constexpr std::array<std::array<unsigned int, 4>, 16>
-        vertex_to_face{{{{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}},
-                        {{numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int,
-                          numbers::invalid_unsigned_int}}}};
+      vertex_to_face()
+      {
+        return {{{{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}},
+                 {{numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int,
+                   numbers::invalid_unsigned_int}}}};
+      }
     };
   } // namespace GeometryInfoHelper
 } // namespace internal
@@ -1799,7 +1917,7 @@ struct GeometryInfo
    * old_to_lexicographic mapping.
    */
   static constexpr std::array<unsigned int, vertices_per_cell> ucd_to_deal =
-    internal::GeometryInfoHelper::Initializers<dim>::ucd_to_deal;
+    internal::GeometryInfoHelper::Initializers<dim>::ucd_to_deal();
 
   /**
    * Rearrange vertices for OpenDX output.  For a cell being written in OpenDX
@@ -1815,7 +1933,7 @@ struct GeometryInfo
    * @endcode
    */
   static constexpr std::array<unsigned int, vertices_per_cell> dx_to_deal =
-    internal::GeometryInfoHelper::Initializers<dim>::dx_to_deal;
+    internal::GeometryInfoHelper::Initializers<dim>::dx_to_deal();
 
   /**
    * This field stores for each vertex to which faces it belongs. In any given
@@ -1829,7 +1947,7 @@ struct GeometryInfo
    */
   static constexpr std::array<std::array<unsigned int, dim>, vertices_per_cell>
     vertex_to_face =
-      internal::GeometryInfoHelper::Initializers<dim>::vertex_to_face;
+      internal::GeometryInfoHelper::Initializers<dim>::vertex_to_face();
 
   /**
    * Return the number of children of a cell (or face) refined with
@@ -2241,7 +2359,7 @@ struct GeometryInfo
    */
   static constexpr std::array<unsigned int, faces_per_cell>
     unit_normal_direction =
-      internal::GeometryInfoHelper::Initializers<dim>::unit_normal_direction;
+      internal::GeometryInfoHelper::Initializers<dim>::unit_normal_direction();
 
   /**
    * Orientation of the unit normal vector of a face of the reference cell. In
@@ -2260,7 +2378,21 @@ struct GeometryInfo
    * entry on face orientation.
    */
   static constexpr std::array<int, faces_per_cell> unit_normal_orientation =
-    internal::GeometryInfoHelper::Initializers<dim>::unit_normal_orientation;
+    internal::GeometryInfoHelper::Initializers<dim>::unit_normal_orientation();
+
+  /**
+   * Unit normal vector (Point<dim>) of a face of the reference cell.
+   *
+   * Note that this is only the <em>standard orientation</em> of faces. At
+   * least in 3d, actual faces of cells in a triangulation can also have the
+   * opposite orientation, depending on a flag that one can query from the
+   * cell it belongs to. For more information, see the
+   * @ref GlossFaceOrientation "glossary"
+   * entry on face orientation.
+   */
+  static constexpr std::array<Tensor<1, dim>, faces_per_cell>
+    unit_normal_vector =
+      internal::GeometryInfoHelper::Initializers<dim>::unit_normal_vector();
 
   /**
    * List of numbers which denotes which face is opposite to a given face. Its
@@ -2268,7 +2400,7 @@ struct GeometryInfo
    * 7, 6}</tt>.
    */
   static constexpr std::array<unsigned int, faces_per_cell> opposite_face =
-    internal::GeometryInfoHelper::Initializers<dim>::opposite_face;
+    internal::GeometryInfoHelper::Initializers<dim>::opposite_face();
 
 
   /**
@@ -2519,7 +2651,7 @@ GeometryInfo<2>::unit_cell_vertex(const unsigned int vertex)
   Assert(vertex < vertices_per_cell,
          ExcIndexRange(vertex, 0, vertices_per_cell));
 
-  return Point<2>(vertex % 2, vertex / 2);
+  return {static_cast<double>(vertex % 2), static_cast<double>(vertex / 2)};
 }
 
 
@@ -2531,7 +2663,9 @@ GeometryInfo<3>::unit_cell_vertex(const unsigned int vertex)
   Assert(vertex < vertices_per_cell,
          ExcIndexRange(vertex, 0, vertices_per_cell));
 
-  return Point<3>(vertex % 2, vertex / 2 % 2, vertex / 4);
+  return {static_cast<double>(vertex % 2),
+          static_cast<double>(vertex / 2 % 2),
+          static_cast<double>(vertex / 4)};
 }
 
 

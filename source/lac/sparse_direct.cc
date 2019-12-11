@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2017 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,6 @@
 // ---------------------------------------------------------------------
 
 #include <deal.II/base/memory_consumption.h>
-#include <deal.II/base/thread_management.h>
 
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/sparse_direct.h>
@@ -370,8 +369,8 @@ SparseDirectUMFPACK::solve(const Matrix &       matrix,
 SparseDirectUMFPACK::SparseDirectUMFPACK()
   : _m(0)
   , _n(0)
-  , symbolic_decomposition(0)
-  , numeric_decomposition(0)
+  , symbolic_decomposition(nullptr)
+  , numeric_decomposition(nullptr)
   , control(0)
 {}
 

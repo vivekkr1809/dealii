@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,6 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/signaling_nan.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/base/utilities.h>
 
@@ -383,20 +382,25 @@ TimerOutput::~TimerOutput()
   // avoid communicating with other processes if there is an uncaught
   // exception
 #ifdef DEAL_II_WITH_MPI
-  if (std::uncaught_exception() && mpi_communicator != MPI_COMM_SELF)
+#  if __cpp_lib_uncaught_exceptions >= 201411
+  // std::uncaught_exception() is deprecated in c++17
+  if (std::uncaught_exceptions() > 0 && mpi_communicator != MPI_COMM_SELF)
+#  else
+  if (std::uncaught_exception() == true && mpi_communicator != MPI_COMM_SELF)
+#  endif
     {
-      std::cerr << "---------------------------------------------------------"
-                << std::endl
-                << "TimerOutput objects finalize timed values printed to the"
-                << std::endl
-                << "screen by communicating over MPI in their destructors."
-                << std::endl
-                << "Since an exception is currently uncaught, this" << std::endl
-                << "synchronization (and subsequent output) will be skipped to"
-                << std::endl
-                << "avoid a possible deadlock." << std::endl
-                << "---------------------------------------------------------"
-                << std::endl;
+      const unsigned int myid =
+        Utilities::MPI::this_mpi_process(mpi_communicator);
+      if (myid == 0)
+        std::cerr
+          << "---------------------------------------------------------\n"
+          << "TimerOutput objects finalize timed values printed to the\n"
+          << "screen by communicating over MPI in their destructors.\n"
+          << "Since an exception is currently uncaught, this\n"
+          << "synchronization (and subsequent output) will be skipped\n"
+          << "to avoid a possible deadlock.\n"
+          << "---------------------------------------------------------"
+          << std::endl;
     }
   else
     {
@@ -459,7 +463,7 @@ TimerOutput::leave_subsection(const std::string &section_name)
 
   std::lock_guard<std::mutex> lock(mutex);
 
-  if (section_name != "")
+  if (!section_name.empty())
     {
       Assert(sections.find(section_name) != sections.end(),
              ExcMessage("Cannot delete a section that was never created."));
@@ -472,7 +476,7 @@ TimerOutput::leave_subsection(const std::string &section_name)
   // if no string is given, exit the last
   // active section.
   const std::string actual_section_name =
-    (section_name == "" ? active_sections.back() : section_name);
+    (section_name.empty() ? active_sections.back() : section_name);
 
   sections[actual_section_name].timer.stop();
   sections[actual_section_name].total_wall_time +=
@@ -553,10 +557,11 @@ TimerOutput::print_summary() const
   // get the maximum width among all sections
   unsigned int max_width = 0;
   for (const auto &i : sections)
-    max_width = std::max(max_width, (unsigned int)i.first.length());
+    max_width =
+      std::max(max_width, static_cast<unsigned int>(i.first.length()));
 
   // 32 is the default width until | character
-  max_width                     = std::max(max_width + 1, (unsigned int)32);
+  max_width = std::max(max_width + 1, static_cast<unsigned int>(32));
   const std::string extra_dash  = std::string(max_width - 32, '-');
   const std::string extra_space = std::string(max_width - 32, ' ');
 

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,9 @@
 #ifndef dealii_affine_constraints_templates_h
 #define dealii_affine_constraints_templates_h
 
+#include <deal.II/base/config.h>
+
+#include <deal.II/base/cuda_size.h>
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/table.h>
 #include <deal.II/base/thread_local_storage.h>
@@ -166,7 +169,7 @@ AffineConstraints<number>::is_consistent_in_parallel(
   for (const auto &kv : received)
     {
       // for each incoming line:
-      for (auto &lineit : kv.second)
+      for (const auto &lineit : kv.second)
         {
           const ConstraintLine reference = get_line(lineit.index);
 
@@ -185,7 +188,7 @@ AffineConstraints<number>::is_consistent_in_parallel(
               ++inconsistent;
               if (verbose)
                 std::cout << "Proc " << myid << " got line " << lineit.index
-                          << " from " << kv.first << " wrong values!"
+                          << " from " << kv.first << " with wrong values!"
                           << std::endl;
             }
         }
@@ -516,8 +519,8 @@ AffineConstraints<number>::close()
             new_entries = line.entries;
           else
             {
-              // otherwise, we need to go through the list by and and
-              // resolve the duplicates
+              // otherwise, we need to go through the list and resolve the
+              // duplicates
               new_entries.reserve(line.entries.size() - duplicates);
               new_entries.push_back(line.entries[0]);
               for (size_type j = 1; j < line.entries.size(); ++j)
@@ -1883,6 +1886,57 @@ namespace internal
       vec.zero_out_ghosts();
     }
 
+#ifdef DEAL_II_COMPILER_CUDA_AWARE
+    template <typename Number>
+    __global__ void
+    set_zero_kernel(const size_type *  constrained_dofs,
+                    const unsigned int n_constrained_dofs,
+                    Number *           dst)
+    {
+      const unsigned int index = threadIdx.x + blockDim.x * blockIdx.x;
+      if (index < n_constrained_dofs)
+        dst[constrained_dofs[index]] = 0;
+    }
+
+    template <typename number>
+    void
+    set_zero_parallel(
+      const std::vector<size_type> &                                 cm,
+      LinearAlgebra::distributed::Vector<number, MemorySpace::CUDA> &vec,
+      size_type                                                      shift = 0)
+    {
+      Assert(shift == 0, ExcNotImplemented());
+      (void)shift;
+      std::vector<size_type> constrained_local_dofs_host;
+      constrained_local_dofs_host.reserve(cm.size());
+
+      for (const auto global_index : cm)
+        if (vec.in_local_range(global_index))
+          constrained_local_dofs_host.push_back(
+            vec.get_partitioner()->global_to_local(global_index));
+
+      const int  n_constraints = constrained_local_dofs_host.size();
+      size_type *constrained_local_dofs_device;
+      Utilities::CUDA::malloc(constrained_local_dofs_device, n_constraints);
+      Utilities::CUDA::copy_to_dev(constrained_local_dofs_host,
+                                   constrained_local_dofs_device);
+
+      const int n_blocks = 1 + (n_constraints - 1) / CUDAWrappers::block_size;
+      set_zero_kernel<<<n_blocks, CUDAWrappers::block_size>>>(
+        constrained_local_dofs_device, n_constraints, vec.get_values());
+#  ifdef DEBUG
+      // Check that the kernel was launched correctly
+      AssertCuda(cudaGetLastError());
+      // Check that there was no problem during the execution of the kernel
+      AssertCuda(cudaDeviceSynchronize());
+#  endif
+
+      Utilities::CUDA::free(constrained_local_dofs_device);
+
+      vec.zero_out_ghosts();
+    }
+#endif
+
     template <class VectorType>
     void
     set_zero_in_parallel(const std::vector<size_type> &cm,
@@ -1941,20 +1995,6 @@ namespace internal
     }
   } // namespace AffineConstraintsImplementation
 } // namespace internal
-
-template <typename number>
-template <class VectorType>
-void
-AffineConstraints<number>::set_zero(VectorType &vec) const
-{
-  // since we lines is a private member, we cannot pass it to the functions
-  // above. therefore, copy the content which is cheap
-  std::vector<size_type> constrained_lines(lines.size());
-  for (unsigned int i = 0; i < lines.size(); ++i)
-    constrained_lines[i] = lines[i].index;
-  internal::AffineConstraintsImplementation::set_zero_all(constrained_lines,
-                                                          vec);
-}
 
 template <typename number>
 template <typename VectorType>
@@ -2087,7 +2127,7 @@ namespace internal
   // this is an operation that is different for all vector types and so we
   // need a few overloads
 #ifdef DEAL_II_WITH_TRILINOS
-  void
+  inline void
   import_vector_with_ghost_elements(
     const TrilinosWrappers::MPI::Vector &vec,
     const IndexSet & /*locally_owned_elements*/,
@@ -2110,7 +2150,7 @@ namespace internal
 #endif
 
 #ifdef DEAL_II_WITH_PETSC
-  void
+  inline void
   import_vector_with_ghost_elements(
     const PETScWrappers::MPI::Vector &vec,
     const IndexSet &                  locally_owned_elements,
@@ -3325,9 +3365,13 @@ namespace internals
   }
 
   // to make sure that the global matrix remains invertible, we need to do
-  // something with the diagonal elements. add the absolute value of the local
-  // matrix, so the resulting entry will always be positive and furthermore be
-  // in the same order of magnitude as the other elements of the matrix
+  // something with the diagonal elements. Add the average of the
+  // absolute values of the local matrix diagonals, so the resulting entry
+  // will always be positive and furthermore be in the same order of magnitude
+  // as the other elements of the matrix. If all local matrix diagonals are
+  // zero, add the l1 norm of the local matrix divided by the matrix size
+  // to the diagonal of the global matrix. If the entire local matrix is zero,
+  // add 1 to the diagonal of the global matrix.
   //
   // note that this also captures the special case that a dof is both
   // constrained and fixed (this can happen for hanging nodes in 3d that also
@@ -3354,6 +3398,16 @@ namespace internals
         for (size_type i = 0; i < local_matrix.m(); ++i)
           average_diagonal += std::abs(local_matrix(i, i));
         average_diagonal /= static_cast<number>(local_matrix.m());
+
+        // handle the case that all diagonal elements are zero
+        if (average_diagonal == static_cast<number>(0.))
+          {
+            average_diagonal = static_cast<number>(local_matrix.l1_norm()) /
+                               static_cast<number>(local_matrix.m());
+            // if the entire matrix is zero, use 1. for the diagonal
+            if (average_diagonal == static_cast<number>(0.))
+              average_diagonal = static_cast<number>(1.);
+          }
 
         for (size_type i = 0; i < global_rows.n_constraints(); i++)
           {
@@ -3662,10 +3716,10 @@ AffineConstraints<number>::distribute_local_to_global(
       // calculate all the data that will be written into the matrix row.
       if (use_dealii_matrix == false)
         {
-          size_type *col_ptr = &cols[0];
+          size_type *col_ptr = cols.data();
           // cast is uncritical here and only used to avoid compiler
           // warnings. We never access a non-double array
-          number *val_ptr = &vals[0];
+          number *val_ptr = vals.data();
           internals::resolve_matrix_row(global_rows,
                                         global_rows,
                                         i,
@@ -3674,9 +3728,10 @@ AffineConstraints<number>::distribute_local_to_global(
                                         local_matrix,
                                         col_ptr,
                                         val_ptr);
-          const size_type n_values = col_ptr - &cols[0];
+          const size_type n_values = col_ptr - cols.data();
           if (n_values > 0)
-            global_matrix.add(row, n_values, &cols[0], &vals[0], false, true);
+            global_matrix.add(
+              row, n_values, cols.data(), vals.data(), false, true);
         }
       else
         internals::resolve_matrix_row(
@@ -3816,8 +3871,8 @@ AffineConstraints<number>::distribute_local_to_global(
                               end_block   = block_starts[block_col + 1];
               if (use_dealii_matrix == false)
                 {
-                  size_type *col_ptr = &cols[0];
-                  number *   val_ptr = &vals[0];
+                  size_type *col_ptr = cols.data();
+                  number *   val_ptr = vals.data();
                   internals::resolve_matrix_row(global_rows,
                                                 global_rows,
                                                 i,
@@ -3826,10 +3881,11 @@ AffineConstraints<number>::distribute_local_to_global(
                                                 local_matrix,
                                                 col_ptr,
                                                 val_ptr);
-                  const size_type n_values = col_ptr - &cols[0];
+                  const size_type n_values = col_ptr - cols.data();
                   if (n_values > 0)
                     global_matrix.block(block, block_col)
-                      .add(row, n_values, &cols[0], &vals[0], false, true);
+                      .add(
+                        row, n_values, cols.data(), vals.data(), false, true);
                 }
               else
                 {
@@ -3928,8 +3984,8 @@ AffineConstraints<number>::distribute_local_to_global(
       const size_type row = global_rows.global_row(i);
 
       // calculate all the data that will be written into the matrix row.
-      size_type *col_ptr = &cols[0];
-      number *   val_ptr = &vals[0];
+      size_type *col_ptr = cols.data();
+      number *   val_ptr = vals.data();
       internals::resolve_matrix_row(global_rows,
                                     global_cols,
                                     i,
@@ -3938,9 +3994,9 @@ AffineConstraints<number>::distribute_local_to_global(
                                     local_matrix,
                                     col_ptr,
                                     val_ptr);
-      const size_type n_values = col_ptr - &cols[0];
+      const size_type n_values = col_ptr - cols.data();
       if (n_values > 0)
-        global_matrix.add(row, n_values, &cols[0], &vals[0], false, true);
+        global_matrix.add(row, n_values, cols.data(), vals.data(), false, true);
     }
 }
 

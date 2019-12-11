@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -181,7 +181,7 @@ QTrapez<1>::QTrapez()
     {
       this->quadrature_points[i] = Point<1>(xpts[i]);
       this->weights[i]           = wts[i];
-    };
+    }
 }
 
 
@@ -197,7 +197,7 @@ QSimpson<1>::QSimpson()
     {
       this->quadrature_points[i] = Point<1>(xpts[i]);
       this->weights[i]           = wts[i];
-    };
+    }
 }
 
 
@@ -214,7 +214,7 @@ QMilne<1>::QMilne()
     {
       this->quadrature_points[i] = Point<1>(xpts[i]);
       this->weights[i]           = wts[i];
-    };
+    }
 }
 
 
@@ -237,7 +237,7 @@ QWeddle<1>::QWeddle()
     {
       this->quadrature_points[i] = Point<1>(xpts[i]);
       this->weights[i]           = wts[i];
-    };
+    }
 }
 
 
@@ -774,10 +774,9 @@ QSorted<dim>::QSorted(const Quadrature<dim> &quad)
 
   std::sort(permutation.begin(),
             permutation.end(),
-            std::bind(&QSorted<dim>::compare_weights,
-                      std::ref(*this),
-                      std::placeholders::_1,
-                      std::placeholders::_2));
+            [this](const unsigned int x, const unsigned int y) {
+              return this->compare_weights(x, y);
+            });
 
   // At this point, the variable is_tensor_product_flag is set
   // to the respective value of the given Quadrature in the base

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2017 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,6 +66,8 @@ main()
       //      // Failing test
       deallog << "2d_test_abaqus.inp" << std::endl;
       abaqus_grid<2>(SOURCE_DIR "/grids/abaqus/2d/2d_test_abaqus.inp");
+      deallog << "2d_short_handwritten.inp" << std::endl;
+      abaqus_grid<2>(SOURCE_DIR "/grids/abaqus/2d/2d_short_handwritten.inp");
 
       deallog << "3d_test_cube_1.inp" << std::endl;
       abaqus_grid<3>(SOURCE_DIR "/grids/abaqus/3d/3d_test_cube_1.inp");

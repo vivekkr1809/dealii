@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 
 #ifndef dealii_transformations_h
 #define dealii_transformations_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/point.h>
 #include <deal.II/base/symmetric_tensor.h>
@@ -44,8 +46,8 @@ namespace Physics
        * Return the rotation matrix for 2-d Euclidean space, namely
        * @f[
        *  \mathbf{R} \dealcoloneq \left[ \begin{array}{cc}
-       *  cos(\theta) & sin(\theta) \\
-       *  -sin(\theta) & cos(\theta)
+       *  cos(\theta) & -sin(\theta) \\
+       *  sin(\theta) & cos(\theta)
        * \end{array}\right]
        * @f]
        * where $\theta$ is the rotation angle given in radians. In particular,
@@ -852,8 +854,9 @@ namespace internal
       Tensor<2, dim, Number> tmp_1;
       for (unsigned int i = 0; i < dim; ++i)
         for (unsigned int J = 0; J < dim; ++J)
-          for (unsigned int I = 0; I < dim; ++I)
-            tmp_1[i][J] += F[i][I] * T[I][J];
+          // Loop over I but complex.h defines a macro I, so use I_ instead
+          for (unsigned int I_ = 0; I_ < dim; ++I_)
+            tmp_1[i][J] += F[i][I_] * T[I_][J];
 
       dealii::SymmetricTensor<2, dim, Number> out;
       for (unsigned int i = 0; i < dim; ++i)
@@ -918,12 +921,13 @@ namespace internal
 
       // Push forward (inner) index 1
       Tensor<4, dim, Number> tmp;
-      for (unsigned int I = 0; I < dim; ++I)
+      // Loop over I but complex.h defines a macro I, so use I_ instead
+      for (unsigned int I_ = 0; I_ < dim; ++I_)
         for (unsigned int j = 0; j < dim; ++j)
           for (unsigned int K = 0; K < dim; ++K)
             for (unsigned int L = 0; L < dim; ++L)
               for (unsigned int J = 0; J < dim; ++J)
-                tmp[I][j][K][L] += F[j][J] * H[I][J][K][L];
+                tmp[I_][j][K][L] += F[j][J] * H[I_][J][K][L];
 
       // Push forward (outer) indices 0 and 3
       tmp = contract<1, 0>(F, contract<3, 1>(tmp, F));

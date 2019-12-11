@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -32,14 +32,72 @@
 #include <deal.II/meshworker/loop.h>
 
 #include <functional>
+#include <type_traits>
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 template <typename>
 class TriaActiveIterator;
+#endif
 
 namespace MeshWorker
 {
+  namespace internal
+  {
+    /**
+     * A helper class to provide a type definition for the underlying cell
+     * iterator type.
+     */
+    template <class CellIteratorType>
+    struct CellIteratorBaseType
+    {
+      /**
+       * Type definition for the cell iterator type.
+       */
+      using type = CellIteratorType;
+    };
+
+    /**
+     * A helper class to provide a type definition for the underlying cell
+     * iterator type.
+     *
+     * This specialization is for IteratorRange, which may have either a
+     * TriaActiveIterator or a FilteredIterator as its base type.
+     */
+    template <class CellIteratorType>
+    struct CellIteratorBaseType<IteratorOverIterators<CellIteratorType>>
+    {
+      /**
+       * Type definition for the cell iterator type.
+       */
+      // Since we can have filtered iterators and the like as template
+      // arguments, we recursivelyremove the template layers to retrieve the
+      // underlying iterator type.
+      using type = typename CellIteratorBaseType<CellIteratorType>::type;
+    };
+
+    /**
+     * A helper class to provide a type definition for the underlying cell
+     * iterator type.
+     *
+     * This specialization is for FilteredIterator, which may have either a
+     * TriaActiveIterator as its base type, or may be nested with another
+     * FilteredIterator as the type to iterate over.
+     */
+    template <class CellIteratorType>
+    struct CellIteratorBaseType<FilteredIterator<CellIteratorType>>
+    {
+      /**
+       * Type definition for the cell iterator type.
+       */
+      // Since we can have nested filtered iterators, we recursively
+      // remove the template layers to retrieve the underlying iterator type.
+      using type = typename CellIteratorBaseType<CellIteratorType>::type;
+    };
+  } // namespace internal
+
   /**
    * This function extends the WorkStream concept to work on meshes
    * (cells and/or faces) and handles the complicated logic for
@@ -62,7 +120,7 @@ namespace MeshWorker
    * identify the corresponding subface on either the current or the neighbor
    * faces.
    *
-   * This method externalises that logic (which is independent from user codes)
+   * This method externalizes that logic (which is independent from user codes)
    * and separates the assembly of face terms (internal faces, boundary faces,
    * or faces between different subdomain ids on parallel computations) from
    * the assembling on cells, allowing the user to specify two additional
@@ -70,7 +128,7 @@ namespace MeshWorker
    * are called automatically in each @p cell, according to the specific
    * AssembleFlags @p flags that are passed. The @p cell_worker is passed the
    * cell identifier, a ScratchData object, and a CopyData object, following
-   * the same principles of WorkStream::run. Internally the function passes to
+   * the same principles of WorkStream::run(). Internally the function passes to
    * @p boundary_worker, in addition to the above, also a @p face_no parameter
    * that identifies the face on which the integration should be performed. The
    * @p face_worker instead needs to identify the current face unambiguously
@@ -97,7 +155,14 @@ namespace MeshWorker
    *
    * The two data types ScratchData and CopyData need to have a working copy
    * constructor. ScratchData is only used in the worker function, while
-   * CopyData is the object passed from the worker to the copier.
+   * CopyData is the object passed from the worker to the copier. The CopyData
+   * object is reset to the value provided to this function every time this
+   * function visits a new cell (where it then calls the cell and face
+   * workers). In other words, no state carries over between calling the
+   * `copier` on one cell and the `cell_worker`/`face_worker`/`boundary_worker`
+   * functions on the next cell, and user code needs not reset the copy
+   * object either at the beginning of the cell integration or end of the
+   * copy operation.
    *
    * The queue_length argument indicates the number of items that can be live at
    * any given time. Each item consists of chunk_size elements of the input
@@ -106,7 +171,7 @@ namespace MeshWorker
    *
    * If your data objects are large, or their constructors are expensive, it is
    * helpful to keep in mind that queue_length copies of the ScratchData object
-   * and queue_length*chunk_size copies of the CopyData object are generated.
+   * and `queue_length*chunk_size` copies of the CopyData object are generated.
    *
    * @note More information about requirements on template types and meaning
    * of @p queue_length and @p chunk_size can be found in the documentation of the
@@ -115,50 +180,55 @@ namespace MeshWorker
    * @ingroup MeshWorker
    * @author Luca Heltai and Timo Heister, 2017
    */
-  template <class CellIteratorType, class ScratchData, class CopyData>
+  template <class CellIteratorType,
+            class ScratchData,
+            class CopyData,
+            class CellIteratorBaseType =
+              typename internal::CellIteratorBaseType<CellIteratorType>::type>
   void
-  mesh_loop(const CellIteratorType &                         begin,
-            const typename identity<CellIteratorType>::type &end,
+  mesh_loop(
+    const CellIteratorType &                         begin,
+    const typename identity<CellIteratorType>::type &end,
 
-            const typename identity<std::function<
-              void(const CellIteratorType &, ScratchData &, CopyData &)>>::type
-              &cell_worker,
-            const typename identity<std::function<void(const CopyData &)>>::type
-              &copier,
+    const typename identity<std::function<
+      void(const CellIteratorBaseType &, ScratchData &, CopyData &)>>::type
+      &cell_worker,
+    const typename identity<std::function<void(const CopyData &)>>::type
+      &copier,
 
-            const ScratchData &sample_scratch_data,
-            const CopyData &   sample_copy_data,
+    const ScratchData &sample_scratch_data,
+    const CopyData &   sample_copy_data,
 
-            const AssembleFlags flags = assemble_own_cells,
+    const AssembleFlags flags = assemble_own_cells,
 
-            const typename identity<std::function<void(const CellIteratorType &,
-                                                       const unsigned int,
-                                                       ScratchData &,
-                                                       CopyData &)>>::type
-              &boundary_worker = std::function<void(const CellIteratorType &,
-                                                    const unsigned int,
-                                                    ScratchData &,
-                                                    CopyData &)>(),
+    const typename identity<std::function<void(const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &)>>::type
+      &boundary_worker = std::function<void(const CellIteratorBaseType &,
+                                            const unsigned int,
+                                            ScratchData &,
+                                            CopyData &)>(),
 
-            const typename identity<std::function<void(const CellIteratorType &,
-                                                       const unsigned int,
-                                                       const unsigned int,
-                                                       const CellIteratorType &,
-                                                       const unsigned int,
-                                                       const unsigned int,
-                                                       ScratchData &,
-                                                       CopyData &)>>::type
-              &face_worker = std::function<void(const CellIteratorType &,
-                                                const unsigned int,
-                                                const unsigned int,
-                                                const CellIteratorType &,
-                                                const unsigned int,
-                                                const unsigned int,
-                                                ScratchData &,
-                                                CopyData &)>(),
+    const typename identity<std::function<void(const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               const unsigned int,
+                                               const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &)>>::type
+      &face_worker = std::function<void(const CellIteratorBaseType &,
+                                        const unsigned int,
+                                        const unsigned int,
+                                        const CellIteratorBaseType &,
+                                        const unsigned int,
+                                        const unsigned int,
+                                        ScratchData &,
+                                        CopyData &)>(),
 
-            const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
-            const unsigned int chunk_size   = 8)
+    const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+    const unsigned int chunk_size   = 8)
   {
     Assert(
       (!cell_worker) == !(flags & work_on_cells),
@@ -193,9 +263,9 @@ namespace MeshWorker
       ExcMessage(
         "If you specify a boundary_worker, assemble_boundary_faces needs to be set."));
 
-    auto cell_action = [&](const CellIteratorType &cell,
-                           ScratchData &           scratch,
-                           CopyData &              copy) {
+    auto cell_action = [&](const CellIteratorBaseType &cell,
+                           ScratchData &               scratch,
+                           CopyData &                  copy) {
       // First reset the CopyData class to the empty copy_data given by the
       // user.
       copy = sample_copy_data;
@@ -224,8 +294,8 @@ namespace MeshWorker
 
       if (flags & (work_on_faces | work_on_boundary))
         for (unsigned int face_no = 0;
-             face_no < GeometryInfo<CellIteratorType::AccessorType::Container::
-                                      dimension>::faces_per_cell;
+             face_no < GeometryInfo<CellIteratorBaseType::AccessorType::
+                                      Container::dimension>::faces_per_cell;
              ++face_no)
           {
             if (cell->at_boundary(face_no) &&
@@ -238,8 +308,8 @@ namespace MeshWorker
             else
               {
                 // interior face, potentially assemble
-                TriaIterator<typename CellIteratorType::AccessorType> neighbor =
-                  cell->neighbor_or_periodic_neighbor(face_no);
+                TriaIterator<typename CellIteratorBaseType::AccessorType>
+                  neighbor = cell->neighbor_or_periodic_neighbor(face_no);
 
                 types::subdomain_id neighbor_subdomain_id =
                   numbers::artificial_subdomain_id;
@@ -325,7 +395,7 @@ namespace MeshWorker
                   {
                     // If iterator is active and neighbor is refined, skip
                     // internal face.
-                    if (internal::is_active_iterator(cell) &&
+                    if (dealii::internal::is_active_iterator(cell) &&
                         neighbor->has_children())
                       continue;
 
@@ -391,6 +461,429 @@ namespace MeshWorker
                     sample_copy_data,
                     queue_length,
                     chunk_size);
+  }
+
+  /**
+   * Same as the function above, but for iterator ranges (and, therefore,
+   * filtered iterators).
+   *
+   * An example usage of the function for the serial case is given by
+   * @code
+   *
+   * using ScratchData      = MeshWorker::ScratchData<dim, spacedim>;
+   * using CopyData         = MeshWorker::CopyData<1, 1, 1>;
+   * using CellIteratorType = decltype(dof_handler.begin_active());
+   *
+   * ScratchData            scratch(...);
+   * CopyData               copy(...);
+   *
+   * auto cell_worker = [...] (
+   *   const CellIteratorType &cell,
+   *   ScratchData            &scratch_data,
+   *   CopyData               &copy_data)
+   * {
+   *   ...
+   * };
+   *
+   * auto copier = [...](const CopyData &copy_data)
+   * {
+   *   ...
+   * };
+   *
+   * MeshWorker::mesh_loop(dof_handler.active_cell_iterators(),
+   *                       cell_worker, copier,
+   *                       scratch, copy,
+   *                       MeshWorker::assemble_own_cells);
+   * @endcode
+   *
+   * and an example usage of the function for the parallel distributed case,
+   * where the copier is only to be called on locally owned cells, is given by
+   * @code
+   *
+   * using ScratchData      = MeshWorker::ScratchData<dim, spacedim>;
+   * using CopyData         = MeshWorker::CopyData<1, 1, 1>;
+   * using CellIteratorType = decltype(dof_handler.begin_active());
+   *
+   * ScratchData            scratch(...);
+   * CopyData               copy(...);
+   *
+   * auto cell_worker = [...] (
+   *   const CellIteratorType &cell,
+   *   ScratchData            &scratch_data,
+   *   CopyData               &copy_data)
+   * {
+   *   ...
+   * };
+   *
+   * auto copier = [...](const CopyData &copy_data)
+   * {
+   *   ...
+   * };
+   *
+   * const auto filtered_iterator_range =
+   *   filter_iterators(dof_handler.active_cell_iterators(),
+   *                    IteratorFilters::LocallyOwnedCell());
+   *
+   * MeshWorker::mesh_loop(filtered_iterator_range,
+   *                       cell_worker, copier,
+   *                       scratch, copy,
+   *                       MeshWorker::assemble_own_cells);
+   * @endcode
+   *
+   * @ingroup MeshWorker
+   */
+  template <class CellIteratorType,
+            class ScratchData,
+            class CopyData,
+            class CellIteratorBaseType =
+              typename internal::CellIteratorBaseType<CellIteratorType>::type>
+  void
+  mesh_loop(
+    IteratorRange<CellIteratorType> iterator_range,
+    const typename identity<std::function<
+      void(const CellIteratorBaseType &, ScratchData &, CopyData &)>>::type
+      &cell_worker,
+    const typename identity<std::function<void(const CopyData &)>>::type
+      &copier,
+
+    const ScratchData &sample_scratch_data,
+    const CopyData &   sample_copy_data,
+
+    const AssembleFlags flags = assemble_own_cells,
+
+    const typename identity<std::function<void(const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &)>>::type
+      &boundary_worker = std::function<void(const CellIteratorBaseType &,
+                                            const unsigned int,
+                                            ScratchData &,
+                                            CopyData &)>(),
+
+    const typename identity<std::function<void(const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               const unsigned int,
+                                               const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &)>>::type
+      &face_worker = std::function<void(const CellIteratorBaseType &,
+                                        const unsigned int,
+                                        const unsigned int,
+                                        const CellIteratorBaseType &,
+                                        const unsigned int,
+                                        const unsigned int,
+                                        ScratchData &,
+                                        CopyData &)>(),
+
+    const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+    const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    mesh_loop<typename IteratorRange<CellIteratorType>::IteratorOverIterators,
+              ScratchData,
+              CopyData,
+              CellIteratorBaseType>(iterator_range.begin(),
+                                    iterator_range.end(),
+                                    cell_worker,
+                                    copier,
+                                    sample_scratch_data,
+                                    sample_copy_data,
+                                    flags,
+                                    boundary_worker,
+                                    face_worker,
+                                    queue_length,
+                                    chunk_size);
+  }
+
+  /**
+   * This is a variant of the mesh_loop() function, that can be used for worker
+   * and copier functions that are member functions of a class.
+   *
+   * The argument passed as @p end must be convertible to the same type as @p
+   * begin, but doesn't have to be of the same type itself. This allows to
+   * write code like <code>mesh_loop(dof_handler.begin_active(),
+   * dof_handler.end(), ...)</code> where the first is of type
+   * DoFHandler::active_cell_iterator whereas the second is of type
+   * DoFHandler::raw_cell_iterator.
+   *
+   * The @p queue_length argument indicates the number of items that can be
+   * live at any given time. Each item consists of @p chunk_size elements of
+   * the input stream that will be worked on by the worker and copier
+   * functions one after the other on the same thread.
+   *
+   * @note If your data objects are large, or their constructors are
+   * expensive, it is helpful to keep in mind that <tt>queue_length</tt>
+   * copies of the <tt>ScratchData</tt> object and
+   * <tt>queue_length*chunk_size</tt> copies of the <tt>CopyData</tt> object
+   * are generated.
+   *
+   * An example usage of the function is given by
+   * @code
+   *
+   * struct ScratchData;
+   * struct CopyData;
+   *
+   * template <int dim, int spacedim>
+   * class MyClass
+   * {
+   * public:
+   *   void
+   *   cell_worker(const CellIteratorType &cell, ScratchData &, CopyData &);
+   *
+   *   void
+   *   copier(const CopyData &);
+   *
+   *   ...
+   * };
+   *
+   * ...
+   *
+   * MyClass<dim, spacedim> my_class;
+   * ScratchData            scratch;
+   * CopyData               copy;
+   *
+   * mesh_loop(tria.begin_active(),
+   *           tria.end(),
+   *           my_class,
+   *           &MyClass<dim, spacedim>::cell_worker,
+   *           &MyClass<dim, spacedim>::copier,
+   *           scratch,
+   *           copy,
+   *           assemble_own_cells);
+   * @endcode
+   *
+   * @ingroup MeshWorker
+   * @author Luca Heltai, 2019
+   */
+  template <class CellIteratorType,
+            class ScratchData,
+            class CopyData,
+            class MainClass>
+  void
+  mesh_loop(const CellIteratorType &                         begin,
+            const typename identity<CellIteratorType>::type &end,
+            MainClass &                                      main_class,
+            void (MainClass::*cell_worker)(const CellIteratorType &,
+                                           ScratchData &,
+                                           CopyData &),
+            void (MainClass::*copier)(const CopyData &),
+            const ScratchData & sample_scratch_data,
+            const CopyData &    sample_copy_data,
+            const AssembleFlags flags                      = assemble_own_cells,
+            void (MainClass::*boundary_worker)(const CellIteratorType &,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &) = nullptr,
+            void (MainClass::*face_worker)(const CellIteratorType &,
+                                           const unsigned int,
+                                           const unsigned int,
+                                           const CellIteratorType &,
+                                           const unsigned int,
+                                           const unsigned int,
+                                           ScratchData &,
+                                           CopyData &)     = nullptr,
+            const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+            const unsigned int chunk_size   = 8)
+  {
+    std::function<void(const CellIteratorType &, ScratchData &, CopyData &)>
+      f_cell_worker;
+
+    std::function<void(
+      const CellIteratorType &, const unsigned int, ScratchData &, CopyData &)>
+      f_boundary_worker;
+
+    std::function<void(const CellIteratorType &,
+                       const unsigned int,
+                       const unsigned int,
+                       const CellIteratorType &,
+                       const unsigned int,
+                       const unsigned int,
+                       ScratchData &,
+                       CopyData &)>
+      f_face_worker;
+
+    if (cell_worker != nullptr)
+      f_cell_worker = [&main_class,
+                       cell_worker](const CellIteratorType &cell_iterator,
+                                    ScratchData &           scratch_data,
+                                    CopyData &              copy_data) {
+        (main_class.*cell_worker)(cell_iterator, scratch_data, copy_data);
+      };
+
+    if (boundary_worker != nullptr)
+      f_boundary_worker =
+        [&main_class, boundary_worker](const CellIteratorType &cell_iterator,
+                                       const unsigned int      face_no,
+                                       ScratchData &           scratch_data,
+                                       CopyData &              copy_data) {
+          (main_class.*
+           boundary_worker)(cell_iterator, face_no, scratch_data, copy_data);
+        };
+
+    if (face_worker != nullptr)
+      f_face_worker = [&main_class,
+                       face_worker](const CellIteratorType &cell_iterator_1,
+                                    const unsigned int      face_index_1,
+                                    const unsigned int      subface_index_1,
+                                    const CellIteratorType &cell_iterator_2,
+                                    const unsigned int      face_index_2,
+                                    const unsigned int      subface_index_2,
+                                    ScratchData &           scratch_data,
+                                    CopyData &              copy_data) {
+        (main_class.*face_worker)(cell_iterator_1,
+                                  face_index_1,
+                                  subface_index_1,
+                                  cell_iterator_2,
+                                  face_index_2,
+                                  subface_index_2,
+                                  scratch_data,
+                                  copy_data);
+      };
+
+    mesh_loop(begin,
+              end,
+              f_cell_worker,
+              [&main_class, copier](const CopyData &copy_data) {
+                (main_class.*copier)(copy_data);
+              },
+              sample_scratch_data,
+              sample_copy_data,
+              flags,
+              f_boundary_worker,
+              f_face_worker,
+              queue_length,
+              chunk_size);
+  }
+
+  /**
+   * Same as the function above, but for iterator ranges (and, therefore,
+   * filtered iterators).
+   *
+   * An example usage of the function for the serial case is given by
+   * @code
+   *
+   * struct ScratchData;
+   * struct CopyData;
+   *
+   * template <int dim, int spacedim>
+   * class MyClass
+   * {
+   * public:
+   *   void
+   *   cell_worker(const CellIteratorType &cell, ScratchData &, CopyData &);
+   *
+   *   void
+   *   copier(const CopyData &);
+   *
+   *   ...
+   * };
+   *
+   * ...
+   *
+   * MyClass<dim, spacedim> my_class;
+   * ScratchData            scratch;
+   * CopyData               copy;
+   *
+   * mesh_loop(tria.active_cell_iterators(),
+   *           my_class,
+   *           &MyClass<dim, spacedim>::cell_worker,
+   *           &MyClass<dim, spacedim>::copier,
+   *           scratch,
+   *           copy,
+   *           assemble_own_cells);
+   * @endcode
+   *
+   * and an example usage of the function for the parallel distributed case,
+   * where the copier is only to be called on locally owned cells, is given by
+   * @code
+   *
+   * struct ScratchData;
+   * struct CopyData;
+   *
+   * template <int dim, int spacedim>
+   * class MyClass
+   * {
+   * public:
+   *   void
+   *   cell_worker(const CellIteratorType &cell, ScratchData &, CopyData &);
+   *
+   *   void
+   *   copier(const CopyData &);
+   *
+   *   ...
+   * };
+   *
+   * ...
+   *
+   * MyClass<dim, spacedim> my_class;
+   * ScratchData            scratch;
+   * CopyData               copy;
+   *
+   * const auto filtered_iterator_range =
+   *   filter_iterators(distributed_tria.active_cell_iterators(),
+   *                    IteratorFilters::LocallyOwnedCell());
+   *
+   * mesh_loop(filtered_iterator_range,
+   *           my_class,
+   *           &MyClass<dim, spacedim>::cell_worker,
+   *           &MyClass<dim, spacedim>::copier,
+   *           scratch,
+   *           copy,
+   *           assemble_own_cells);
+   * @endcode
+   *
+   * @ingroup MeshWorker
+   */
+  template <class CellIteratorType,
+            class ScratchData,
+            class CopyData,
+            class MainClass,
+            class CellIteratorBaseType =
+              typename internal::CellIteratorBaseType<CellIteratorType>::type>
+  void
+  mesh_loop(IteratorRange<CellIteratorType> iterator_range,
+            MainClass &                     main_class,
+            void (MainClass::*cell_worker)(const CellIteratorBaseType &,
+                                           ScratchData &,
+                                           CopyData &),
+            void (MainClass::*copier)(const CopyData &),
+            const ScratchData & sample_scratch_data,
+            const CopyData &    sample_copy_data,
+            const AssembleFlags flags                      = assemble_own_cells,
+            void (MainClass::*boundary_worker)(const CellIteratorBaseType &,
+                                               const unsigned int,
+                                               ScratchData &,
+                                               CopyData &) = nullptr,
+            void (MainClass::*face_worker)(const CellIteratorBaseType &,
+                                           const unsigned int,
+                                           const unsigned int,
+                                           const CellIteratorBaseType &,
+                                           const unsigned int,
+                                           const unsigned int,
+                                           ScratchData &,
+                                           CopyData &)     = nullptr,
+            const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+            const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    mesh_loop<typename IteratorRange<CellIteratorType>::IteratorOverIterators,
+              ScratchData,
+              CopyData,
+              MainClass,
+              CellIteratorBaseType>(iterator_range.begin(),
+                                    iterator_range.end(),
+                                    main_class,
+                                    cell_worker,
+                                    copier,
+                                    sample_scratch_data,
+                                    sample_copy_data,
+                                    flags,
+                                    boundary_worker,
+                                    face_worker,
+                                    queue_length,
+                                    chunk_size);
   }
 } // namespace MeshWorker
 

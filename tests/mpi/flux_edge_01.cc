@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2013 - 2017 by the deal.II authors
+// Copyright (C) 2013 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -115,7 +115,7 @@ namespace Step39
   InteriorPenaltyProblem<dim>::setup_system()
   {
     dof_handler.distribute_dofs(fe);
-    dof_handler.distribute_mg_dofs(fe);
+    dof_handler.distribute_mg_dofs();
 
     DoFTools::extract_locally_relevant_dofs(dof_handler, locally_relevant_set);
 

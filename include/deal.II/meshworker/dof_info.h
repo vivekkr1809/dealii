@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2006 - 2018 by the deal.II authors
+// Copyright (C) 2006 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -34,9 +34,11 @@ DEAL_II_NAMESPACE_OPEN
 
 namespace MeshWorker
 {
+  // Forward declaration
+#ifndef DOXYGEN
   template <int dim, class DOFINFO>
   class DoFInfoBox;
-
+#endif
 
   /**
    * A class containing information on geometry and degrees of freedom of a
@@ -96,7 +98,7 @@ namespace MeshWorker
      */
     unsigned int sub_number;
 
-    /*
+    /**
      * The DoF indices of the
      * current cell
      */

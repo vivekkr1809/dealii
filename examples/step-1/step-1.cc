@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 1999 - 2018 by the deal.II authors
+ * Copyright (C) 1999 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -31,7 +31,7 @@
 // This is needed for C++ output:
 #include <iostream>
 #include <fstream>
-// And this for the declarations of the `sqrt' and `fabs' functions:
+// And this for the declarations of the `sqrt` and `fabs` functions:
 #include <cmath>
 
 // The final step in importing deal.II is this: All deal.II functions and
@@ -68,11 +68,12 @@ void first_grid()
 
   // Now we want to write a graphical representation of the mesh to an output
   // file. The GridOut class of deal.II can do that in a number of different
-  // output formats; here, we choose encapsulated postscript (eps) format:
-  std::ofstream out("grid-1.eps");
+  // output formats; here, we choose scalable vector graphics (SVG) format
+  // that you can visualize using the web browser of your choice:
+  std::ofstream out("grid-1.svg");
   GridOut       grid_out;
-  grid_out.write_eps(triangulation, out);
-  std::cout << "Grid written to grid-1.eps" << std::endl;
+  grid_out.write_svg(triangulation, out);
+  std::cout << "Grid written to grid-1.svg" << std::endl;
 }
 
 
@@ -192,7 +193,7 @@ void second_grid()
       // <a href="http://en.cppreference.com/w/cpp/language/range-for">range-
       // based for loops</a>, which wrap up all of the syntax shown above into a
       // much shorter form:
-      for (auto cell : triangulation.active_cell_iterators())
+      for (auto &cell : triangulation.active_cell_iterators())
         {
           // @note See @ref Iterators for more information about the iterator
           // classes used in deal.II, and @ref CPP11 for more information about
@@ -238,28 +239,13 @@ void second_grid()
 
 
   // Finally, after these five iterations of refinement, we want to again
-  // write the resulting mesh to a file, again in eps format. This works just
+  // write the resulting mesh to a file, again in SVG format. This works just
   // as above:
-  std::ofstream out("grid-2.eps");
+  std::ofstream out("grid-2.svg");
   GridOut       grid_out;
-  grid_out.write_eps(triangulation, out);
+  grid_out.write_svg(triangulation, out);
 
-  std::cout << "Grid written to grid-2.eps" << std::endl;
-
-  // At this point, all objects created in this function will be destroyed in
-  // reverse order. Unfortunately, we defined the manifold object after the
-  // triangulation, which still has a pointer to it and the library will
-  // produce an error if the manifold object is destroyed before the
-  // triangulation. We therefore have to release it, which can be done as
-  // follows. Note that this sets the manifold object used for part "0" of the
-  // domain back to a default object, over which the triangulation has full
-  // control.
-  triangulation.reset_manifold(0);
-  // An alternative to doing so, and one that is frequently more convenient,
-  // would have been to declare the manifold object before the triangulation
-  // object. In that case, the triangulation would have let lose of the
-  // manifold object upon its destruction, and everything would have been
-  // fine.
+  std::cout << "Grid written to grid-2.svg" << std::endl;
 }
 
 

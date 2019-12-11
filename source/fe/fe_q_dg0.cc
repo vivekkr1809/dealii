@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2017 by the deal.II authors
+// Copyright (C) 2012 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -131,7 +131,7 @@ FE_Q_DG0<dim, spacedim>::get_name() const
 
   // Check whether the support points are equidistant.
   for (unsigned int j = 0; j < n_points; j++)
-    if (std::fabs(points[j] - (double)j / this->degree) > 1e-15)
+    if (std::fabs(points[j] - static_cast<double>(j) / this->degree) > 1e-15)
       {
         type = false;
         break;

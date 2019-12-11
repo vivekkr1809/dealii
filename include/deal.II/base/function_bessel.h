@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,6 +29,7 @@ namespace Functions
   /**
    * The Bessel functions of first kind or positive integer order.
    *
+   * @ingroup functions
    * @author Guido Kanschat
    * @date 2010
    */

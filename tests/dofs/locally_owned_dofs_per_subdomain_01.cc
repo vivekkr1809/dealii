@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -58,7 +58,7 @@ main()
   GridTools::partition_triangulation(n_subdomains, tria);
 
   hp::DoFHandler<dim> hp_dof_handler(tria);
-  for (auto cell : hp_dof_handler.active_cell_iterators())
+  for (auto &cell : hp_dof_handler.active_cell_iterators())
     {
       if (cell == hp_dof_handler.begin_active())
         cell->set_active_fe_index(0); // FE_Q

@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2014 by the deal.II authors
+## Copyright (C) 2012 - 2018 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -26,6 +26,7 @@ INCLUDE_DIRECTORIES(${UMFPACK_BUNDLED_INCLUDE_DIRS})
 #
 STRIP_FLAG(DEAL_II_CXX_FLAGS "-pedantic")
 STRIP_FLAG(DEAL_II_CXX_FLAGS "-Wall")
+STRIP_FLAG(DEAL_II_CXX_FLAGS "-Wfloat-conversion")
 ENABLE_IF_SUPPORTED(DEAL_II_CXX_FLAGS "-Wno-sign-compare")
 ENABLE_IF_SUPPORTED(DEAL_II_CXX_FLAGS "-Wno-write-strings")
 

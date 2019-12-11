@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -144,6 +144,8 @@ public:
 
   /**
    * Enable output to a second stream <tt>o</tt>.
+   *
+   * @param o Attach this output stream.
    *
    * @param[in] print_job_id Whether or not the JobIdentifier for the current
    * process should be printed to the stream.

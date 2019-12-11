@@ -18,6 +18,8 @@
 
 
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/point.h>
 #include <deal.II/base/subscriptor.h>
 #include <deal.II/base/tensor.h>
@@ -218,7 +220,12 @@ namespace DataPostprocessorInputs
    * A structure that is used to pass information to
    * DataPostprocessor::evaluate_scalar_field(). It contains
    * the values and (if requested) derivatives of a scalar solution
-   * variable at the evaluation points on a cell or face.
+   * variable at the evaluation points on a cell or face. (This class
+   * is not used if a scalar solution is complex-valued, however,
+   * since in that case the real and imaginary parts are treated
+   * separately -- resulting in vector-valued inputs to data
+   * postprocessors, which are then passed to
+   * DataPostprocessor::evaluate_vector_field() instead.)
    *
    * Through the fields in the CommonInputs base class, this class also
    * makes available access to the locations of evaluations points,
@@ -275,6 +282,29 @@ namespace DataPostprocessorInputs
    * DataPostprocessor::evaluate_vector_field(). It contains
    * the values and (if requested) derivatives of a vector-valued solution
    * variable at the evaluation points on a cell or face.
+   *
+   * This class is also used if the solution vector is complex-valued
+   * (whether it is scalar- or vector-valued is immaterial in that case)
+   * since in that case, the DataOut and related classes take apart the real
+   * and imaginary parts of a solution vector. In practice, that means that
+   * if a solution vector has $N$ vector components (i.e., there are
+   * $N$ functions that form the solution of the PDE you are dealing with;
+   * $N$ is not the size of the solution vector), then if the solution is
+   * real-valued the `solution_values` variable below will be an array
+   * with as many entries as there are evaluation points on a cell,
+   * and each entry is a vector of length $N$ representing the $N$
+   * solution functions evaluated at a point. On the other hand, if
+   * the solution is complex-valued (i.e., the vector passed to
+   * DataOut::build_patches() has complex-valued entries), then the
+   * `solution_values` member variable of this class will have $2N$
+   * entries for each evaluation point. The first $N$ of these entries
+   * represent the real parts of the solution, and the second $N$ entries
+   * correspond to the imaginary parts of the solution evaluated at the
+   * evaluation point. The same layout is used for the `solution_gradients`
+   * and `solution_hessians` fields: First the gradients/Hessians of
+   * the real components, then all the gradients/Hessians of the
+   * imaginary components. There is more information about the subject in the
+   * documentation of the DataPostprocessor class itself.
    *
    * Through the fields in the CommonInputs base class, this class also
    * makes available access to the locations of evaluations points,
@@ -422,8 +452,47 @@ namespace DataPostprocessorInputs
  * class.
  *
  *
+ * <h3>Complex-valued solutions</h3>
+ *
+ * There are PDEs whose solutions are complex-valued. For example, step-62
+ * solves a problem whose solution at each point consists of a complex number
+ * represented by a `std::complex<double>` variable. (step-29 also solves such
+ * a problem, but there we choose to represent the solution by two real-valued
+ * fields.) In such cases, the vector that is handed to
+ * DataOut::build_patches() is of type `Vector<std::complex<double>>`, or
+ * something essentially equivalent to this. The issue with this, as also
+ * discussed in the documentation of DataOut itself, is that the most widely
+ * used file formats for visualization (notably, the VTK and VTU formats)
+ * can not actually represent complex quantities. The only thing
+ * that can be stored in these data files are real-valued quantities.
+ *
+ * As a consequence, DataOut is forced to take things apart into their real
+ * and imaginary parts, and both are output as separate quantities. This is the
+ * case for data that is written directly to a file by DataOut, but it is also
+ * the case for data that is first routed through DataPostprocessor objects
+ * (or objects of their derived classes): All these objects see is a collection
+ * of real values, even if the underlying solution vector was complex-valued.
+ *
+ * All of this has two implications:
+ * - If a solution vector is complex-valued, then this results in at least
+ *   two input components at each evaluation point. As a consequence, the
+ *   DataPostprocessor::evaluate_scalar_field() function is never called,
+ *   even if the underlying finite element had only a single solution
+ *   component. Instead, DataOut will *always* call
+ *   DataPostprocessor::evaluate_vector_field().
+ * - Implementations of the DataPostprocessor::evaluate_vector_field() in
+ *   derived classes must understand how the solution values are arranged
+ *   in the DataPostprocessorInputs::Vector objects they receive as input.
+ *   The rule here is: If the finite element has $N$ vector components
+ *   (including the case $N=1$, i.e., a scalar element), then the inputs
+ *   for complex-valued solution vectors will have $2N$ components. These
+ *   first contain the values (or gradients, or Hessians) of the real
+ *   parts of all solution components, and then the values (or gradients,
+ *   or Hessians) of the imaginary parts of all solution components.
+ *
+ *
  * @ingroup output
- * @author Tobias Leicht, 2007, Wolfgang Bangerth, 2016
+ * @author Tobias Leicht, 2007; Wolfgang Bangerth, 2016, 2019
  */
 template <int dim>
 class DataPostprocessor : public Subscriptor
@@ -452,8 +521,8 @@ public:
    *
    * This function is called when the finite element field that is being
    * converted into graphical data by DataOut or similar classes represents
-   * scalar data, i.e. the finite element in use has only a single vector
-   * component.
+   * scalar data, i.e., if the finite element in use has only a single
+   * real-valued vector component.
    */
   virtual void
   evaluate_scalar_field(const DataPostprocessorInputs::Scalar<dim> &input_data,
@@ -462,7 +531,12 @@ public:
   /**
    * Same as the evaluate_scalar_field() function, but this
    * function is called when the original data vector represents vector data,
-   * i.e. the finite element in use has multiple vector components.
+   * i.e., the finite element in use has multiple vector components. This
+   * function is also called if the finite element is scalar but the solution
+   * vector is complex-valued. If the solution vector to be visualized
+   * is complex-valued (whether scalar or not), then the input data contains
+   * first all real parts of the solution vector at each evaluation point, and
+   * then all imaginary parts.
    */
   virtual void
   evaluate_vector_field(const DataPostprocessorInputs::Vector<dim> &input_data,
@@ -502,10 +576,13 @@ public:
 
   /**
    * Return, which data has to be provided to compute the derived quantities.
-   * This has to be a combination of @p update_values, @p update_gradients and
-   * @p update_hessians. If the DataPostprocessor is to be used in combination
-   * with DataOutFaces, you may also ask for a update of normals via the @p
-   * update_normal_vectors flag.
+   * This has to be a combination of @p update_values, @p update_gradients,
+   * @p update_hessians and @p update_quadrature_points. Note that the flag
+   * @p update_quadrature_points updates
+   * DataPostprocessorInputs::CommonInputs::evaluation_points. If the
+   * DataPostprocessor is to be used in combination with DataOutFaces, you may
+   * also ask for a update of normals via the @p update_normal_vectors flag.
+   * The description of the flags can be found at dealii::UpdateFlags.
    */
   virtual UpdateFlags
   get_needed_update_flags() const = 0;
@@ -525,7 +602,8 @@ public:
  *
  * All derived classes have to do is implement a constructor and overload
  * either DataPostprocessor::evaluate_scalar_field() or
- * DataPostprocessor::evaluate_vector_field().
+ * DataPostprocessor::evaluate_vector_field() as discussed in the
+ * DataPostprocessor class's documentation.
  *
  * An example of how this class can be used can be found in step-29.
  * An example of how the closely related DataPostprocessorVector
@@ -546,10 +624,13 @@ public:
    *
    * @param name The name by which the scalar variable computed by this class
    * should be made available in graphical output files.
-   * @param update_flags This has to be a combination of @p update_values, @p
-   * update_gradients and @p update_hessians. If the DataPostprocessor is to
-   * be used in combination with DataOutFaces, you may also ask for a update
-   * of normals via the @p update_normal_vectors flag.
+   * @param update_flags This has to be a combination of @p update_values,
+   * @p update_gradients, @p update_hessians and @p update_quadrature_points.
+   * Note that the flag @p update_quadrature_points updates
+   * DataPostprocessorInputs::CommonInputs::evaluation_points. If the
+   * DataPostprocessor is to be used in combination with DataOutFaces, you may
+   * also ask for a update of normals via the @p update_normal_vectors flag.
+   * The description of the flags can be found at dealii::UpdateFlags.
    */
   DataPostprocessorScalar(const std::string &name,
                           const UpdateFlags  update_flags);
@@ -603,7 +684,8 @@ private:
  *
  * All derived classes have to do is implement a constructor and overload
  * either DataPostprocessor::evaluate_scalar_field() or
- * DataPostprocessor::evaluate_vector_field().
+ * DataPostprocessor::evaluate_vector_field() as discussed in the
+ * DataPostprocessor class's documentation.
  *
  * An example of how the closely related class DataPostprocessorScalar is used
  * can be found in step-29. An example of how the DataPostprocessorTensor
@@ -785,10 +867,13 @@ public:
    *
    * @param name The name by which the vector variable computed by this class
    * should be made available in graphical output files.
-   * @param update_flags This has to be a combination of @p update_values, @p
-   * update_gradients and @p update_hessians. If the DataPostprocessor is to
-   * be used in combination with DataOutFaces, you may also ask for a update
-   * of normals via the @p update_normal_vectors flag.
+   * @param update_flags This has to be a combination of @p update_values,
+   * @p update_gradients, @p update_hessians and @p update_quadrature_points.
+   * Note that the flag @p update_quadrature_points updates
+   * DataPostprocessorInputs::CommonInputs::evaluation_points. If the
+   * DataPostprocessor is to be used in combination with DataOutFaces, you may
+   * also ask for a update of normals via the @p update_normal_vectors flag.
+   * The description of the flags can be found at dealii::UpdateFlags.
    */
   DataPostprocessorVector(const std::string &name,
                           const UpdateFlags  update_flags);
@@ -864,7 +949,8 @@ private:
  *
  * All derived classes have to do is implement a constructor and overload
  * either DataPostprocessor::evaluate_scalar_field() or
- * DataPostprocessor::evaluate_vector_field().
+ * DataPostprocessor::evaluate_vector_field() as discussed in the
+ * DataPostprocessor class's documentation.
  *
  * An example of how the closely related class DataPostprocessorScalar is used
  * can be found in step-29. An example of how the DataPostprocessorVector
@@ -1030,10 +1116,13 @@ public:
    *
    * @param name The name by which the vector variable computed by this class
    * should be made available in graphical output files.
-   * @param update_flags This has to be a combination of @p update_values, @p
-   * update_gradients and @p update_hessians. If the DataPostprocessor is to
-   * be used in combination with DataOutFaces, you may also ask for a update
-   * of normals via the @p update_normal_vectors flag.
+   * @param update_flags This has to be a combination of @p update_values,
+   * @p update_gradients, @p update_hessians and @p update_quadrature_points.
+   * Note that the flag @p update_quadrature_points updates
+   * DataPostprocessorInputs::CommonInputs::evaluation_points. If the
+   * DataPostprocessor is to be used in combination with DataOutFaces, you may
+   * also ask for a update of normals via the @p update_normal_vectors flag.
+   * The description of the flags can be found at dealii::UpdateFlags.
    */
   DataPostprocessorTensor(const std::string &name,
                           const UpdateFlags  update_flags);

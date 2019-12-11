@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2014 - 2017 by the deal.II authors
+// Copyright (C) 2014 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -71,7 +71,7 @@ public:
     typename MatrixFree<dim, number>::AdditionalData addit_data;
     addit_data.tasks_parallel_scheme =
       MatrixFree<dim, number>::AdditionalData::none;
-    addit_data.level_mg_handler = level;
+    addit_data.mg_level = level;
 
     // extract the constraints due to Dirichlet boundary conditions
     AffineConstraints<double>                           constraints;
@@ -446,7 +446,7 @@ test()
       FE_Q<dim>       fe(fe_degree);
       DoFHandler<dim> dof(tria);
       dof.distribute_dofs(fe);
-      dof.distribute_mg_dofs(fe);
+      dof.distribute_mg_dofs();
 
       do_test<dim, fe_degree, fe_degree + 1, double>(dof);
     }

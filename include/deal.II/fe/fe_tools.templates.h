@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_fe_tools_templates_H
 #define dealii_fe_tools_templates_H
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/qprojector.h>
@@ -210,7 +212,7 @@ namespace FETools
       // given FEs
       unsigned int n_shape_functions = 0;
       for (unsigned int i = 0; i < fes.size(); ++i)
-        if (multiplicities[i] > 0) // check needed as fe might be NULL
+        if (multiplicities[i] > 0) // check needed as fe might be nullptr
           n_shape_functions += fes[i]->dofs_per_cell * multiplicities[i];
 
       // generate the array that will hold the output
@@ -376,27 +378,27 @@ namespace FETools
       // given FEs
       unsigned int n_shape_functions = 0;
       for (unsigned int i = 0; i < fes.size(); ++i)
-        if (multiplicities[i] > 0) // needed because fe might be NULL
+        if (multiplicities[i] > 0) // needed because fe might be nullptr
           n_shape_functions += fes[i]->dofs_per_cell * multiplicities[i];
 
       unsigned int n_components = 0;
       if (do_tensor_product)
         {
           for (unsigned int i = 0; i < fes.size(); ++i)
-            if (multiplicities[i] > 0) // needed because fe might be NULL
+            if (multiplicities[i] > 0) // needed because fe might be nullptr
               n_components += fes[i]->n_components() * multiplicities[i];
         }
       else
         {
           for (unsigned int i = 0; i < fes.size(); ++i)
-            if (multiplicities[i] > 0) // needed because fe might be NULL
+            if (multiplicities[i] > 0) // needed because fe might be nullptr
               {
                 n_components = fes[i]->n_components();
                 break;
               }
           // Now check that all FEs have the same number of components:
           for (unsigned int i = 0; i < fes.size(); ++i)
-            if (multiplicities[i] > 0) // needed because fe might be NULL
+            if (multiplicities[i] > 0) // needed because fe might be nullptr
               Assert(n_components == fes[i]->n_components(),
                      ExcDimensionMismatch(n_components,
                                           fes[i]->n_components()));
@@ -642,11 +644,12 @@ namespace FETools
         {
           // The base element establishing a component does not make sense in
           // this case. Set up to something meaningless:
-          for (unsigned int i = 0; i < component_to_base_table.size(); i++)
-            component_to_base_table[i] =
-              std::make_pair(std::make_pair(numbers::invalid_unsigned_int,
-                                            numbers::invalid_unsigned_int),
-                             numbers::invalid_unsigned_int);
+          std::fill(
+            component_to_base_table.begin(),
+            component_to_base_table.end(),
+            std::make_pair(std::make_pair(numbers::invalid_unsigned_int,
+                                          numbers::invalid_unsigned_int),
+                           numbers::invalid_unsigned_int));
         }
 
 
@@ -1303,11 +1306,19 @@ namespace FETools
       // running, there are no thread-safety issues here. since this is
       // compiled for all dimensions at once, need to create objects for
       // each dimension and then separate between them further down
-      static std::array<
+      inline std::array<
         std::array<std::map<std::string, std::unique_ptr<const Subscriptor>>,
                    4>,
-        4>
-        fe_name_map = fill_default_map();
+        4> &
+      get_fe_name_map()
+      {
+        static std::array<
+          std::array<std::map<std::string, std::unique_ptr<const Subscriptor>>,
+                     4>,
+          4>
+          fe_name_map = fill_default_map();
+        return fe_name_map;
+      }
     } // namespace FEToolsAddFENameHelper
 
     namespace FEToolsGetInterpolationMatrixHelper
@@ -1346,39 +1357,6 @@ namespace FETools
         fe2.get_interpolation_matrix(fe1, tmp);
         interpolation_matrix = tmp;
       }
-
-
-
-      // return how many characters
-      // starting at the given position
-      // of the string match either the
-      // generic string "<dim>" or the
-      // specialized string with "dim"
-      // replaced with the numeric value
-      // of the template argument
-      template <int dim, int spacedim>
-      inline unsigned int
-      match_dimension(const std::string &name, const unsigned int position)
-      {
-        if (position >= name.size())
-          return 0;
-
-        if ((position + 5 < name.size()) && (name[position] == '<') &&
-            (name[position + 1] == 'd') && (name[position + 2] == 'i') &&
-            (name[position + 3] == 'm') && (name[position + 4] == '>'))
-          return 5;
-
-        Assert(dim < 10, ExcNotImplemented());
-        const char dim_char = '0' + dim;
-
-        if ((position + 3 < name.size()) && (name[position] == '<') &&
-            (name[position + 1] == dim_char) && (name[position + 2] == '>'))
-          return 3;
-
-        // some other string that doesn't
-        // match
-        return 0;
-      }
     } // namespace FEToolsGetInterpolationMatrixHelper
   }   // namespace internal
 
@@ -1395,16 +1373,16 @@ namespace FETools
 
     comp_start.resize(element.n_base_elements());
 
-    unsigned int k = 0;
+    unsigned int index = 0;
     for (unsigned int i = 0; i < comp_start.size(); ++i)
       {
         comp_start[i].resize(element.element_multiplicity(i));
         const unsigned int increment = element.base_element(i).dofs_per_cell;
 
-        for (unsigned int j = 0; j < comp_start[i].size(); ++j)
+        for (unsigned int &first_index_of_component : comp_start[i])
           {
-            comp_start[i][j] = k;
-            k += increment;
+            first_index_of_component = index;
+            index += increment;
           }
       }
 
@@ -2413,13 +2391,15 @@ namespace FETools
       internal::FEToolsAddFENameHelper::fe_name_map_lock);
 
     Assert(
-      internal::FEToolsAddFENameHelper::fe_name_map[dim][spacedim].find(name) ==
-        internal::FEToolsAddFENameHelper::fe_name_map[dim][spacedim].end(),
+      internal::FEToolsAddFENameHelper::get_fe_name_map()[dim][spacedim].find(
+        name) ==
+        internal::FEToolsAddFENameHelper::get_fe_name_map()[dim][spacedim]
+          .end(),
       ExcMessage("Cannot change existing element in finite element name list"));
 
     // Insert the normalized name into
     // the map
-    internal::FEToolsAddFENameHelper::fe_name_map[dim][spacedim][name] =
+    internal::FEToolsAddFENameHelper::get_fe_name_map()[dim][spacedim][name] =
       std::unique_ptr<const Subscriptor>(factory);
   }
 
@@ -2669,7 +2649,7 @@ namespace FETools
       get_fe_by_name(std::string &name)
       {
         return get_fe_by_name_ext<dim, spacedim>(
-          name, FEToolsAddFENameHelper::fe_name_map[dim][spacedim]);
+          name, FEToolsAddFENameHelper::get_fe_name_map()[dim][spacedim]);
       }
     } // namespace FEToolsGetFEHelper
   }   // namespace internal
@@ -3162,7 +3142,7 @@ namespace FETools
 
     const unsigned int dofs_per_cell = Utilities::fixed_power<dim>(n);
 
-    // Assert size maches degree
+    // Assert size matches degree
     AssertDimension(h2l.size(), dofs_per_cell);
 
     // polynomial degree

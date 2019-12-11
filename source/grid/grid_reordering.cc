@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -1027,20 +1027,20 @@ namespace
 
   void reorder_new_to_old_style(std::vector<CellData<2>> &cells)
   {
-    for (unsigned int cell = 0; cell < cells.size(); ++cell)
-      std::swap(cells[cell].vertices[2], cells[cell].vertices[3]);
+    for (auto &cell : cells)
+      std::swap(cell.vertices[2], cell.vertices[3]);
   }
 
 
   void reorder_new_to_old_style(std::vector<CellData<3>> &cells)
   {
     unsigned int tmp[GeometryInfo<3>::vertices_per_cell];
-    for (unsigned int cell = 0; cell < cells.size(); ++cell)
+    for (auto &cell : cells)
       {
         for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-          tmp[i] = cells[cell].vertices[i];
+          tmp[i] = cell.vertices[i];
         for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-          cells[cell].vertices[i] = tmp[GeometryInfo<3>::ucd_to_deal[i]];
+          cell.vertices[i] = tmp[GeometryInfo<3>::ucd_to_deal[i]];
       }
   }
 
@@ -1063,12 +1063,12 @@ namespace
   {
     // undo the ordering above
     unsigned int tmp[GeometryInfo<3>::vertices_per_cell];
-    for (unsigned int cell = 0; cell < cells.size(); ++cell)
+    for (auto &cell : cells)
       {
         for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-          tmp[i] = cells[cell].vertices[i];
+          tmp[i] = cell.vertices[i];
         for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-          cells[cell].vertices[GeometryInfo<3>::ucd_to_deal[i]] = tmp[i];
+          cell.vertices[GeometryInfo<3>::ucd_to_deal[i]] = tmp[i];
       }
   }
 } // namespace
@@ -1154,28 +1154,23 @@ GridReordering<2>::invert_all_cells_of_negative_grid(
 {
   unsigned int vertices_lex[GeometryInfo<2>::vertices_per_cell];
   unsigned int n_negative_cells = 0;
-  for (unsigned int cell_no = 0; cell_no < cells.size(); ++cell_no)
+  for (auto &cell : cells)
     {
       // GridTools::cell_measure
       // requires the vertices to be
       // in lexicographic ordering
       for (unsigned int i = 0; i < GeometryInfo<2>::vertices_per_cell; ++i)
-        vertices_lex[GeometryInfo<2>::ucd_to_deal[i]] =
-          cells[cell_no].vertices[i];
+        vertices_lex[GeometryInfo<2>::ucd_to_deal[i]] = cell.vertices[i];
       if (GridTools::cell_measure<2>(all_vertices, vertices_lex) < 0)
         {
           ++n_negative_cells;
-          std::swap(cells[cell_no].vertices[1], cells[cell_no].vertices[3]);
+          std::swap(cell.vertices[1], cell.vertices[3]);
 
-          // check whether the
-          // resulting cell is now ok.
-          // if not, then the grid is
-          // seriously broken and
-          // should be sticked into the
-          // bin
+          // Check whether the resulting cell is now ok.
+          // If not, then the grid is seriously broken and
+          // we just give up.
           for (unsigned int i = 0; i < GeometryInfo<2>::vertices_per_cell; ++i)
-            vertices_lex[GeometryInfo<2>::ucd_to_deal[i]] =
-              cells[cell_no].vertices[i];
+            vertices_lex[GeometryInfo<2>::ucd_to_deal[i]] = cell.vertices[i];
           AssertThrow(GridTools::cell_measure<2>(all_vertices, vertices_lex) >
                         0,
                       ExcInternalError());
@@ -1226,31 +1221,25 @@ GridReordering<3>::invert_all_cells_of_negative_grid(
 {
   unsigned int vertices_lex[GeometryInfo<3>::vertices_per_cell];
   unsigned int n_negative_cells = 0;
-  for (unsigned int cell_no = 0; cell_no < cells.size(); ++cell_no)
+  for (auto &cell : cells)
     {
       // GridTools::cell_measure
       // requires the vertices to be
       // in lexicographic ordering
       for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-        vertices_lex[GeometryInfo<3>::ucd_to_deal[i]] =
-          cells[cell_no].vertices[i];
+        vertices_lex[GeometryInfo<3>::ucd_to_deal[i]] = cell.vertices[i];
       if (GridTools::cell_measure<3>(all_vertices, vertices_lex) < 0)
         {
           ++n_negative_cells;
           // reorder vertices: swap front and back face
           for (unsigned int i = 0; i < 4; ++i)
-            std::swap(cells[cell_no].vertices[i],
-                      cells[cell_no].vertices[i + 4]);
+            std::swap(cell.vertices[i], cell.vertices[i + 4]);
 
-          // check whether the
-          // resulting cell is now ok.
-          // if not, then the grid is
-          // seriously broken and
-          // should be sticked into the
-          // bin
+          // Check whether the resulting cell is now ok.
+          // If not, then the grid is seriously broken and
+          // we just give up.
           for (unsigned int i = 0; i < GeometryInfo<3>::vertices_per_cell; ++i)
-            vertices_lex[GeometryInfo<3>::ucd_to_deal[i]] =
-              cells[cell_no].vertices[i];
+            vertices_lex[GeometryInfo<3>::ucd_to_deal[i]] = cell.vertices[i];
           AssertThrow(GridTools::cell_measure<3>(all_vertices, vertices_lex) >
                         0,
                       ExcInternalError());

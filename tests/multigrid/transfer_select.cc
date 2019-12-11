@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -58,7 +58,7 @@ check_select(const FiniteElement<dim> &fe,
   DoFHandler<dim>  mgdof(tr);
   DoFHandler<dim> &dof = mgdof;
   mgdof.distribute_dofs(fe);
-  mgdof.distribute_mg_dofs(fe);
+  mgdof.distribute_mg_dofs();
   DoFRenumbering::component_wise(mgdof, target_component);
   vector<types::global_dof_index> ndofs(
     *std::max_element(target_component.begin(), target_component.end()) + 1);

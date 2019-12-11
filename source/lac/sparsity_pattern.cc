@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,6 @@
 
 #include <deal.II/base/std_cxx14/memory.h>
 #include <deal.II/base/utilities.h>
-#include <deal.II/base/vector_slice.h>
 
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/full_matrix.h>
@@ -35,16 +34,21 @@ DEAL_II_NAMESPACE_OPEN
 #ifdef DEAL_II_MSVC
 __declspec(selectany) // Weak extern binding due to multiple link error
 #endif
-  const SparsityPattern::size_type SparsityPattern::invalid_entry;
+  const SparsityPatternBase::size_type SparsityPatternBase::invalid_entry;
 
 
-
-SparsityPattern::SparsityPattern()
+SparsityPatternBase::SparsityPatternBase()
   : max_dim(0)
   , max_vec_len(0)
   , rowstart(nullptr)
   , colnums(nullptr)
   , compressed(false)
+{}
+
+
+
+SparsityPattern::SparsityPattern()
+  : SparsityPatternBase()
   , store_diagonal_first_in_row(false)
 {
   reinit(0, 0, 0);
@@ -53,12 +57,7 @@ SparsityPattern::SparsityPattern()
 
 
 SparsityPattern::SparsityPattern(const SparsityPattern &s)
-  : Subscriptor()
-  , max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
-  , compressed(false)
+  : SparsityPatternBase()
   , store_diagonal_first_in_row(false)
 {
   (void)s;
@@ -76,11 +75,7 @@ SparsityPattern::SparsityPattern(const SparsityPattern &s)
 SparsityPattern::SparsityPattern(const size_type    m,
                                  const size_type    n,
                                  const unsigned int max_per_row)
-  : max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
-  , compressed(false)
+  : SparsityPatternBase()
   , store_diagonal_first_in_row(m == n)
 {
   reinit(m, n, max_per_row);
@@ -91,10 +86,7 @@ SparsityPattern::SparsityPattern(const size_type    m,
 SparsityPattern::SparsityPattern(const size_type                  m,
                                  const size_type                  n,
                                  const std::vector<unsigned int> &row_lengths)
-  : max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
+  : SparsityPatternBase()
   , store_diagonal_first_in_row(m == n)
 {
   reinit(m, n, row_lengths);
@@ -104,10 +96,7 @@ SparsityPattern::SparsityPattern(const size_type                  m,
 
 SparsityPattern::SparsityPattern(const size_type    m,
                                  const unsigned int max_per_row)
-  : max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
+  : SparsityPatternBase()
 {
   reinit(m, m, max_per_row);
 }
@@ -116,10 +105,7 @@ SparsityPattern::SparsityPattern(const size_type    m,
 
 SparsityPattern::SparsityPattern(const size_type                  m,
                                  const std::vector<unsigned int> &row_lengths)
-  : max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
+  : SparsityPatternBase()
 {
   reinit(m, m, row_lengths);
 }
@@ -129,10 +115,7 @@ SparsityPattern::SparsityPattern(const size_type                  m,
 SparsityPattern::SparsityPattern(const SparsityPattern &original,
                                  const unsigned int     max_per_row,
                                  const size_type        extra_off_diagonals)
-  : max_dim(0)
-  , max_vec_len(0)
-  , rowstart(nullptr)
-  , colnums(nullptr)
+  : SparsityPattern()
 {
   Assert(original.rows == original.cols, ExcNotQuadratic());
   Assert(original.is_compressed(), ExcNotCompressed());
@@ -203,7 +186,7 @@ SparsityPattern::SparsityPattern(const SparsityPattern &original,
       // row given to this constructor
       Assert(next_free_slot <= &colnums[rowstart[row + 1]],
              ExcNotEnoughSpace(0, rowstart[row + 1] - rowstart[row]));
-    };
+    }
 }
 
 
@@ -228,9 +211,9 @@ SparsityPattern::operator=(const SparsityPattern &s)
 
 
 void
-SparsityPattern::reinit(const size_type    m,
-                        const size_type    n,
-                        const unsigned int max_per_row)
+SparsityPatternBase::reinit(const size_type    m,
+                            const size_type    n,
+                            const unsigned int max_per_row)
 {
   // simply map this function to the other @p{reinit} function
   const std::vector<unsigned int> row_lengths(m, max_per_row);
@@ -240,10 +223,9 @@ SparsityPattern::reinit(const size_type    m,
 
 
 void
-SparsityPattern::reinit(
-  const size_type                                     m,
-  const size_type                                     n,
-  const VectorSlice<const std::vector<unsigned int>> &row_lengths)
+SparsityPattern::reinit(const size_type                      m,
+                        const size_type                      n,
+                        const ArrayView<const unsigned int> &row_lengths)
 {
   AssertDimension(row_lengths.size(), m);
 
@@ -341,7 +323,7 @@ SparsityPattern::reinit(
   // if diagonal elements are special: let the first entry in each row be the
   // diagonal value
   if (store_diagonal_first_in_row)
-    for (size_type i = 0; i < rows; i++)
+    for (size_type i = 0; i < rows; ++i)
       colnums[rowstart[i]] = i;
 
   compressed = false;
@@ -370,9 +352,7 @@ SparsityPattern::compress()
   const std::size_t nonzero_elements =
     std::count_if(&colnums[rowstart[0]],
                   &colnums[rowstart[rows]],
-                  std::bind(std::not_equal_to<size_type>(),
-                            std::placeholders::_1,
-                            invalid_entry));
+                  [](const size_type col) { return col != invalid_entry; });
   // now allocate the respective memory
   std::unique_ptr<size_type[]> new_colnums(new size_type[nonzero_elements]);
 
@@ -435,7 +415,7 @@ SparsityPattern::compress()
                                    &new_colnums[next_row_start]) ==
                 &new_colnums[next_row_start]),
              ExcInternalError());
-    };
+    }
 
   // assert that we have used all allocated space, no more and no less
   Assert(next_free_entry == nonzero_elements, ExcInternalError());
@@ -506,13 +486,39 @@ SparsityPattern::copy_from(const SparsityPattern &sp)
 void
 SparsityPattern::copy_from(const DynamicSparsityPattern &dsp)
 {
-  const bool                do_diag_optimize = (dsp.n_rows() == dsp.n_cols());
+  const bool  do_diag_optimize = (dsp.n_rows() == dsp.n_cols());
+  const auto &row_index_set    = dsp.row_index_set();
+
   std::vector<unsigned int> row_lengths(dsp.n_rows());
-  for (size_type i = 0; i < dsp.n_rows(); ++i)
+
+  if (row_index_set.size() == 0)
     {
-      row_lengths[i] = dsp.row_length(i);
-      if (do_diag_optimize && !dsp.exists(i, i))
-        ++row_lengths[i];
+      for (size_type i = 0; i < dsp.n_rows(); ++i)
+        {
+          row_lengths[i] = dsp.row_length(i);
+          if (do_diag_optimize && !dsp.exists(i, i))
+            ++row_lengths[i];
+        }
+    }
+  else
+    {
+      for (size_type i = 0; i < dsp.n_rows(); ++i)
+        {
+          if (row_index_set.is_element(i))
+            {
+              row_lengths[i] = dsp.row_length(i);
+              if (do_diag_optimize && !dsp.exists(i, i))
+                ++row_lengths[i];
+            }
+          else
+            {
+              // If the row i is not stored in the DynamicSparsityPattern we
+              // nevertheless need to allocate 1 entry per row for the
+              // "diagonal optimization". (We store a pointer to the next row
+              // in place of the repeated index i for the diagonal element.)
+              row_lengths[i] = do_diag_optimize ? 1 : 0;
+            }
+        }
     }
   reinit(dsp.n_rows(), dsp.n_cols(), row_lengths);
 
@@ -602,17 +608,17 @@ SparsityPattern::copy_from(const FullMatrix<number> &matrix)
 
 
 void
-SparsityPattern::reinit(const size_type                  m,
-                        const size_type                  n,
-                        const std::vector<unsigned int> &row_lengths)
+SparsityPatternBase::reinit(const size_type                  m,
+                            const size_type                  n,
+                            const std::vector<unsigned int> &row_lengths)
 {
-  reinit(m, n, make_slice(row_lengths));
+  reinit(m, n, make_array_view(row_lengths));
 }
 
 
 
 bool
-SparsityPattern::empty() const
+SparsityPatternBase::empty() const
 {
   // let's try to be on the safe side of life by using multiple possibilities
   // in the check for emptiness... (sorry for this kludge -- emptying matrices
@@ -628,14 +634,14 @@ SparsityPattern::empty() const
       Assert(max_vec_len == 0, ExcInternalError());
 
       return true;
-    };
+    }
   return false;
 }
 
 
 
-SparsityPattern::size_type
-SparsityPattern::max_entries_per_row() const
+SparsityPatternBase::size_type
+SparsityPatternBase::max_entries_per_row() const
 {
   // if compress() has not yet been called, we can get the maximum number of
   // elements per row using the stored value
@@ -692,7 +698,7 @@ SparsityPattern::operator()(const size_type i, const size_type j) const
 
 
 void
-SparsityPattern::add(const size_type i, const size_type j)
+SparsityPatternBase::add(const size_type i, const size_type j)
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
   Assert(i < rows, ExcIndexRange(i, 0, rows));
@@ -709,8 +715,8 @@ SparsityPattern::add(const size_type i, const size_type j)
         {
           colnums[k] = j;
           return;
-        };
-    };
+        }
+    }
 
   // if we came thus far, something went wrong: there was not enough space in
   // this line
@@ -769,13 +775,13 @@ SparsityPattern::add_entries(const size_type row,
 
 
 bool
-SparsityPattern::exists(const size_type i, const size_type j) const
+SparsityPatternBase::exists(const size_type i, const size_type j) const
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
   Assert(i < rows, ExcIndexRange(i, 0, rows));
   Assert(j < cols, ExcIndexRange(j, 0, cols));
 
-  for (size_type k = rowstart[i]; k < rowstart[i + 1]; k++)
+  for (size_type k = rowstart[i]; k < rowstart[i + 1]; ++k)
     {
       // entry already exists
       if (colnums[k] == j)
@@ -786,14 +792,14 @@ SparsityPattern::exists(const size_type i, const size_type j) const
 
 
 
-SparsityPattern::size_type
-SparsityPattern::row_position(const size_type i, const size_type j) const
+SparsityPatternBase::size_type
+SparsityPatternBase::row_position(const size_type i, const size_type j) const
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
   Assert(i < rows, ExcIndexRange(i, 0, rows));
   Assert(j < cols, ExcIndexRange(j, 0, cols));
 
-  for (size_type k = rowstart[i]; k < rowstart[i + 1]; k++)
+  for (size_type k = rowstart[i]; k < rowstart[i + 1]; ++k)
     {
       // entry exists
       if (colnums[k] == j)
@@ -804,8 +810,8 @@ SparsityPattern::row_position(const size_type i, const size_type j) const
 
 
 
-std::pair<SparsityPattern::size_type, SparsityPattern::size_type>
-SparsityPattern::matrix_position(const std::size_t global_index) const
+std::pair<SparsityPatternBase::size_type, SparsityPatternBase::size_type>
+SparsityPatternBase::matrix_position(const std::size_t global_index) const
 {
   Assert(compressed == true, ExcNotCompressed());
   Assert(global_index < n_nonzero_elements(),
@@ -830,7 +836,7 @@ SparsityPattern::matrix_position(const std::size_t global_index) const
 
 
 void
-SparsityPattern::symmetrize()
+SparsityPatternBase::symmetrize()
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
   Assert(compressed == false, ExcMatrixIsCompressed());
@@ -847,7 +853,7 @@ SparsityPattern::symmetrize()
   // 2. that the @p{add} function can be called on elements that already exist
   // without any harm
   for (size_type row = 0; row < rows; ++row)
-    for (size_type k = rowstart[row]; k < rowstart[row + 1]; k++)
+    for (size_type k = rowstart[row]; k < rowstart[row + 1]; ++k)
       {
         // check whether we are at the end of the entries of this row. if so,
         // go to next row
@@ -858,13 +864,13 @@ SparsityPattern::symmetrize()
         // would not harm, only take time to check up)
         if (colnums[k] != row)
           add(colnums[k], row);
-      };
+      }
 }
 
 
 
 void
-SparsityPattern::print(std::ostream &out) const
+SparsityPatternBase::print(std::ostream &out) const
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
 
@@ -885,7 +891,7 @@ SparsityPattern::print(std::ostream &out) const
 
 
 void
-SparsityPattern::print_gnuplot(std::ostream &out) const
+SparsityPatternBase::print_gnuplot(std::ostream &out) const
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
 
@@ -903,7 +909,7 @@ SparsityPattern::print_gnuplot(std::ostream &out) const
 }
 
 void
-SparsityPattern::print_svg(std::ostream &out) const
+SparsityPatternBase::print_svg(std::ostream &out) const
 {
   unsigned int m = this->n_rows();
   unsigned int n = this->n_cols();
@@ -936,8 +942,8 @@ SparsityPattern::print_svg(std::ostream &out) const
 
 
 
-SparsityPattern::size_type
-SparsityPattern::bandwidth() const
+SparsityPatternBase::size_type
+SparsityPatternBase::bandwidth() const
 {
   Assert((rowstart != nullptr) && (colnums != nullptr), ExcEmptyObject());
   size_type b = 0;
@@ -1020,10 +1026,17 @@ SparsityPattern::block_read(std::istream &in)
 
 
 std::size_t
-SparsityPattern::memory_consumption() const
+SparsityPatternBase::memory_consumption() const
 {
   return (max_dim * sizeof(size_type) + sizeof(*this) +
           max_vec_len * sizeof(size_type));
+}
+
+
+std::size_t
+SparsityPattern::memory_consumption() const
+{
+  return sizeof(*this) + SparsityPatternBase::memory_consumption();
 }
 
 

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2014 - 2018 by the deal.II authors
+// Copyright (C) 2014 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,12 +27,14 @@
 DEAL_II_NAMESPACE_OPEN
 
 // Forward declarations:
+#ifndef DOXYGEN
 template <typename Number>
 class Vector;
 template <typename Range, typename Domain, typename Payload>
 class LinearOperator;
 template <typename Range = Vector<double>>
 class PackagedOperation;
+#endif
 
 
 /**
@@ -92,6 +94,9 @@ class PackagedOperation;
  *   y += residual;
  *   y -= residual;
  * @endcode
+ *
+ * @note The step-20 tutorial program has a detailed usage example of the
+ * LinearOperator class.
  *
  * @author Matthias Maier, 2015
  *

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2017 by the deal.II authors
+// Copyright (C) 2012 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -218,7 +218,7 @@ namespace Step37
     typename MatrixFree<dim, number>::AdditionalData additional_data;
     additional_data.tasks_parallel_scheme =
       MatrixFree<dim, number>::AdditionalData::partition_color;
-    additional_data.level_mg_handler = level;
+    additional_data.mg_level = level;
     additional_data.mapping_update_flags =
       (update_gradients | update_JxW_values | update_quadrature_points);
     data.reinit(dof_handler,
@@ -416,7 +416,7 @@ namespace Step37
     mg_constraints.clear_elements();
 
     dof_handler.distribute_dofs(fe);
-    dof_handler.distribute_mg_dofs(fe);
+    dof_handler.distribute_mg_dofs();
 
     deallog << "Number of degrees of freedom: " << dof_handler.n_dofs()
             << std::endl;

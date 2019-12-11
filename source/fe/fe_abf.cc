@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -46,21 +46,21 @@ DEAL_II_NAMESPACE_OPEN
 
 template <int dim>
 FE_ABF<dim>::FE_ABF(const unsigned int deg)
-  : FE_PolyTensor<PolynomialsABF<dim>, dim>(
-      deg,
+  : FE_PolyTensor<dim>(
+      PolynomialsABF<dim>(deg),
       FiniteElementData<dim>(get_dpo_vector(deg),
                              dim,
                              deg + 2,
                              FiniteElementData<dim>::Hdiv),
-      std::vector<bool>(PolynomialsABF<dim>::compute_n_pols(deg), true),
-      std::vector<ComponentMask>(PolynomialsABF<dim>::compute_n_pols(deg),
+      std::vector<bool>(PolynomialsABF<dim>::n_polynomials(deg), true),
+      std::vector<ComponentMask>(PolynomialsABF<dim>::n_polynomials(deg),
                                  std::vector<bool>(dim, true)))
   , rt_order(deg)
 {
   Assert(dim >= 2, ExcImpossibleInDim(dim));
   const unsigned int n_dofs = this->dofs_per_cell;
 
-  this->mapping_type = mapping_raviart_thomas;
+  this->mapping_kind = {mapping_raviart_thomas};
   // First, initialize the
   // generalized support points and
   // quadrature weights, since they
@@ -100,11 +100,11 @@ FE_ABF<dim>::FE_ABF(const unsigned int deg)
   this->interface_constraints.reinit((1 << (dim - 1)) * this->dofs_per_face,
                                      this->dofs_per_face);
   unsigned int target_row = 0;
-  for (unsigned int d = 0; d < face_embeddings.size(); ++d)
-    for (unsigned int i = 0; i < face_embeddings[d].m(); ++i)
+  for (const auto &face_embedding : face_embeddings)
+    for (unsigned int i = 0; i < face_embedding.m(); ++i)
       {
-        for (unsigned int j = 0; j < face_embeddings[d].n(); ++j)
-          this->interface_constraints(target_row, j) = face_embeddings[d](i, j);
+        for (unsigned int j = 0; j < face_embedding.n(); ++j)
+          this->interface_constraints(target_row, j) = face_embedding(i, j);
         ++target_row;
       }
 }
@@ -518,12 +518,12 @@ FE_ABF<dim>::has_support_on_face(const unsigned int shape_index,
 
               default:
                 return true;
-            };
-        };
+            }
+        }
 
       default: // other rt_order
         return true;
-    };
+    }
 
   return true;
 }
@@ -584,8 +584,7 @@ FE_ABF<dim>::convert_generalized_support_point_values_to_dof_values(
   // Face integral of ABF terms
   for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell; ++face)
     {
-      double n_orient =
-        (double)GeometryInfo<dim>::unit_normal_orientation[face];
+      const double n_orient = GeometryInfo<dim>::unit_normal_orientation[face];
       for (unsigned int fp = 0; fp < n_face_points; ++fp)
         {
           // TODO: Check what the face_orientation, face_flip and face_rotation

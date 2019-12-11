@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2017 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,6 +18,7 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/sparse_matrix.h>
@@ -35,11 +36,29 @@ DEAL_II_NAMESPACE_OPEN
  */
 namespace LinearAlgebraDealII
 {
-  using Vector      = Vector<double>;
+  /**
+   * Typedef for the vector type used
+   */
+  using Vector = Vector<double>;
+
+  /**
+   * Typedef for the block-vector type used
+   */
   using BlockVector = BlockVector<double>;
 
+  /**
+   * Typedef for sparse matrix type used
+   */
   using SparseMatrix = SparseMatrix<double>;
 
+  /**
+   * Typedef describing sparse matrices that consist of multiple blocks.
+   */
+  using BlockSparseMatrix = BlockSparseMatrix<double>;
+
+  /**
+   * Typedef for the SSOR preconditioner used
+   */
   using PreconditionSSOR = PreconditionSSOR<SparseMatrix>;
 } // namespace LinearAlgebraDealII
 
@@ -65,9 +84,14 @@ DEAL_II_NAMESPACE_OPEN
  */
 namespace LinearAlgebraPETSc
 {
-  using namespace dealii;
+  /**
+   * Typedef for the CG solver type used.
+   */
+  using SolverCG = PETScWrappers::SolverCG;
 
-  using SolverCG    = PETScWrappers::SolverCG;
+  /**
+   * Typedef for the GMRES solver type used.
+   */
   using SolverGMRES = PETScWrappers::SolverGMRES;
 
   /**
@@ -98,6 +122,9 @@ namespace LinearAlgebraPETSc
      */
     using BlockSparseMatrix = PETScWrappers::MPI::BlockSparseMatrix;
 
+    /**
+     * Typedef for the compressed block sparsity pattern used.
+     */
     using BlockCompressedSparsityPattern = dealii::BlockDynamicSparsityPattern;
 
     /**
@@ -151,9 +178,14 @@ DEAL_II_NAMESPACE_OPEN
  */
 namespace LinearAlgebraTrilinos
 {
-  using namespace dealii;
+  /**
+   * Typedef for the CG solver type used.
+   */
+  using SolverCG = TrilinosWrappers::SolverCG;
 
-  using SolverCG    = TrilinosWrappers::SolverCG;
+  /**
+   * Typdef for the GMRES solver type used.
+   */
   using SolverGMRES = TrilinosWrappers::SolverGMRES;
 
   /**
@@ -184,6 +216,9 @@ namespace LinearAlgebraTrilinos
      */
     using BlockSparseMatrix = TrilinosWrappers::BlockSparseMatrix;
 
+    /**
+     * Typedef for the type used for compressed block sparsity pattern.
+     */
     using BlockCompressedSparsityPattern =
       TrilinosWrappers::BlockSparsityPattern;
 

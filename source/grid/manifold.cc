@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -95,15 +95,21 @@ Manifold<dim, spacedim>::get_new_point(
   for (unsigned int i = 1; i < n_points; ++i)
     {
       double weight = 0.0;
-      if ((weights[permutation[i]] + w) < tol)
+      if (std::abs(weights[permutation[i]] + w) < tol)
         weight = 0.0;
       else
         weight = w / (weights[permutation[i]] + w);
 
       if (std::abs(weight) > 1e-14)
-        p = get_intermediate_point(p,
-                                   surrounding_points[permutation[i]],
-                                   1.0 - weight);
+        {
+          p = get_intermediate_point(p,
+                                     surrounding_points[permutation[i]],
+                                     1.0 - weight);
+        }
+      else
+        {
+          p = surrounding_points[permutation[i]];
+        }
       w += weights[permutation[i]];
     }
 
@@ -379,7 +385,7 @@ Manifold<1, 1>::get_new_point_on_face(
   const Triangulation<1, 1>::face_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<1>();
+  return {};
 }
 
 
@@ -390,7 +396,7 @@ Manifold<1, 2>::get_new_point_on_face(
   const Triangulation<1, 2>::face_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<2>();
+  return {};
 }
 
 
@@ -401,7 +407,7 @@ Manifold<1, 3>::get_new_point_on_face(
   const Triangulation<1, 3>::face_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<3>();
+  return {};
 }
 
 
@@ -412,7 +418,7 @@ Manifold<1, 1>::get_new_point_on_quad(
   const Triangulation<1, 1>::quad_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<1>();
+  return {};
 }
 
 
@@ -423,7 +429,7 @@ Manifold<1, 2>::get_new_point_on_quad(
   const Triangulation<1, 2>::quad_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<2>();
+  return {};
 }
 
 
@@ -434,7 +440,7 @@ Manifold<1, 3>::get_new_point_on_quad(
   const Triangulation<1, 3>::quad_iterator &) const
 {
   Assert(false, ExcImpossibleInDim(1));
-  return Point<3>();
+  return {};
 }
 
 
@@ -492,7 +498,7 @@ namespace internal
       // the implementation below is bogus for this case anyway
       // (see the assert at the beginning of that function).
       Assert(false, ExcNotImplemented());
-      return Tensor<1, 3>();
+      return {};
     }
 
 
@@ -808,7 +814,7 @@ FlatManifold<1, 1>::normal_vector(const Triangulation<1, 1>::face_iterator &,
                                   const Point<1> &) const
 {
   Assert(false, ExcNotImplemented());
-  return Tensor<1, 1>();
+  return {};
 }
 
 
@@ -819,7 +825,7 @@ FlatManifold<1, 2>::normal_vector(const Triangulation<1, 2>::face_iterator &,
                                   const Point<2> &) const
 {
   Assert(false, ExcNotImplemented());
-  return Tensor<1, 2>();
+  return {};
 }
 
 
@@ -830,7 +836,7 @@ FlatManifold<1, 3>::normal_vector(const Triangulation<1, 3>::face_iterator &,
                                   const Point<3> &) const
 {
   Assert(false, ExcNotImplemented());
-  return Tensor<1, 3>();
+  return {};
 }
 
 

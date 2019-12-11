@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -64,7 +64,7 @@ plot_shape_function(hp::DoFHandler<dim> &dof_handler, unsigned int patches = 5)
 
   // find set of dofs which belong to enriched cells
   std::set<unsigned int> enriched_cell_dofs;
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     if (cell->active_fe_index() != 0)
       {
         unsigned int dofs_per_cell = cell->get_fe().dofs_per_cell;
@@ -146,7 +146,7 @@ plot_shape_function(hp::DoFHandler<dim> &dof_handler, unsigned int patches = 5)
 
   // get material ids:
   Vector<float> fe_index(dof_handler.get_triangulation().n_active_cells());
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     {
       fe_index[cell->active_cell_index()] = cell->active_fe_index();
     }
@@ -269,8 +269,7 @@ main(int argc, char **argv)
     }
 
   deallog << "Face dominating set for 1 and 2: "
-          << fe_collection.find_least_dominating_fe_in_collection({1, 2},
-                                                                  /*codim=*/1)
+          << fe_collection.find_dominating_fe_extended({1, 2}, /*codim=*/1)
           << std::endl;
 
   dof_handler.distribute_dofs(fe_collection);

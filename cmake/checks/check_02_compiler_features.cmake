@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -48,6 +48,15 @@ UNSET_IF_CHANGED(CHECK_CXX_FEATURES_FLAGS_SAVED
   DEAL_II_COMPILER_HAS_ATTRIBUTE_DEPRECATED
   )
 
+#
+# MSVC needs different compiler flags to turn warnings into errors
+# additionally a suitable exception handling model is required
+#
+IF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  SET(_werror_flag "/WX /EHsc")
+ELSE()
+  SET(_werror_flag "-Werror")
+ENDIF()
 
 #
 # Check whether the compiler allows to use arithmetic operations
@@ -61,10 +70,7 @@ UNSET_IF_CHANGED(CHECK_CXX_FEATURES_FLAGS_SAVED
 #
 CHECK_CXX_SOURCE_COMPILES(
   "
-  #include <emmintrin.h>
-#ifdef __AVX512F__
-  #include <immintrin.h>
-#endif
+  #include <x86intrin.h>
   int main()
   {
     __m128d a, b;
@@ -114,14 +120,21 @@ CHECK_CXX_COMPILER_BUG(
 # prediction unit in some cases. We use it in the AssertThrow
 # macros.
 #
+# Intel compilers don't handle __builtin_expect in C++14 constexpr contexts
+# properly so we disable this feature in case we are going to use
+# DEAL_II_CONSTEXPR with an Intel compiler.
+#
 # - Matthias Maier, rewritten 2012
 #
-CHECK_CXX_SOURCE_COMPILES(
-  "
-  bool f() {}
-  int main(){ if (__builtin_expect(f(),false)) ; }
-  "
-  DEAL_II_HAVE_BUILTIN_EXPECT)
+IF(NOT(CMAKE_CXX_COMPILER_ID MATCHES "Intel" AND
+       DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR))
+  CHECK_CXX_SOURCE_COMPILES(
+    "
+    bool f() { return true; }
+    int main(){ if (__builtin_expect(f(),false)) {} }
+    "
+    DEAL_II_HAVE_BUILTIN_EXPECT)
+ENDIF()
 
 
 #
@@ -269,7 +282,9 @@ ENDIF()
 IF( (NOT CMAKE_SYSTEM_NAME MATCHES "CYGWIN") AND
     (NOT CMAKE_SYSTEM_NAME MATCHES "Windows") AND
     (NOT CMAKE_CXX_COMPILER_ID MATCHES "Intel") )
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_FLAGS_DEBUG}")
   ENABLE_IF_SUPPORTED(DEAL_II_CXX_FLAGS_DEBUG "-Wa,--compress-debug-sections")
+  RESET_CMAKE_REQUIRED()
 ENDIF()
 
 
@@ -296,7 +311,10 @@ ENDIF()
 # "warning #1292: unknown attribute "deprecated"" (icc)
 # Hence, we treat warnings as errors:
 ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_FLAGS}")
-ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror -Wno-unused-command-line-argument")
+ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${_werror_flag}")
+IF(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Wno-unused-command-line-argument")
+ENDIF()
 
 # first see if the compiler accepts the attribute
 CHECK_CXX_SOURCE_COMPILES(
@@ -308,6 +326,11 @@ CHECK_CXX_SOURCE_COMPILES(
           {
             [[deprecated]] bob(int i);
             [[deprecated]] void test();
+          };
+
+          enum color
+          {
+            red [[deprecated]]
           };
 
           template <int dim>
@@ -328,6 +351,11 @@ CHECK_CXX_SOURCE_COMPILES(
           {
             __attribute__((deprecated)) bob(int i);
             __attribute__((deprecated)) void test();
+          };
+
+          enum color
+          {
+            red __attribute__((deprecated))
           };
 
           template <int dim>
@@ -393,7 +421,7 @@ ENDIF()
 #
 # - Matthias Maier, 2015
 #
-ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror")
+ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${_werror_flag}")
 CHECK_CXX_SOURCE_COMPILES(
   "
   _Pragma(\"GCC diagnostic push\")
@@ -408,33 +436,52 @@ RESET_CMAKE_REQUIRED()
 
 
 #
-# Use the 'gold' linker if possible, given that it's substantially faster.
+# Use 'lld' or the 'gold' linker if possible, given that either of them is
+# substantially faster.
 #
-# We have to try to link a full executable with -fuse-ld=gold to check
-# whether "ld.gold" is actually available.
+# We have to try to link a full executable with -fuse-ld=lld or -fuse-ld=gold
+# to check whether "ld.lld" or "ld.gold" is actually available.
 #
-# Clang always reports "argument unused during compilation"
-# if "-fuse-ld=" is used, but fails at link time for an unsupported linker.
+# Clang always reports "argument unused during compilation", but fails at link
+# time for an unsupported linker.
 #
 # ICC also emits a warning but passes for unsupported linkers
 # unless we turn diagnostic warnings into errors.
 #
 # Wolfgang Bangerth, Matthias Maier, Daniel Arndt, 2015, 2018
 #
-IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Wno-unused-command-line-argument")
-ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
-  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-diag-error warn")
-ENDIF()
-ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror -fuse-ld=gold")
-CHECK_CXX_SOURCE_COMPILES(
-  "
-  int main() { return 0; }
-  "
-  DEAL_II_COMPILER_HAS_FUSE_LD_GOLD)
-RESET_CMAKE_REQUIRED()
+IF(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Wno-unused-command-line-argument")
+  ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-diag-error warn")
+  ENDIF()
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror")
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-fuse-ld=lld")
+  CHECK_CXX_SOURCE_COMPILES(
+    "
+    int main() { return 0; }
+    "
+    DEAL_II_COMPILER_HAS_FUSE_LD_LLD)
+  RESET_CMAKE_REQUIRED()
 
-IF(DEAL_II_COMPILER_HAS_FUSE_LD_GOLD)
-  ADD_FLAGS(DEAL_II_LINKER_FLAGS "-fuse-ld=gold")
-ENDIF()
+  IF(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Wno-unused-command-line-argument")
+  ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "Intel")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-diag-error warn")
+  ENDIF()
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror")
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-fuse-ld=gold")
+  CHECK_CXX_SOURCE_COMPILES(
+    "
+    int main() { return 0; }
+    "
+    DEAL_II_COMPILER_HAS_FUSE_LD_GOLD)
+  RESET_CMAKE_REQUIRED()
 
+  IF(DEAL_II_COMPILER_HAS_FUSE_LD_LLD)
+    ADD_FLAGS(DEAL_II_LINKER_FLAGS "-fuse-ld=lld")
+  ELSEIF(DEAL_II_COMPILER_HAS_FUSE_LD_GOLD)
+    ADD_FLAGS(DEAL_II_LINKER_FLAGS "-fuse-ld=gold")
+  ENDIF()
+ENDIF()

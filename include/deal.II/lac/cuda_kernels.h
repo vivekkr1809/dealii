@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,6 +26,8 @@
 
 #  include <deal.II/lac/cuda_atomic.h>
 
+#  include <assert.h>
+
 DEAL_II_NAMESPACE_OPEN
 
 namespace LinearAlgebra
@@ -39,6 +41,7 @@ namespace LinearAlgebra
     {
       using ::dealii::CUDAWrappers::block_size;
       using ::dealii::CUDAWrappers::chunk_size;
+      using ::dealii::CUDAWrappers::warp_size;
       using size_type = types::global_dof_index;
 
       /**
@@ -57,13 +60,25 @@ namespace LinearAlgebra
        *
        * @ingroup CUDAWrappers
        */
+      template <typename Number>
       struct Binop_Addition
       {
-        template <typename Number>
         __device__ static inline Number
         operation(const Number a, const Number b)
         {
           return a + b;
+        }
+      };
+
+      template <typename Number>
+      struct Binop_Addition<std::complex<Number>>
+      {
+        __device__ static inline std::complex<Number>
+        operation(const std::complex<Number> a, const std::complex<Number>)
+        {
+          printf("This function is not implemented for std::complex<Number>!");
+          assert(false);
+          return a;
         }
       };
 
@@ -74,9 +89,9 @@ namespace LinearAlgebra
        *
        * @ingroup CUDAWrappers
        */
+      template <typename Number>
       struct Binop_Subtraction
       {
-        template <typename Number>
         __device__ static inline Number
         operation(const Number a, const Number b)
         {
@@ -84,22 +99,109 @@ namespace LinearAlgebra
         }
       };
 
+      template <typename Number>
+      struct Binop_Subtraction<std::complex<Number>>
+      {
+        __device__ static inline std::complex<Number>
+        operation(const std::complex<Number> a, const std::complex<Number> b)
+        {
+          printf("This function is not implemented for std::complex<Number>!");
+          assert(false);
+          return a;
+        }
+      };
+
 
 
       /**
-       * Apply the functor @tparam Binop to each element of @p v1 and @p v2.
+       * Functor defining the maximum of two Numbers.
        *
        * @ingroup CUDAWrappers
        */
-      template <typename Number, typename Binop>
-      __global__ void
-      vector_bin_op(Number *v1, Number *v2, const size_type N);
+      template <typename Number>
+      struct Binop_Max
+      {
+        __device__ static inline Number
+        operation(const Number a, const Number b)
+        {
+          return a > b ? a : b;
+        }
+      };
+
+      template <typename Number>
+      struct Binop_Max<std::complex<Number>>
+      {
+        __device__ static inline std::complex<Number>
+        operation(const std::complex<Number> a, const std::complex<Number>)
+        {
+          printf("This function is not implemented for std::complex<Number>!");
+          assert(false);
+          return a;
+        }
+      };
 
 
 
       /**
-       * Structure implementing the functions used to add elements when using a
-       * reduction.
+       * Functor defining the maximum of two Numbers.
+       *
+       * @ingroup CUDAWrappers
+       */
+      template <typename Number>
+      struct Binop_Min
+      {
+        __device__ static inline Number
+        operation(const Number a, const Number b)
+        {
+          return a > b ? b : a;
+        }
+      };
+
+      template <typename Number>
+      struct Binop_Min<std::complex<Number>>
+      {
+        __device__ static inline std::complex<Number>
+        operation(const std::complex<Number> a, const std::complex<Number>)
+        {
+          printf("This function is not implemented for std::complex<Number>!");
+          assert(false);
+          return a;
+        }
+      };
+
+
+
+      /**
+       * Apply the functor @p Binop to each element of @p v1 and @p v2.
+       *
+       * @ingroup CUDAWrappers
+       */
+      template <typename Number, template <typename> class Binop>
+      __global__ void
+      vector_bin_op(Number *v1, const Number *v2, const size_type N);
+
+
+
+      /**
+       * Apply the functor @p Binop to the elements of @p v1 that have
+       * indices in @p mask and @p v2. The size of @p mask should be greater
+       * than the size of @p v1. @p mask and @p v2 should have the same size @p
+       * N.
+       *
+       * @ingroup CUDAWrappers
+       */
+      template <typename Number, template <typename> class Binop>
+      __global__ void
+      masked_vector_bin_op(const unsigned int *mask,
+                           Number *            v1,
+                           const Number *      v2,
+                           const size_type     N);
+
+
+
+      /**
+       * Structure implementing the functions used to add elements when
+       * using a reduction.
        *
        * @ingroup CUDAWrappers
        */
@@ -122,8 +224,8 @@ namespace LinearAlgebra
 
 
       /**
-       * Structure implementing the functions used to compute the L1 norm when
-       * using a reduction.
+       * Structure implementing the functions used to compute the L1 norm
+       * when using a reduction.
        *
        * @ingroup CUDAWrappers
        */
@@ -170,7 +272,7 @@ namespace LinearAlgebra
 
 
       /**
-       * Perform a reduction on @p v using @tparam Operation.
+       * Perform a reduction on @p v using @p Operation.
        *
        * @ingroup CUDAWrappers
        */
@@ -181,8 +283,8 @@ namespace LinearAlgebra
 
 
       /**
-       * Structure implementing the functions used to compute the dot product
-       * norm when using a double vector reduction.
+       * Structure implementing the functions used to compute the dot
+       * product norm when using a double vector reduction.
        *
        * @ingroup CUDAWrappers
        */
@@ -262,8 +364,8 @@ namespace LinearAlgebra
 
 
       /**
-       * Scaling and simple addition of a multiple of a vector, i.e. <tt>val =
-       * = s*val + a*V_val</tt>
+       * Scaling and simple addition of a multiple of a vector, i.e. <tt>val
+       * = = s*val + a*V_val</tt>
        *
        * @ingroup CUDAWrappers
        */
@@ -296,8 +398,8 @@ namespace LinearAlgebra
 
 
       /**
-       * Scale each element of this vector by the corresponding element in the
-       * argument.
+       * Scale each element of this vector by the corresponding element in
+       * the argument.
        *
        * @ingroup CUDAWrappers
        */
@@ -362,31 +464,46 @@ namespace LinearAlgebra
 
 
       /**
-       * Set each element @v val to @p v using @p indices as permutation, i.e.,
+       * Set each element in @p val to @p v using @p indices as permutation, i.e.,
        * <tt>val[indices[i]] = v[i]</tt>.
        *
        * @ingroup CUDAWrappers
        */
-      template <typename Number>
+      template <typename Number, typename IndexType>
       __global__ void
-      set_permutated(Number *         val,
+      set_permutated(const IndexType *indices,
+                     Number *         val,
                      const Number *   v,
-                     const size_type *indices,
-                     const size_type  N);
+                     const IndexType  N);
 
 
 
       /**
-       * Add each element @v val to @p v using @p indices as permutation, i.e.,
+       * Set each element in @p val to @p v using @p indices as permutation, i.e.,
+       * <tt>val[i] = v[indices[i]]</tt>.
+       *
+       * @ingroup CUDAWrappers
+       */
+      template <typename Number, typename IndexType>
+      __global__ void
+      gather(Number *         val,
+             const IndexType *indices,
+             const Number *   v,
+             const IndexType  N);
+
+
+
+      /**
+       * Add each element in @p val to @p v using @p indices as permutation, i.e.,
        * <tt>val[indices[i]] += v[i]</tt>.
        *
        * @ingroup CUDAWrappers
        */
       template <typename Number>
       __global__ void
-      add_permutated(Number *         val,
+      add_permutated(const size_type *indices,
+                     Number *         val,
                      const Number *   v,
-                     const size_type *indices,
                      const size_type  N);
     } // namespace kernel
   }   // namespace CUDAWrappers

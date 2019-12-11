@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,7 +36,8 @@ for (X : TRIANGULATIONS; deal_II_dimension : DIMENSIONS;
         const dealii::internal::ActiveCellIterator<deal_II_dimension,
                                                    deal_II_space_dimension,
                                                    X>::type &,
-        const std::vector<bool> &);
+        const std::vector<bool> &,
+        const RTree<std::pair<Point<deal_II_space_dimension>, unsigned int>> &);
 
       template std::vector<BoundingBox<deal_II_space_dimension>>
       compute_mesh_predicate_bounding_box<X>(
@@ -96,6 +97,19 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
                             deal_II_dimension,
                             deal_II_space_dimension>::active_cell_iterator>,
                           std::vector<std::vector<Point<deal_II_dimension>>>,
+                          std::vector<std::vector<unsigned int>>,
+                          std::vector<unsigned int>>
+      compute_point_locations_try_all(
+        const Cache<deal_II_dimension, deal_II_space_dimension> &,
+        const std::vector<Point<deal_II_space_dimension>> &,
+        const typename Triangulation<
+          deal_II_dimension,
+          deal_II_space_dimension>::active_cell_iterator &);
+
+      template std::tuple<std::vector<typename Triangulation<
+                            deal_II_dimension,
+                            deal_II_space_dimension>::active_cell_iterator>,
+                          std::vector<std::vector<Point<deal_II_dimension>>>,
                           std::vector<std::vector<unsigned int>>>
       compute_point_locations(
         const Cache<deal_II_dimension, deal_II_space_dimension> &,
@@ -148,6 +162,29 @@ for (deal_II_space_dimension : SPACE_DIMENSIONS)
     GridTools::guess_point_owner(
       const std::vector<std::vector<BoundingBox<deal_II_space_dimension>>> &,
       const std::vector<Point<deal_II_space_dimension>> &);
+
+    template std::tuple<std::map<unsigned int, std::vector<unsigned int>>,
+                        std::map<unsigned int, unsigned int>,
+                        std::map<unsigned int, std::vector<unsigned int>>>
+    GridTools::guess_point_owner(
+      const RTree<std::pair<BoundingBox<deal_II_space_dimension>, unsigned int>>
+        &,
+      const std::vector<Point<deal_II_space_dimension>> &);
+
+    template RTree<
+      std::pair<BoundingBox<deal_II_space_dimension>, unsigned int>>
+    GridTools::build_global_description_tree(
+      const std::vector<BoundingBox<deal_II_space_dimension>> &, MPI_Comm);
+
+    template Vector<double> GridTools::compute_aspect_ratio_of_cells(
+      const Triangulation<deal_II_space_dimension> &,
+      const Mapping<deal_II_space_dimension> &,
+      const Quadrature<deal_II_space_dimension> &);
+
+    template double GridTools::compute_maximum_aspect_ratio(
+      const Triangulation<deal_II_space_dimension> &,
+      const Mapping<deal_II_space_dimension> &,
+      const Quadrature<deal_II_space_dimension> &);
   }
 
 
@@ -156,7 +193,6 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
 #if deal_II_dimension <= deal_II_space_dimension
     namespace GridTools
     \{
-
       template double
       diameter(
         const Triangulation<deal_II_dimension, deal_II_space_dimension> &);
@@ -168,6 +204,12 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
       template BoundingBox<deal_II_space_dimension>
       compute_bounding_box(
         const Triangulation<deal_II_dimension, deal_II_space_dimension> &);
+
+      template std::tuple<std::vector<Point<deal_II_space_dimension>>,
+                          std::vector<CellData<deal_II_dimension>>,
+                          SubCellData>
+      get_coarse_mesh_description(
+        const Triangulation<deal_II_dimension, deal_II_space_dimension> &tria);
 
       template void
       delete_unused_vertices(std::vector<Point<deal_II_space_dimension>> &,
@@ -255,7 +297,8 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
       template void
       partition_triangulation_zorder(
         const unsigned int,
-        Triangulation<deal_II_dimension, deal_II_space_dimension> &);
+        Triangulation<deal_II_dimension, deal_II_space_dimension> &,
+        const bool);
 
       template void
       partition_multigrid_levels(
@@ -324,9 +367,7 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
           &distorted_cells,
         Triangulation<deal_II_dimension, deal_II_space_dimension>
           &triangulation);
-
 #  endif
-
     \}
 #endif
   }
@@ -354,9 +395,22 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         const std::vector<types::boundary_id> &);
 
       template void
+      assign_co_dimensional_manifold_indicators(
+        Triangulation<deal_II_dimension, deal_II_space_dimension> &,
+        const std::function<
+          types::manifold_id(const std::set<types::manifold_id> &)> &,
+        bool);
+
+      template void
       regularize_corner_cells(
         Triangulation<deal_II_dimension, deal_II_space_dimension> &,
         double);
+
+      template void
+      collect_coinciding_vertices(
+        const Triangulation<deal_II_dimension, deal_II_space_dimension> &,
+        std::map<unsigned int, std::vector<unsigned int>> &,
+        std::map<unsigned int, unsigned int> &);
     \}
 #endif
   }

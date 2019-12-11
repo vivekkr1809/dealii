@@ -1,7 +1,7 @@
 #!/bin/bash
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2018 by the deal.II authors
+## Copyright (C) 2018 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -17,7 +17,7 @@
 #
 # This script does the same thing as contrib/utilities/indent-all but only
 # reformats files which have changed (or have been added but neither
-# staged/commited) since the last merge commit to the master branch.
+# staged/committed) since the last merge commit to the master branch.
 #
 # The script needs to be executed as
 #   ./contrib/utilities/indent
@@ -56,15 +56,15 @@ checks
 # Process all source and header files:
 #
 
-process_changed "tests include source examples" ".*\.(cc|h|cu|cuh)" format_file
+process_changed "tests include source examples contrib/python-bindings" ".*\.(cc|h|cu|cuh)" format_file
 process_changed "source" ".*\.inst.in" format_inst
 
 #
 # Fix permissions and convert to unix line ending if necessary:
 #
 
-process_changed "tests include source examples" \
+process_changed "tests include source examples contrib/python-bindings" \
   ".*\.(cc|h|cu|cuh|inst.in|output.*|cmake)" fix_permissions
 
-process_changed "tests include source examples" \
+process_changed "tests include source examples contrib/python-bindings" \
   ".*\.(cc|h|cu|cuh|inst.in|cmake)" dos_to_unix

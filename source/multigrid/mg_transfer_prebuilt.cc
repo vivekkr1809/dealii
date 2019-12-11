@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -105,6 +105,14 @@ MGTransferPrebuilt<VectorType>::prolongate(const unsigned int to_level,
 {
   Assert((to_level >= 1) && (to_level <= prolongation_matrices.size()),
          ExcIndexRange(to_level, 1, prolongation_matrices.size() + 1));
+
+#ifdef DEBUG
+  if (this->mg_constrained_dofs != nullptr)
+    Assert(this->mg_constrained_dofs->get_user_constraint_matrix(to_level - 1)
+               .get_local_lines()
+               .size() == 0,
+           ExcNotImplemented());
+#endif
 
   prolongation_matrices[to_level - 1]->vmult(dst, src);
 }
@@ -273,8 +281,8 @@ MGTransferPrebuilt<VectorType>::build_matrices(
           // be manually distributed.
 
           // Retrieve communicator from triangulation if it is parallel
-          const parallel::Triangulation<dim, spacedim> *dist_tria =
-            dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
+          const parallel::TriangulationBase<dim, spacedim> *dist_tria =
+            dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
               &(mg_dof.get_triangulation()));
 
           MPI_Comm communicator = dist_tria != nullptr ?
@@ -283,13 +291,13 @@ MGTransferPrebuilt<VectorType>::build_matrices(
 
           // Compute # of locally owned MG dofs / processor for distribution
           const std::vector<::dealii::IndexSet>
-            &locally_owned_mg_dofs_per_processor =
-              mg_dof.locally_owned_mg_dofs_per_processor(level + 1);
+            locally_owned_mg_dofs_per_processor =
+              mg_dof.compute_locally_owned_mg_dofs_per_processor(level + 1);
           std::vector<::dealii::types::global_dof_index>
             n_locally_owned_mg_dofs_per_processor(
               locally_owned_mg_dofs_per_processor.size(), 0);
 
-          for (size_t index = 0;
+          for (std::size_t index = 0;
                index < n_locally_owned_mg_dofs_per_processor.size();
                ++index)
             {

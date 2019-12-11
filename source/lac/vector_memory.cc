@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2007 - 2018 by the deal.II authors
+// Copyright (C) 2007 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,13 +14,14 @@
 // ---------------------------------------------------------------------
 
 #include <deal.II/lac/block_vector.h>
-#include <deal.II/lac/cuda_vector.h>
 #include <deal.II/lac/la_parallel_block_vector.h>
 #include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/vector_memory.templates.h>
@@ -30,27 +31,21 @@ DEAL_II_NAMESPACE_OPEN
 
 #include "vector_memory.inst"
 
-#ifdef DEAL_II_WITH_CUDA
-template class VectorMemory<LinearAlgebra::CUDAWrappers::Vector<float>>;
-template class VectorMemory<LinearAlgebra::CUDAWrappers::Vector<double>>;
-template class GrowingVectorMemory<LinearAlgebra::CUDAWrappers::Vector<float>>;
-template class GrowingVectorMemory<LinearAlgebra::CUDAWrappers::Vector<double>>;
-#endif
-
 namespace internal
 {
   namespace GrowingVectorMemoryImplementation
   {
+#ifdef DEAL_II_WITH_CUDA
+    void
+    release_all_unused_cuda_memory();
+#endif
+
     void
     release_all_unused_memory()
     {
 #include "vector_memory_release.inst"
-
 #ifdef DEAL_II_WITH_CUDA
-      dealii::GrowingVectorMemory<dealii::LinearAlgebra::CUDAWrappers::Vector<
-        float>>::release_unused_memory();
-      dealii::GrowingVectorMemory<dealii::LinearAlgebra::CUDAWrappers::Vector<
-        double>>::release_unused_memory();
+      release_all_unused_cuda_memory();
 #endif
     }
   } // namespace GrowingVectorMemoryImplementation

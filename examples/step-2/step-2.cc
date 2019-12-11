@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 1999 - 2018 by the deal.II authors
+ * Copyright (C) 1999 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -75,7 +75,7 @@ void make_grid(Triangulation<2> &triangulation)
 
   for (unsigned int step = 0; step < 3; ++step)
     {
-      for (auto cell : triangulation.active_cell_iterators())
+      for (auto &cell : triangulation.active_cell_iterators())
         for (unsigned int v = 0; v < GeometryInfo<2>::vertices_per_cell; ++v)
           {
             const double distance_from_center =
@@ -252,7 +252,7 @@ void renumber_dofs(DoFHandler<2> &dof_handler)
 // number of other algorithms as well to renumber degrees of freedom. For
 // example, it would of course be ideal if all couplings were in the lower or
 // upper triangular part of a matrix, since then solving the linear system
-// would among to only forward or backward substitution. This is of course
+// would amount to only forward or backward substitution. This is of course
 // unachievable for symmetric sparsity patterns, but in some special
 // situations involving transport equations, this is possible by enumerating
 // degrees of freedom from the inflow boundary along streamlines to the

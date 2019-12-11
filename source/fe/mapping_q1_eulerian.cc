@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -77,7 +77,8 @@ MappingQ1Eulerian<dim, VectorType, spacedim>::get_vertices(
   Assert(dof_cell->active() == true, ExcInactiveCell());
 
   // now get the values of the shift vectors at the vertices
-  Vector<double> mapping_values(shiftmap_dof_handler->get_fe().dofs_per_cell);
+  Vector<typename VectorType::value_type> mapping_values(
+    shiftmap_dof_handler->get_fe().dofs_per_cell);
   dof_cell->get_dof_values(*euler_transform_vectors, mapping_values);
 
   for (unsigned int i = 0; i < GeometryInfo<dim>::vertices_per_cell; ++i)

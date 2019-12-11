@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2017 by the deal.II authors
+// Copyright (C) 2015 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -65,7 +65,8 @@ test(const double max_n_cell_ratio)
         }
   }
 
-  const unsigned int max_n_cell = max_n_cell_ratio * tr.n_global_active_cells();
+  const auto max_n_cell =
+    static_cast<unsigned int>(max_n_cell_ratio * tr.n_global_active_cells());
 
   parallel::distributed::GridRefinement ::refine_and_coarsen_fixed_number(
     tr, indicators, 0.2, 0.2, max_n_cell);

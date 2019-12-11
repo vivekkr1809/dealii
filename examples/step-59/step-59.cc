@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2018 by the deal.II authors
+ * Copyright (C) 2018 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -98,10 +98,6 @@ namespace Step59
   class Solution : public Function<dim>
   {
   public:
-    Solution()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> &p,
                          const unsigned int = 0) const override final
     {
@@ -135,10 +131,6 @@ namespace Step59
   class RightHandSide : public Function<dim>
   {
   public:
-    RightHandSide()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> &p,
                          const unsigned int = 0) const override final
     {
@@ -715,7 +707,7 @@ namespace Step59
   // matrices from a product of 1D mass and Laplace matrices. Our first task
   // is to compute the 1D matrices, which we do by first creating a 1D finite
   // element. Instead of anticipating FE_DGQHermite<1> here, we get the finite
-  // element's name from DoFHandler, replace the <dim> argument (2 or 3) by 1
+  // element's name from DoFHandler, replace the @p dim argument (2 or 3) by 1
   // to create a 1D name, and construct the 1D element by using FETools.
 
   template <int dim, int fe_degree, typename number>
@@ -1018,8 +1010,8 @@ namespace Step59
       additional_data.mapping_update_flags_boundary_faces =
         (update_gradients | update_JxW_values | update_normal_vectors |
          update_quadrature_points);
-      std::shared_ptr<MatrixFree<dim, double>> system_mf_storage(
-        new MatrixFree<dim, double>());
+      const auto system_mf_storage =
+        std::make_shared<MatrixFree<dim, double>>();
       system_mf_storage->reinit(dof_handler,
                                 dummy,
                                 QGauss<1>(fe.degree + 1),
@@ -1049,9 +1041,9 @@ namespace Step59
           (update_gradients | update_JxW_values);
         additional_data.mapping_update_flags_boundary_faces =
           (update_gradients | update_JxW_values);
-        additional_data.level_mg_handler = level;
-        std::shared_ptr<MatrixFree<dim, float>> mg_mf_storage_level(
-          new MatrixFree<dim, float>());
+        additional_data.mg_level = level;
+        const auto mg_mf_storage_level =
+          std::make_shared<MatrixFree<dim, float>>();
         mg_mf_storage_level->reinit(dof_handler,
                                     dummy,
                                     QGauss<1>(fe.degree + 1),
@@ -1235,7 +1227,7 @@ namespace Step59
         if (level > 0)
           {
             smoother_data[level].smoothing_range     = 15.;
-            smoother_data[level].degree              = 2;
+            smoother_data[level].degree              = 3;
             smoother_data[level].eig_cg_n_iterations = 10;
           }
         else
@@ -1244,8 +1236,8 @@ namespace Step59
             smoother_data[0].degree          = numbers::invalid_unsigned_int;
             smoother_data[0].eig_cg_n_iterations = mg_matrices[0].m();
           }
-        smoother_data[level].preconditioner.reset(
-          new PreconditionBlockJacobi<dim, fe_degree, float>());
+        smoother_data[level].preconditioner =
+          std::make_shared<PreconditionBlockJacobi<dim, fe_degree, float>>();
         smoother_data[level].preconditioner->initialize(mg_matrices[level]);
       }
     mg_smoother.initialize(mg_matrices, smoother_data);

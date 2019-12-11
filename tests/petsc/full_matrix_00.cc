@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2014 - 2018 by the deal.II authors
+// Copyright (C) 2014 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -88,7 +88,7 @@ main(int argc, char **argv)
     {
       Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
       {
-        // Standard intialiser...
+        // Standard initialiser...
         PETScWrappers::FullMatrix m(3, 3);
         test(m);
       }

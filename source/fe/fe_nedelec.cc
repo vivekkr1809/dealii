@@ -69,14 +69,14 @@ namespace internal
 
 template <int dim>
 FE_Nedelec<dim>::FE_Nedelec(const unsigned int order)
-  : FE_PolyTensor<PolynomialsNedelec<dim>, dim>(
-      order,
+  : FE_PolyTensor<dim>(
+      PolynomialsNedelec<dim>(order),
       FiniteElementData<dim>(get_dpo_vector(order),
                              dim,
                              order + 1,
                              FiniteElementData<dim>::Hcurl),
-      std::vector<bool>(PolynomialsNedelec<dim>::compute_n_pols(order), true),
-      std::vector<ComponentMask>(PolynomialsNedelec<dim>::compute_n_pols(order),
+      std::vector<bool>(PolynomialsNedelec<dim>::n_polynomials(order), true),
+      std::vector<ComponentMask>(PolynomialsNedelec<dim>::n_polynomials(order),
                                  std::vector<bool>(dim, true)))
 {
 #ifdef DEBUG_NEDELEC
@@ -87,7 +87,7 @@ FE_Nedelec<dim>::FE_Nedelec(const unsigned int order)
 
   const unsigned int n_dofs = this->dofs_per_cell;
 
-  this->mapping_type = mapping_nedelec;
+  this->mapping_kind = {mapping_nedelec};
   // First, initialize the
   // generalized support points and
   // quadrature weights, since they
@@ -2003,7 +2003,7 @@ FE_Nedelec<dim>::get_dpo_vector(const unsigned int degree, bool dg)
 
   if (dg)
     {
-      dpo[dim] = PolynomialsNedelec<dim>::compute_n_pols(degree);
+      dpo[dim] = PolynomialsNedelec<dim>::n_polynomials(degree);
     }
   else
     {
@@ -2475,7 +2475,7 @@ FE_Nedelec<dim>::get_face_interpolation_matrix(
 
       for (unsigned int i = 0; i < q; ++i)
         {
-          for (int j = 1; j < (int)GeometryInfo<dim>::lines_per_face; ++j)
+          for (unsigned int j = 1; j < GeometryInfo<dim>::lines_per_face; ++j)
             interpolation_matrix(j * p + i, j * q + i) = 1.0;
 
           for (unsigned int j = 0; j < q - 1; ++j)
@@ -3609,8 +3609,8 @@ FE_Nedelec<dim>::convert_generalized_support_point_values_to_dof_values(
                                                n_edge_points]
                                             [face_coordinates[face][1]];
 
-                      for (int i = 2;
-                           i < (int)GeometryInfo<dim>::lines_per_face;
+                      for (unsigned int i = 2;
+                           i < GeometryInfo<dim>::lines_per_face;
                            ++i)
                         for (unsigned int j = 0; j <= deg; ++j)
                           tmp -=

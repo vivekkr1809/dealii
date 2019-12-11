@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2018 by the deal.II authors
+ * Copyright (C) 2018 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -269,7 +269,7 @@ namespace Step37
           MatrixFree<dim, float>::AdditionalData::none;
         additional_data.mapping_update_flags =
           (update_gradients | update_JxW_values | update_quadrature_points);
-        additional_data.level_mg_handler = level;
+        additional_data.mg_level = level;
         std::shared_ptr<MatrixFree<dim, float>> mg_mf_storage_level(
           new MatrixFree<dim, float>());
         mg_mf_storage_level->reinit(dof_handler,
@@ -542,7 +542,7 @@ namespace Step37
           }
         else
           {
-            for (auto cell : triangulation.active_cell_iterators())
+            for (auto &cell : triangulation.active_cell_iterators())
               if (cell->is_locally_owned())
                 {
                   if ((cell->center()[0] < -8. && cell->center()[1] < 0) ||

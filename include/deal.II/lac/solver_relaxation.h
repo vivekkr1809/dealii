@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,7 +56,7 @@ DEAL_II_NAMESPACE_OPEN
  * @date 2010
  */
 template <typename VectorType = Vector<double>>
-class SolverRelaxation : public Solver<VectorType>
+class SolverRelaxation : public SolverBase<VectorType>
 {
 public:
   /**
@@ -95,7 +95,7 @@ public:
 template <class VectorType>
 SolverRelaxation<VectorType>::SolverRelaxation(SolverControl &cn,
                                                const AdditionalData &)
-  : Solver<VectorType>(cn)
+  : SolverBase<VectorType>(cn)
 {}
 
 

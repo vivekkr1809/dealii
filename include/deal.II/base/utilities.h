@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,12 +24,15 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 
 #ifdef DEAL_II_WITH_TRILINOS
 #  include <Epetra_Comm.h>
 #  include <Epetra_Map.h>
+#  include <Teuchos_Comm.hpp>
+#  include <Teuchos_RCP.hpp>
 #  ifdef DEAL_II_WITH_MPI
 #    include <Epetra_MpiComm.h>
 #  else
@@ -37,8 +40,11 @@
 #  endif
 #endif
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
+
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/archive/binary_oarchive.hpp>
+#include <boost/core/demangle.hpp>
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/complex.hpp>
 #include <boost/serialization/vector.hpp>
@@ -50,11 +56,15 @@
 #  include <boost/iostreams/stream.hpp>
 #endif
 
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+
 DEAL_II_NAMESPACE_OPEN
 
 // forward declare Point
+#ifndef DOXYGEN
 template <int dim, typename Number>
 class Point;
+#endif
 
 /**
  * A namespace for utility functions that are not particularly specific to
@@ -87,6 +97,9 @@ namespace Utilities
    *
    * The depth of the Hilbert curve (i.e. the number of bits per dimension) by
    * default is equal to <code>64</code>.
+   *
+   * @note This function can also handle degenerate cases, e.g. when the bounding
+   * box has zero size in one of the dimensions.
    */
   template <int dim, typename Number>
   std::vector<std::array<std::uint64_t, dim>>
@@ -161,9 +174,25 @@ namespace Utilities
   /**
    * Determine how many digits are needed to represent numbers at most as
    * large as the given number.
+   *
+   * @author Niklas Fehn, 2019
    */
   unsigned int
   needed_digits(const unsigned int max_number);
+
+  /**
+   * This function allows to cut off a floating point number @p number
+   * after @p n_digits of accuracy, i.e., after @p n_digits decimal places
+   * in scientific floating point notation. When interpreted as rounding
+   * operation, this function reduces the absolute value of a floating point
+   * number and always rounds towards zero, since decimal places are simply
+   * cut off.
+   *
+   * @author Niklas Fehn, 2019
+   */
+  template <typename Number>
+  Number
+  truncate_to_n_digits(const Number number, const unsigned int n_digits);
 
   /**
    * Given a string, convert it to an integer. Throw an assertion if that is
@@ -340,6 +369,18 @@ namespace Utilities
   double
   generate_normal_random_number(const double a, const double sigma);
 
+  /**
+   * Return a string description of the type of the variable @p t.
+   *
+   * In general, C++ uses mangled names to identify types. This function
+   * uses boost::core::demangle to return a human readable string describing
+   * the type of the variable passed as argument.
+   *
+   * @author Luca Heltai, 2019.
+   */
+  template <class T>
+  std::string
+  type_to_string(const T &t);
 
   /**
    * Calculate a fixed power, provided as a template argument, of a number.
@@ -404,9 +445,10 @@ namespace Utilities
   constexpr unsigned int
   pow(const unsigned int base, const int iexp)
   {
-#ifdef DEAL_II_WITH_CXX14
-#  ifdef DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR
-#    if defined(DEAL_II_HAVE_BUILTIN_EXPECT) && defined(__INTEL_COMPILER)
+#if defined(DEBUG) && defined(DEAL_II_WITH_CXX14) && \
+  defined(DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR)
+    // Up to __builtin_expect this is the same code as in the 'Assert' macro.
+    // The call to __builtin_expect turns out to be problematic.
     if (!(iexp >= 0))
       ::dealii::deal_II_exceptions::internals::issue_error_noreturn(
         ::dealii::deal_II_exceptions::internals::abort_or_throw_on_exception,
@@ -416,10 +458,6 @@ namespace Utilities
         "iexp>=0",
         "ExcMessage(\"The exponent must not be negative!\")",
         ExcMessage("The exponent must not be negative!"));
-#    else
-    Assert(iexp >= 0, ExcMessage("The exponent must not be negative!"));
-#    endif
-#  endif
 #endif
     // The "exponentiation by squaring" algorithm used below has to be
     // compressed to one statement due to C++11's restrictions on constexpr
@@ -433,7 +471,7 @@ namespace Utilities
     // // we need to account for that.
     // const unsigned int prefactor = (iexp % 2 == 1) ? base : 1;
     //
-    // // a^b = (a*a)^(b/2)      for b evenb
+    // // a^b = (a*a)^(b/2)      for b even
     // // a^b = a*(a*a)^((b-1)/2 for b odd
     // return prefactor * dealii::Utilities::pow(base*base, iexp/2);
     // </code>
@@ -855,7 +893,7 @@ namespace Utilities
      * leaving this task to the calling site.
      */
     void
-    posix_memalign(void **memptr, size_t alignment, size_t size);
+    posix_memalign(void **memptr, std::size_t alignment, std::size_t size);
   } // namespace System
 
 
@@ -890,6 +928,17 @@ namespace Utilities
      */
     const Epetra_Comm &
     comm_self();
+
+    /**
+     * Return a Teuchos::Comm object needed for creation of Tpetra::Maps.
+     *
+     * If deal.II has been configured to use a compiler that does not support
+     * MPI then the resulting communicator will be a serial one. Otherwise,
+     * the communicator will correspond to MPI_COMM_SELF, i.e. a communicator
+     * that comprises only this one processor.
+     */
+    const Teuchos::RCP<const Teuchos::Comm<int>> &
+    tpetra_comm_self();
 
     /**
      * Given a communicator, duplicate it. If the given communicator is
@@ -997,27 +1046,30 @@ namespace Utilities
 {
   template <int N, typename T>
   inline T
-  fixed_power(const T n)
+  fixed_power(const T x)
   {
-    Assert(N >= 0, ExcNotImplemented());
-    switch (N)
-      {
-        case 0:
-          return dealii::internal::NumberType<T>::value(1);
-        case 1:
-          return n;
-        case 2:
-          return n * n;
-        case 3:
-          return n * n * n;
-        case 4:
-          return n * n * n * n;
-        default:
-          T result = n;
-          for (int d = 1; d < N; ++d)
-            result *= n;
-          return result;
-      }
+    Assert(
+      !std::is_integral<T>::value || (N >= 0),
+      ExcMessage(
+        "The non-type template parameter N must be a non-negative integer for integral type T"));
+
+    if (N == 0)
+      return T(1.);
+    else if (N < 0)
+      return T(1.) / fixed_power<-N>(x);
+    else
+      // Use exponentiation by squaring:
+      return ((N % 2 == 1) ? x * fixed_power<N / 2>(x * x) :
+                             fixed_power<N / 2>(x * x));
+  }
+
+
+
+  template <class T>
+  inline std::string
+  type_to_string(const T &t)
+  {
+    return boost::core::demangle(typeid(t).name());
   }
 
 
@@ -1138,6 +1190,8 @@ namespace Utilities
     // the data is never compressed when we can't use zlib.
     (void)allow_compression;
 
+    std::size_t size = 0;
+
     // see if the object is small and copyable via memcpy. if so, use
     // this fast path. otherwise, we have to go through the BOOST
     // serialization machinery
@@ -1155,25 +1209,25 @@ namespace Utilities
 #  endif
 #endif
       {
-        const size_t previous_size = dest_buffer.size();
+        const std::size_t previous_size = dest_buffer.size();
         dest_buffer.resize(previous_size + sizeof(T));
 
         std::memcpy(dest_buffer.data() + previous_size, &object, sizeof(T));
 
-        return sizeof(T);
+        size = sizeof(T);
       }
     else
       {
         // use buffer as the target of a compressing
         // stream into which we serialize the current object
-        const size_t previous_size = dest_buffer.size();
+        const std::size_t previous_size = dest_buffer.size();
 #ifdef DEAL_II_WITH_ZLIB
         if (allow_compression)
           {
             boost::iostreams::filtering_ostream out;
             out.push(
               boost::iostreams::gzip_compressor(boost::iostreams::gzip_params(
-                boost::iostreams::gzip::best_compression)));
+                boost::iostreams::gzip::default_compression)));
             out.push(boost::iostreams::back_inserter(dest_buffer));
 
             boost::archive::binary_oarchive archive(out);
@@ -1192,8 +1246,10 @@ namespace Utilities
             std::move(s.begin(), s.end(), std::back_inserter(dest_buffer));
           }
 
-        return (dest_buffer.size() - previous_size);
+        size = dest_buffer.size() - previous_size;
       }
+
+    return size;
   }
 
 
@@ -1213,6 +1269,8 @@ namespace Utilities
          const std::vector<char>::const_iterator &cend,
          const bool                               allow_compression)
   {
+    T object;
+
     // the data is never compressed when we can't use zlib.
     (void)allow_compression;
 
@@ -1234,14 +1292,11 @@ namespace Utilities
 #endif
       {
         Assert(std::distance(cbegin, cend) == sizeof(T), ExcInternalError());
-        T object;
         std::memcpy(&object, &*cbegin, sizeof(T));
-        return object;
       }
     else
       {
         std::string decompressed_buffer;
-        T           object;
 
         // first decompress the buffer
 #ifdef DEAL_II_WITH_ZLIB
@@ -1264,8 +1319,9 @@ namespace Utilities
         boost::archive::binary_iarchive archive(in);
 
         archive >> object;
-        return object;
       }
+
+    return object;
   }
 
 

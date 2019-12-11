@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2018 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -40,7 +40,7 @@ DEAL_II_NAMESPACE_OPEN
 namespace parallel
 {
   template <int dim, int spacedim>
-  Triangulation<dim, spacedim>::Triangulation(
+  TriangulationBase<dim, spacedim>::TriangulationBase(
     MPI_Comm mpi_communicator,
     const typename dealii::Triangulation<dim, spacedim>::MeshSmoothing
                smooth_grid,
@@ -54,32 +54,29 @@ namespace parallel
 #ifndef DEAL_II_WITH_MPI
     Assert(false,
            ExcMessage("You compiled deal.II without MPI support, for "
-                      "which parallel::Triangulation is not available."));
+                      "which parallel::TriangulationBase is not available."));
 #endif
-    number_cache.n_locally_owned_active_cells.resize(n_subdomains);
   }
 
 
 
   template <int dim, int spacedim>
   void
-  Triangulation<dim, spacedim>::copy_triangulation(
+  TriangulationBase<dim, spacedim>::copy_triangulation(
     const dealii::Triangulation<dim, spacedim> &other_tria)
   {
 #ifndef DEAL_II_WITH_MPI
     (void)other_tria;
     Assert(false,
            ExcMessage("You compiled deal.II without MPI support, for "
-                      "which parallel::Triangulation is not available."));
+                      "which parallel::TriangulationBase is not available."));
 #else
     dealii::Triangulation<dim, spacedim>::copy_triangulation(other_tria);
 
-    if (const dealii::parallel::Triangulation<dim, spacedim> *other_tria_x =
-          dynamic_cast<const dealii::parallel::Triangulation<dim, spacedim> *>(
-            &other_tria))
+    if (const dealii::parallel::TriangulationBase<dim, spacedim> *other_tria_x =
+          dynamic_cast<const dealii::parallel::TriangulationBase<dim, spacedim>
+                         *>(&other_tria))
       {
-        mpi_communicator = other_tria_x->get_communicator();
-
         // release unused vector memory because we will have very different
         // vectors now
         ::dealii::internal::GrowingVectorMemoryImplementation::
@@ -92,14 +89,12 @@ namespace parallel
 
   template <int dim, int spacedim>
   std::size_t
-  Triangulation<dim, spacedim>::memory_consumption() const
+  TriangulationBase<dim, spacedim>::memory_consumption() const
   {
     std::size_t mem =
       this->dealii::Triangulation<dim, spacedim>::memory_consumption() +
       MemoryConsumption::memory_consumption(mpi_communicator) +
       MemoryConsumption::memory_consumption(my_subdomain) +
-      MemoryConsumption::memory_consumption(
-        number_cache.n_locally_owned_active_cells) +
       MemoryConsumption::memory_consumption(
         number_cache.n_global_active_cells) +
       MemoryConsumption::memory_consumption(number_cache.n_global_levels);
@@ -107,7 +102,7 @@ namespace parallel
   }
 
   template <int dim, int spacedim>
-  Triangulation<dim, spacedim>::~Triangulation()
+  TriangulationBase<dim, spacedim>::~TriangulationBase()
   {
     // release unused vector memory because the vector layout is going to look
     // very different now
@@ -116,43 +111,64 @@ namespace parallel
   }
 
   template <int dim, int spacedim>
-  Triangulation<dim, spacedim>::NumberCache::NumberCache()
-    : n_global_active_cells(0)
+  TriangulationBase<dim, spacedim>::NumberCache::NumberCache()
+    : n_locally_owned_active_cells(0)
     , n_global_levels(0)
   {}
 
   template <int dim, int spacedim>
   unsigned int
-  Triangulation<dim, spacedim>::n_locally_owned_active_cells() const
+  TriangulationBase<dim, spacedim>::n_locally_owned_active_cells() const
   {
-    return number_cache.n_locally_owned_active_cells[my_subdomain];
+    return number_cache.n_locally_owned_active_cells;
   }
 
   template <int dim, int spacedim>
   unsigned int
-  Triangulation<dim, spacedim>::n_global_levels() const
+  TriangulationBase<dim, spacedim>::n_global_levels() const
   {
     return number_cache.n_global_levels;
   }
 
   template <int dim, int spacedim>
   types::global_dof_index
-  Triangulation<dim, spacedim>::n_global_active_cells() const
+  TriangulationBase<dim, spacedim>::n_global_active_cells() const
   {
     return number_cache.n_global_active_cells;
   }
 
   template <int dim, int spacedim>
-  const std::vector<unsigned int> &
-  Triangulation<dim, spacedim>::n_locally_owned_active_cells_per_processor()
-    const
+  std::vector<unsigned int>
+  TriangulationBase<dim, spacedim>::
+    compute_n_locally_owned_active_cells_per_processor() const
   {
-    return number_cache.n_locally_owned_active_cells;
+    ;
+#ifdef DEAL_II_WITH_MPI
+    std::vector<unsigned int> n_locally_owned_active_cells_per_processor(
+      Utilities::MPI::n_mpi_processes(this->mpi_communicator), 0);
+
+    if (this->n_levels() > 0)
+      {
+        const int ierr =
+          MPI_Allgather(&number_cache.n_locally_owned_active_cells,
+                        1,
+                        MPI_UNSIGNED,
+                        n_locally_owned_active_cells_per_processor.data(),
+                        1,
+                        MPI_UNSIGNED,
+                        this->mpi_communicator);
+        AssertThrowMPI(ierr);
+      }
+
+    return n_locally_owned_active_cells_per_processor;
+#else
+    return {number_cache.n_locally_owned_active_cells};
+#endif
   }
 
   template <int dim, int spacedim>
-  MPI_Comm
-  Triangulation<dim, spacedim>::get_communicator() const
+  const MPI_Comm &
+  TriangulationBase<dim, spacedim>::get_communicator() const
   {
     return mpi_communicator;
   }
@@ -160,18 +176,11 @@ namespace parallel
 #ifdef DEAL_II_WITH_MPI
   template <int dim, int spacedim>
   void
-  Triangulation<dim, spacedim>::update_number_cache()
+  TriangulationBase<dim, spacedim>::update_number_cache()
   {
-    Assert(number_cache.n_locally_owned_active_cells.size() ==
-             Utilities::MPI::n_mpi_processes(this->mpi_communicator),
-           ExcInternalError());
-
-    std::fill(number_cache.n_locally_owned_active_cells.begin(),
-              number_cache.n_locally_owned_active_cells.end(),
-              0);
-
     number_cache.ghost_owners.clear();
     number_cache.level_ghost_owners.clear();
+    number_cache.n_locally_owned_active_cells = 0;
 
     if (this->n_levels() == 0)
       {
@@ -206,25 +215,11 @@ namespace parallel
            cell != this->end();
            ++cell)
         if (cell->subdomain_id() == my_subdomain)
-          ++number_cache.n_locally_owned_active_cells[my_subdomain];
-
-    unsigned int send_value =
-      number_cache.n_locally_owned_active_cells[my_subdomain];
-    const int ierr =
-      MPI_Allgather(&send_value,
-                    1,
-                    MPI_UNSIGNED,
-                    number_cache.n_locally_owned_active_cells.data(),
-                    1,
-                    MPI_UNSIGNED,
-                    this->mpi_communicator);
-    AssertThrowMPI(ierr);
+          ++number_cache.n_locally_owned_active_cells;
 
     number_cache.n_global_active_cells =
-      std::accumulate(number_cache.n_locally_owned_active_cells.begin(),
-                      number_cache.n_locally_owned_active_cells.end(),
-                      /* ensure sum is computed with correct data type:*/
-                      static_cast<types::global_dof_index>(0));
+      Utilities::MPI::sum(number_cache.n_locally_owned_active_cells,
+                          this->mpi_communicator);
     number_cache.n_global_levels =
       Utilities::MPI::max(this->n_levels(), this->mpi_communicator);
   }
@@ -233,7 +228,7 @@ namespace parallel
 
   template <int dim, int spacedim>
   void
-  Triangulation<dim, spacedim>::fill_level_ghost_owners()
+  TriangulationBase<dim, spacedim>::fill_level_ghost_owners()
   {
     number_cache.level_ghost_owners.clear();
 
@@ -258,6 +253,9 @@ namespace parallel
       int ierr = MPI_Barrier(this->mpi_communicator);
       AssertThrowMPI(ierr);
 
+      const int mpi_tag = Utilities::MPI::internal::Tags::
+        triangulation_base_fill_level_ghost_owners;
+
       // important: preallocate to avoid (re)allocation:
       std::vector<MPI_Request> requests(
         this->number_cache.level_ghost_owners.size());
@@ -273,7 +271,7 @@ namespace parallel
                            1,
                            MPI_UNSIGNED,
                            *it,
-                           9001,
+                           mpi_tag,
                            this->mpi_communicator,
                            &requests[req_counter]);
           AssertThrowMPI(ierr);
@@ -289,7 +287,7 @@ namespace parallel
                           1,
                           MPI_UNSIGNED,
                           *it,
-                          9001,
+                          mpi_tag,
                           this->mpi_communicator,
                           MPI_STATUS_IGNORE);
           AssertThrowMPI(ierr);
@@ -316,14 +314,14 @@ namespace parallel
 
   template <int dim, int spacedim>
   void
-  Triangulation<dim, spacedim>::update_number_cache()
+  TriangulationBase<dim, spacedim>::update_number_cache()
   {
     Assert(false, ExcNotImplemented());
   }
 
   template <int dim, int spacedim>
   void
-  Triangulation<dim, spacedim>::fill_level_ghost_owners()
+  TriangulationBase<dim, spacedim>::fill_level_ghost_owners()
   {
     Assert(false, ExcNotImplemented());
   }
@@ -332,7 +330,7 @@ namespace parallel
 
   template <int dim, int spacedim>
   types::subdomain_id
-  Triangulation<dim, spacedim>::locally_owned_subdomain() const
+  TriangulationBase<dim, spacedim>::locally_owned_subdomain() const
   {
     return my_subdomain;
   }
@@ -341,7 +339,7 @@ namespace parallel
 
   template <int dim, int spacedim>
   const std::set<types::subdomain_id> &
-  Triangulation<dim, spacedim>::ghost_owners() const
+  TriangulationBase<dim, spacedim>::ghost_owners() const
   {
     return number_cache.ghost_owners;
   }
@@ -350,7 +348,7 @@ namespace parallel
 
   template <int dim, int spacedim>
   const std::set<types::subdomain_id> &
-  Triangulation<dim, spacedim>::level_ghost_owners() const
+  TriangulationBase<dim, spacedim>::level_ghost_owners() const
   {
     return number_cache.level_ghost_owners;
   }
@@ -359,37 +357,71 @@ namespace parallel
 
   template <int dim, int spacedim>
   std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-  Triangulation<dim, spacedim>::compute_vertices_with_ghost_neighbors() const
+  TriangulationBase<dim, spacedim>::compute_vertices_with_ghost_neighbors()
+    const
   {
-    // TODO: we are not treating periodic neighbors correctly here. If we do
-    // we can remove the overriding implementation for p::d::Triangulation
-    // that is currently using a p4est callback to get correct ghost neighbors
-    // over periodic faces.
-    Assert(this->get_periodic_face_map().size() == 0, ExcNotImplemented());
+    // 1) collect for each vertex on periodic faces all vertices it coincides
+    //    with
+    std::map<unsigned int, std::vector<unsigned int>> coinciding_vertex_groups;
+    std::map<unsigned int, unsigned int> vertex_to_coinciding_vertex_group;
 
+    GridTools::collect_coinciding_vertices(*this,
+                                           coinciding_vertex_groups,
+                                           vertex_to_coinciding_vertex_group);
 
+    // 2) collect vertices belonging to local cells
     std::vector<bool> vertex_of_own_cell(this->n_vertices(), false);
-
-    for (auto cell : this->active_cell_iterators())
+    for (const auto &cell : this->active_cell_iterators())
       if (cell->is_locally_owned())
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           vertex_of_own_cell[cell->vertex_index(v)] = true;
 
-    std::map<unsigned int, std::set<dealii::types::subdomain_id>> result;
-    for (auto cell : this->active_cell_iterators())
+    // 3) for each vertex belonging to a locally owned cell all ghost
+    //    neighbors (including the periodic own)
+    std::map<unsigned int, std::set<types::subdomain_id>> result;
+
+    // loop over all active ghost cells
+    for (const auto &cell : this->active_cell_iterators())
       if (cell->is_ghost())
         {
           const types::subdomain_id owner = cell->subdomain_id();
+
+          // loop over all its vertices
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
                ++v)
             {
+              // set owner if vertex belongs to a local cell
               if (vertex_of_own_cell[cell->vertex_index(v)])
                 result[cell->vertex_index(v)].insert(owner);
+
+              // mark also nodes coinciding due to periodicity
+              auto coinciding_vertex_group =
+                vertex_to_coinciding_vertex_group.find(cell->vertex_index(v));
+              if (coinciding_vertex_group !=
+                  vertex_to_coinciding_vertex_group.end())
+                for (auto coinciding_vertex :
+                     coinciding_vertex_groups[coinciding_vertex_group->second])
+                  if (vertex_of_own_cell[coinciding_vertex])
+                    result[coinciding_vertex].insert(owner);
             }
         }
 
     return result;
   }
+
+
+
+  template <int dim, int spacedim>
+  DistributedTriangulationBase<dim, spacedim>::DistributedTriangulationBase(
+    MPI_Comm mpi_communicator,
+    const typename dealii::Triangulation<dim, spacedim>::MeshSmoothing
+               smooth_grid,
+    const bool check_for_distorted_cells)
+    : dealii::parallel::TriangulationBase<dim, spacedim>(
+        mpi_communicator,
+        smooth_grid,
+        check_for_distorted_cells)
+  {}
 
 } // end namespace parallel
 

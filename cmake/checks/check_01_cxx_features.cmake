@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2017 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -24,12 +24,23 @@
 #   DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH
 #   DEAL_II_HAVE_CXX11_IS_TRIVIALLY_COPYABLE
 #   DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR
-#   DEAL_II_HAVE_CXX17_SPECIAL_MATH_FUNCTIONS
 #   DEAL_II_HAVE_FP_EXCEPTIONS
 #   DEAL_II_HAVE_COMPLEX_OPERATOR_OVERLOADS
 #
+#   DEAL_II_CONSTEXPR
 #   DEAL_II_FALLTHROUGH
 #
+
+
+#
+# MSVC needs different compiler flags to turn warnings into errors
+# additionally a suitable exception handling model is required
+#
+IF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  SET(_werror_flag "/WX /EHsc")
+ELSE()
+  SET(_werror_flag "-Werror")
+ENDIF()
 
 
 ########################################################################
@@ -99,9 +110,16 @@ ENDIF()
 
 MACRO(_check_cxx_flag _suffix)
   IF("${DEAL_II_CXX_VERSION_FLAG}" STREQUAL "")
-    CHECK_CXX_COMPILER_FLAG("-std=c++${_suffix}" DEAL_II_HAVE_FLAG_stdcxx${_suffix})
-    IF(DEAL_II_HAVE_FLAG_stdcxx${_suffix})
-      SET(DEAL_II_CXX_VERSION_FLAG "-std=c++${_suffix}")
+    IF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+      CHECK_CXX_COMPILER_FLAG("/std:c++${_suffix}" DEAL_II_HAVE_FLAG_stdcxx${_suffix})
+      IF(DEAL_II_HAVE_FLAG_stdcxx${_suffix})
+        SET(DEAL_II_CXX_VERSION_FLAG "/std:c++${_suffix}")
+      ENDIF()
+    ELSE()
+      CHECK_CXX_COMPILER_FLAG("-std=c++${_suffix}" DEAL_II_HAVE_FLAG_stdcxx${_suffix})
+      IF(DEAL_II_HAVE_FLAG_stdcxx${_suffix})
+        SET(DEAL_II_CXX_VERSION_FLAG "-std=c++${_suffix}")
+      ENDIF()
     ENDIF()
   ENDIF()
 ENDMACRO()
@@ -126,7 +144,7 @@ IF(NOT DEFINED DEAL_II_WITH_CXX17 OR DEAL_II_WITH_CXX17)
   IF(NOT "${DEAL_II_CXX_VERSION_FLAG}" STREQUAL "")
     # Set CMAKE_REQUIRED_FLAGS for the unit tests
     MESSAGE(STATUS "Using C++ version flag \"${DEAL_II_CXX_VERSION_FLAG}\"")
-    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_VERSION_FLAG} -Werror")
+    ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_VERSION_FLAG} ${_werror_flag}")
 
     UNSET_IF_CHANGED(CHECK_CXX_FEATURES_FLAGS_CXX17_SAVED
       "${CMAKE_REQUIRED_FLAGS}${DEAL_II_CXX_VERSION_FLAG}"
@@ -512,6 +530,9 @@ _bailout("17" "1z")
 # try to avoid adding an extra flag by doing one last test:
 #
 RESET_CMAKE_REQUIRED()
+IF(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "/Zc:__cplusplus")
+ENDIF()
 CHECK_CXX_SOURCE_COMPILES(
   "
   #include <memory>
@@ -527,6 +548,7 @@ CHECK_CXX_SOURCE_COMPILES(
   }
   "
   DEAL_II_COMPILER_DEFAULTS_TO_CXX11_OR_NEWER)
+RESET_CMAKE_REQUIRED()
 
 IF(_user_provided_cxx_version_flag OR
     NOT DEAL_II_COMPILER_DEFAULTS_TO_CXX11_OR_NEWER OR
@@ -559,7 +581,6 @@ UNSET_IF_CHANGED(CHECK_CXX_FEATURES_FLAGS_SAVED
   DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH
   DEAL_II_HAVE_CXX11_IS_TRIVIALLY_COPYABLE
   DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR
-  DEAL_II_HAVE_CXX17_SPECIAL_MATH_FUNCTIONS
   DEAL_II_HAVE_FP_EXCEPTIONS
   DEAL_II_HAVE_COMPLEX_OPERATOR_OVERLOADS
   )
@@ -569,38 +590,69 @@ UNSET_IF_CHANGED(CHECK_CXX_FEATURES_FLAGS_SAVED
 # but a compiler extension in earlier language versions: check both
 # possibilities here.
 #
-IF(DEAL_II_WITH_CXX17)
+ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_FLAGS}")
+ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${_werror_flag}")
+IF(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Wno-unused-command-line-argument")
+ENDIF()
+#
+# first try the attribute [[fallthrough]]
+#
+CHECK_CXX_SOURCE_COMPILES(
+  "
+  int main()
+  {
+    int i = 42;
+    int j = 10;
+    switch(i)
+      {
+      case 1:
+        ++j;
+        [[fallthrough]];
+      case 2:
+        ++j;
+        [[fallthrough]];
+      default:
+        break;
+      }
+   }
+   "
+   DEAL_II_HAVE_CXX17_ATTRIBUTE_FALLTHROUGH
+   )
+
+#
+# see if the current compiler configuration supports the GCC extension
+# __attribute__((fallthrough)) syntax instead
+#
+CHECK_CXX_SOURCE_COMPILES(
+  "
+  int main()
+  {
+    int i = 42;
+    int j = 10;
+    switch(i)
+      {
+      case 1:
+        ++j;
+        __attribute__((fallthrough));
+      case 2:
+        ++j;
+        __attribute__((fallthrough));
+      default:
+        break;
+      }
+  }
+  "
+  DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH
+  )
+
+RESET_CMAKE_REQUIRED()
+IF(DEAL_II_HAVE_CXX17_ATTRIBUTE_FALLTHROUGH)
   SET(DEAL_II_FALLTHROUGH "[[fallthrough]]")
+ELSEIF(DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH)
+  SET(DEAL_II_FALLTHROUGH "__attribute__((fallthrough))")
 ELSE()
-  # see if the current compiler configuration supports the GCC extension
-  # __attribute__((fallthrough)) syntax instead
-  ADD_FLAGS(CMAKE_REQUIRED_FLAGS "-Werror -Wextra ${DEAL_II_CXX_VERSION_FLAG}")
-  CHECK_CXX_SOURCE_COMPILES(
-    "
-    int main()
-    {
-      int i = 42;
-      int j = 10;
-      switch(i)
-        {
-        case 1:
-          ++j;
-          __attribute__((fallthrough));
-        case 2:
-          ++j;
-          __attribute__((fallthrough));
-        default:
-          break;
-        }
-    }
-    "
-    DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH)
-  RESET_CMAKE_REQUIRED()
-  IF(DEAL_II_HAVE_ATTRIBUTE_FALLTHROUGH)
-    SET(DEAL_II_FALLTHROUGH "__attribute__((fallthrough))")
-  ELSE()
-    SET(DEAL_II_FALLTHROUGH " ")
-  ENDIF()
+  SET(DEAL_II_FALLTHROUGH " ")
 ENDIF()
 
 ADD_FLAGS(CMAKE_REQUIRED_FLAGS "${DEAL_II_CXX_VERSION_FLAG}")
@@ -679,43 +731,45 @@ CHECK_CXX_SOURCE_COMPILES(
 # expression, C++14 allows to call non-constexpr functions from constexpr
 # functions. Unfortunately, not all compilers obey the standard in this regard.
 #
-CHECK_CXX_SOURCE_COMPILES(
-  "
-  void bar()
-  {}
+# In some cases, MSVC 2019 crashes with an internal compiler error when we
+# declare the respective functions as 'constexpr' even though the test below
+# passes, see #9080.
+#
+IF(NOT CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+  CHECK_CXX_SOURCE_COMPILES(
+    "
+    #define Assert(x,y) if (!(x)) throw y;
+    void bar()
+    {}
 
-  constexpr int
-  foo(const int n)
-  {
-    if(!(n >= 0))
-      bar();
-    return n;
-  }
+    constexpr int
+    foo(const int n)
+    {
+      Assert(n>0, \"hello\");
+      if(!(n >= 0))
+        bar();
+      return n;
+    }
 
-  int main()
-  {
-    constexpr unsigned int n=foo(1);
-    return n;
-  }
-  "
-  DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR)
+    int main()
+    {
+      constexpr unsigned int n=foo(1);
+      return n;
+    }
+    "
+    DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR)
+ENDIF()
 
 #
-# Not all compilers with C++17 support include the new special math
-# functions. Check this separately so that we can use C++17 compilers that don't
-# support it.
+# The macro DEAL_II_CONSTEXPR allows using c++ constexpr features in a portable way.
+# Here we enable it only when a constexpr function can call simple non-constexpr
+# functions. This requirement is probabely very conservative in most cases, but
+# it will prevent breaking builds with certain compilers.
 #
-CHECK_CXX_SOURCE_COMPILES(
-  "
-  #include <cmath>
-
-  int main()
-  {
-    std::cyl_bessel_j(1.0, 1.0);
-    std::cyl_bessel_jf(1.0f, 1.0f);
-    std::cyl_bessel_jl(1.0, 1.0);
-  }
-  "
-  DEAL_II_HAVE_CXX17_SPECIAL_MATH_FUNCTIONS)
+IF (DEAL_II_HAVE_CXX14_CONSTEXPR_CAN_CALL_NONCONSTEXPR)
+  SET(DEAL_II_CONSTEXPR "constexpr")
+ELSE()
+  SET(DEAL_II_CONSTEXPR " ")
+ENDIF()
 
 RESET_CMAKE_REQUIRED()

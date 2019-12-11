@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2002 - 2018 by the deal.II authors
+ * Copyright (C) 2002 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -522,17 +522,21 @@ namespace Step14
       Threads::Task<> rhs_task =
         Threads::new_task(&Solver<dim>::assemble_rhs, *this, linear_system.rhs);
 
+      auto worker =
+        [this](const typename DoFHandler<dim>::active_cell_iterator &cell,
+               AssemblyScratchData &scratch_data,
+               AssemblyCopyData &   copy_data) {
+          this->local_assemble_matrix(cell, scratch_data, copy_data);
+        };
+
+      auto copier = [this, &linear_system](const AssemblyCopyData &copy_data) {
+        this->copy_local_to_global(copy_data, linear_system);
+      };
+
       WorkStream::run(dof_handler.begin_active(),
                       dof_handler.end(),
-                      std::bind(&Solver<dim>::local_assemble_matrix,
-                                this,
-                                std::placeholders::_1,
-                                std::placeholders::_2,
-                                std::placeholders::_3),
-                      std::bind(&Solver<dim>::copy_local_to_global,
-                                this,
-                                std::placeholders::_1,
-                                std::ref(linear_system)),
+                      worker,
+                      copier,
                       AssemblyScratchData(*fe, *quadrature),
                       AssemblyCopyData());
       linear_system.hanging_node_constraints.condense(linear_system.matrix);
@@ -878,7 +882,7 @@ namespace Step14
         this->triangulation->n_active_cells());
       KellyErrorEstimator<dim>::estimate(
         this->dof_handler,
-        QGauss<dim - 1>(3),
+        QGauss<dim - 1>(this->fe->degree + 1),
         std::map<types::boundary_id, const Function<dim> *>(),
         this->solution,
         estimated_error_per_cell);
@@ -1132,10 +1136,6 @@ namespace Step14
       class BoundaryValues : public Function<dim>
       {
       public:
-        BoundaryValues()
-          : Function<dim>()
-        {}
-
         virtual double value(const Point<dim> & p,
                              const unsigned int component) const;
       };
@@ -1144,10 +1144,6 @@ namespace Step14
       class RightHandSide : public Function<dim>
       {
       public:
-        RightHandSide()
-          : Function<dim>()
-        {}
-
         virtual double value(const Point<dim> & p,
                              const unsigned int component) const;
       };
@@ -1530,7 +1526,7 @@ namespace Step14
       // Initialize a <code>FEValues</code> object with a quadrature formula,
       // have abbreviations for the number of quadrature points and shape
       // functions...
-      QGauss<dim>        quadrature(4);
+      QGauss<dim>        quadrature(dof_handler.get_fe().degree + 1);
       FEValues<dim>      fe_values(dof_handler.get_fe(),
                               quadrature,
                               update_gradients | update_quadrature_points |
@@ -2191,24 +2187,28 @@ namespace Step14
       FaceIntegrals face_integrals;
       for (const auto &cell :
            DualSolver<dim>::dof_handler.active_cell_iterators())
-        for (unsigned int face_no = 0;
-             face_no < GeometryInfo<dim>::faces_per_cell;
-             ++face_no)
-          face_integrals[cell->face(face_no)] = -1e20;
+        for (const auto &face : cell->face_iterators())
+          face_integrals[face] = -1e20;
+
+      auto worker = [this,
+                     &error_indicators,
+                     &face_integrals](const active_cell_iterator & cell,
+                                      WeightedResidualScratchData &scratch_data,
+                                      WeightedResidualCopyData &   copy_data) {
+        this->estimate_on_one_cell(
+          cell, scratch_data, copy_data, error_indicators, face_integrals);
+      };
+
+      auto do_nothing_copier =
+        std::function<void(const WeightedResidualCopyData &)>();
 
       // Then hand it all off to WorkStream::run() to compute the
       // estimators for all cells in parallel:
       WorkStream::run(
         DualSolver<dim>::dof_handler.begin_active(),
         DualSolver<dim>::dof_handler.end(),
-        std::bind(&WeightedResidual<dim>::estimate_on_one_cell,
-                  this,
-                  std::placeholders::_1,
-                  std::placeholders::_2,
-                  std::placeholders::_3,
-                  std::ref(error_indicators),
-                  std::ref(face_integrals)),
-        std::function<void(const WeightedResidualCopyData &)>(),
+        worker,
+        do_nothing_copier,
         WeightedResidualScratchData(*DualSolver<dim>::fe,
                                     *DualSolver<dim>::quadrature,
                                     *DualSolver<dim>::face_quadrature,
@@ -2227,15 +2227,11 @@ namespace Step14
       for (const auto &cell :
            DualSolver<dim>::dof_handler.active_cell_iterators())
         {
-          for (unsigned int face_no = 0;
-               face_no < GeometryInfo<dim>::faces_per_cell;
-               ++face_no)
+          for (const auto &face : cell->face_iterators())
             {
-              Assert(face_integrals.find(cell->face(face_no)) !=
-                       face_integrals.end(),
+              Assert(face_integrals.find(face) != face_integrals.end(),
                      ExcInternalError());
-              error_indicators(present_cell) -=
-                0.5 * face_integrals[cell->face(face_no)];
+              error_indicators(present_cell) -= 0.5 * face_integrals[face];
             }
           ++present_cell;
         }

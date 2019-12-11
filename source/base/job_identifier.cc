@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,7 +24,13 @@
 DEAL_II_NAMESPACE_OPEN
 
 
-JobIdentifier dealjobid;
+const JobIdentifier &
+JobIdentifier::get_dealjobid()
+{
+  static JobIdentifier dealjobid;
+  return dealjobid;
+}
+
 
 
 JobIdentifier::JobIdentifier()

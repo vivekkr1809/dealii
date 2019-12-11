@@ -35,9 +35,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#  ifndef DOXYGEN
 template <int dim, int spacedim>
 class FE_Enriched;
-
+#  endif
 
 /**
  * This class provides an interface to group several elements together into
@@ -1226,7 +1228,7 @@ private:
       base_fe_output_objects;
   };
 
-  /*
+  /**
    * Mutex for protecting initialization of restriction and embedding matrix.
    */
   mutable Threads::Mutex mutex;
@@ -1263,8 +1265,7 @@ namespace internal
     std::pair<std::unique_ptr<FiniteElement<dim, spacedim>>, unsigned int>
     promote_to_fe_pair(const FiniteElement<dim, spacedim> &fe)
     {
-      return std::make_pair<std::unique_ptr<FiniteElement<dim, spacedim>>,
-                            unsigned int>(std::move(fe.clone()), 1u);
+      return std::make_pair(std::move(fe.clone()), 1u);
     }
 
 

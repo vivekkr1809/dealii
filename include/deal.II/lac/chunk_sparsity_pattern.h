@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2017 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/subscriptor.h>
-#include <deal.II/base/vector_slice.h>
 
 #include <deal.II/lac/sparsity_pattern.h>
 
@@ -31,9 +30,11 @@
 DEAL_II_NAMESPACE_OPEN
 
 
+// Forward declaration
+#ifndef DOXYGEN
 template <typename>
 class ChunkSparseMatrix;
-
+#endif
 
 /*! @addtogroup Sparsity
  *@{
@@ -65,9 +66,14 @@ namespace ChunkSparsityPatternIterators
   {
   public:
     /**
+     * Declare the type for container size.
+     */
+    using size_type = types::global_dof_index;
+
+    /**
      * Constructor.
      */
-    Accessor(const ChunkSparsityPattern *matrix, const unsigned int row);
+    Accessor(const ChunkSparsityPattern *matrix, const size_type row);
 
     /**
      * Constructor. Construct the end accessor for the given sparsity pattern.
@@ -78,7 +84,7 @@ namespace ChunkSparsityPatternIterators
      * Row number of the element represented by this object. This function can
      * only be called for entries for which is_valid_entry() is true.
      */
-    unsigned int
+    size_type
     row() const;
 
     /**
@@ -91,7 +97,7 @@ namespace ChunkSparsityPatternIterators
      * Column number of the element represented by this object. This function
      * can only be called for entries for which is_valid_entry() is true.
      */
-    unsigned int
+    size_type
     column() const;
 
     /**
@@ -138,12 +144,12 @@ namespace ChunkSparsityPatternIterators
     /**
      * Current chunk row number.
      */
-    unsigned int chunk_row;
+    size_type chunk_row;
 
     /**
      * Current chunk col number.
      */
-    unsigned int chunk_col;
+    size_type chunk_col;
 
     /**
      * Move the accessor to the next nonzero entry in the matrix.
@@ -151,9 +157,7 @@ namespace ChunkSparsityPatternIterators
     void
     advance();
 
-    /**
-     * Grant access to iterator class.
-     */
+    // Grant access to iterator class.
     friend class Iterator;
   };
 
@@ -166,10 +170,15 @@ namespace ChunkSparsityPatternIterators
   {
   public:
     /**
+     * Declare the type for container size.
+     */
+    using size_type = types::global_dof_index;
+
+    /**
      * Constructor. Create an iterator into the sparsity pattern @p sp for the
      * given row and the index within it.
      */
-    Iterator(const ChunkSparsityPattern *sp, const unsigned int row);
+    Iterator(const ChunkSparsityPattern *sp, const size_type row);
 
     /**
      * Prefix increment.
@@ -391,13 +400,13 @@ public:
          const size_type               chunk_size);
 
   /**
-   * Same as above, but with a VectorSlice argument instead.
+   * Same as above, but with an ArrayView argument instead.
    */
   void
-  reinit(const size_type                                  m,
-         const size_type                                  n,
-         const VectorSlice<const std::vector<size_type>> &row_lengths,
-         const size_type                                  chunk_size);
+  reinit(const size_type                   m,
+         const size_type                   n,
+         const ArrayView<const size_type> &row_lengths,
+         const size_type                   chunk_size);
 
   /**
    * This function compresses the sparsity structure that this object
@@ -433,13 +442,12 @@ public:
    * these iterators) must be a container itself that provides functions
    * <tt>begin</tt> and <tt>end</tt> designating a range of iterators that
    * describe the contents of one line. Dereferencing these inner iterators
-   * must either yield a pair of an unsigned integer as column index and a
+   * must either yield a pair of an integer as column index and a
    * value of arbitrary type (such a type would be used if we wanted to
-   * describe a sparse matrix with one such object), or simply an unsigned
-   * integer (of we only wanted to describe a sparsity pattern). The function
-   * is able to determine itself whether an unsigned integer or a pair is what
-   * we get after dereferencing the inner iterators, through some template
-   * magic.
+   * describe a sparse matrix with one such object), or simply an integer (if we
+   * only wanted to describe a sparsity pattern). The function is able to
+   * determine itself whether an integer or a pair is what we get after
+   * dereferencing the inner iterators, through some template magic.
    *
    * While the order of the outer iterators denotes the different rows of the
    * matrix, the order of the inner iterator denoting the columns does not
@@ -461,7 +469,7 @@ public:
    * Note that this example works since the iterators dereferenced yield
    * containers with functions <tt>begin</tt> and <tt>end</tt> (namely
    * <tt>std::vector</tt>s), and the inner iterators dereferenced yield
-   * unsigned integers as column indices. Note that we could have replaced
+   * integers as column indices. Note that we could have replaced
    * each of the two <tt>std::vector</tt> occurrences by <tt>std::list</tt>,
    * and the inner one by <tt>std::set</tt> as well.
    *
@@ -483,12 +491,12 @@ public:
    * @endcode
    *
    * This example works because dereferencing iterators of the inner type
-   * yields a pair of unsigned integers and a value, the first of which we
+   * yields a pair of integers and a value, the first of which we
    * take as column index. As previously, the outer <tt>std::vector</tt> could
-   * be replaced by <tt>std::list</tt>, and the inner <tt>std::map<unsigned
-   * int,double></tt> could be replaced by <tt>std::vector<std::pair<unsigned
-   * int,double> ></tt>, or a list or set of such pairs, as they all return
-   * iterators that point to such pairs.
+   * be replaced by <tt>std::list</tt>, and the inner
+   * <tt>std::map<size_type,double></tt> could be replaced by
+   * <tt>std::vector<std::pair<size_type,double> ></tt>, or a list or set of
+   * such pairs, as they all return iterators that point to such pairs.
    */
   template <typename ForwardIterator>
   void
@@ -537,11 +545,11 @@ public:
    */
   template <typename Sparsity>
   void
-  create_from(const unsigned int m,
-              const unsigned int n,
-              const Sparsity &   sparsity_pattern_for_chunks,
-              const unsigned int chunk_size,
-              const bool         optimize_diagonal = true);
+  create_from(const size_type m,
+              const size_type n,
+              const Sparsity &sparsity_pattern_for_chunks,
+              const size_type chunk_size,
+              const bool      optimize_diagonal = true);
 
   /**
    * Return whether the object is empty. It is empty if no memory is
@@ -673,7 +681,7 @@ public:
    * that case.
    */
   iterator
-  begin(const unsigned int r) const;
+  begin(const size_type r) const;
 
   /**
    * Final iterator of row <tt>r</tt>. It points to the first element past the
@@ -684,7 +692,7 @@ public:
    * matrix.
    */
   iterator
-  end(const unsigned int r) const;
+  end(const size_type r) const;
 
   /**
    * Write the data of this object en bloc to a file. This is done in a binary
@@ -754,22 +762,22 @@ public:
    * Exception
    */
   DeclException1(ExcInvalidNumber,
-                 int,
+                 size_type,
                  << "The provided number is invalid here: " << arg1);
   /**
    * Exception
    */
   DeclException2(ExcInvalidIndex,
-                 int,
-                 int,
+                 size_type,
+                 size_type,
                  << "The given index " << arg1 << " should be less than "
                  << arg2 << ".");
   /**
    * Exception
    */
   DeclException2(ExcNotEnoughSpace,
-                 int,
-                 int,
+                 size_type,
+                 size_type,
                  << "Upon entering a new entry to row " << arg1
                  << ": there was no free entry any more. " << std::endl
                  << "(Maximum number of entries for this row: " << arg2
@@ -798,8 +806,8 @@ public:
    * Exception
    */
   DeclException2(ExcIteratorRange,
-                 int,
-                 int,
+                 size_type,
+                 size_type,
                  << "The iterators denote a range of " << arg1
                  << " elements, but the given number of rows was " << arg2);
   /**
@@ -810,15 +818,15 @@ public:
    * Exception
    */
   DeclException1(ExcInvalidNumberOfPartitions,
-                 int,
+                 size_type,
                  << "The number of partitions you gave is " << arg1
                  << ", but must be greater than zero.");
   /**
    * Exception
    */
   DeclException2(ExcInvalidArraySize,
-                 int,
-                 int,
+                 size_type,
+                 size_type,
                  << "The array has size " << arg1 << " but should have size "
                  << arg2);
   //@}
@@ -844,15 +852,11 @@ private:
    */
   SparsityPattern sparsity_pattern;
 
-  /**
-   * Make all the chunk sparse matrix kinds friends.
-   */
+  // Make all the chunk sparse matrix kinds friends.
   template <typename>
   friend class ChunkSparseMatrix;
 
-  /**
-   * Make the accessor class a friend.
-   */
+  // Make the accessor class a friend.
   friend class ChunkSparsityPatternIterators::Accessor;
 };
 
@@ -865,7 +869,7 @@ private:
 namespace ChunkSparsityPatternIterators
 {
   inline Accessor::Accessor(const ChunkSparsityPattern *sparsity_pattern,
-                            const unsigned int          row)
+                            const size_type             row)
     : sparsity_pattern(sparsity_pattern)
     , reduced_accessor(row == sparsity_pattern->n_rows() ?
                          *sparsity_pattern->sparsity_pattern.end() :
@@ -902,7 +906,7 @@ namespace ChunkSparsityPatternIterators
 
 
 
-  inline unsigned int
+  inline Accessor::size_type
   Accessor::row() const
   {
     Assert(is_valid_entry() == true, ExcInvalidIterator());
@@ -913,7 +917,7 @@ namespace ChunkSparsityPatternIterators
 
 
 
-  inline unsigned int
+  inline Accessor::size_type
   Accessor::column() const
   {
     Assert(is_valid_entry() == true, ExcInvalidIterator());
@@ -960,13 +964,12 @@ namespace ChunkSparsityPatternIterators
             reduced_accessor.container->n_nonzero_elements())
           return true;
 
-        const unsigned int global_row = sparsity_pattern->get_chunk_size() *
-                                          reduced_accessor.row() +
-                                        chunk_row,
-                           other_global_row =
-                             sparsity_pattern->get_chunk_size() *
-                               other.reduced_accessor.row() +
-                             other.chunk_row;
+        const auto global_row = sparsity_pattern->get_chunk_size() *
+                                  reduced_accessor.row() +
+                                chunk_row,
+                   other_global_row = sparsity_pattern->get_chunk_size() *
+                                        other.reduced_accessor.row() +
+                                      other.chunk_row;
         if (global_row < other_global_row)
           return true;
         else if (global_row > other_global_row)
@@ -983,7 +986,7 @@ namespace ChunkSparsityPatternIterators
   inline void
   Accessor::advance()
   {
-    const unsigned int chunk_size = sparsity_pattern->get_chunk_size();
+    const auto chunk_size = sparsity_pattern->get_chunk_size();
     Assert(chunk_row < chunk_size && chunk_col < chunk_size,
            ExcIteratorPastEnd());
     Assert(reduced_accessor.row() * chunk_size + chunk_row <
@@ -1004,7 +1007,7 @@ namespace ChunkSparsityPatternIterators
         reduced_accessor.column() * chunk_size + chunk_col ==
           sparsity_pattern->n_cols())
       {
-        const unsigned int reduced_row = reduced_accessor.row();
+        const auto reduced_row = reduced_accessor.row();
         // end of row
         if (reduced_accessor.linear_index + 1 ==
             reduced_accessor.container->rowstart[reduced_row + 1])
@@ -1039,7 +1042,7 @@ namespace ChunkSparsityPatternIterators
 
 
   inline Iterator::Iterator(const ChunkSparsityPattern *sparsity_pattern,
-                            const unsigned int          row)
+                            const size_type             row)
     : accessor(sparsity_pattern, row)
   {}
 
@@ -1105,32 +1108,32 @@ namespace ChunkSparsityPatternIterators
 inline ChunkSparsityPattern::iterator
 ChunkSparsityPattern::begin() const
 {
-  return iterator(this, 0);
+  return {this, 0};
 }
 
 
 inline ChunkSparsityPattern::iterator
 ChunkSparsityPattern::end() const
 {
-  return iterator(this, n_rows());
+  return {this, n_rows()};
 }
 
 
 
 inline ChunkSparsityPattern::iterator
-ChunkSparsityPattern::begin(const unsigned int r) const
+ChunkSparsityPattern::begin(const size_type r) const
 {
   Assert(r < n_rows(), ExcIndexRange(r, 0, n_rows()));
-  return iterator(this, r);
+  return {this, r};
 }
 
 
 
 inline ChunkSparsityPattern::iterator
-ChunkSparsityPattern::end(const unsigned int r) const
+ChunkSparsityPattern::end(const size_type r) const
 {
-  Assert(r < n_rows(), ExcIndexRange(r, 0, n_rows())) return iterator(this,
-                                                                      r + 1);
+  Assert(r < n_rows(), ExcIndexRange(r, 0, n_rows()));
+  return {this, r + 1};
 }
 
 

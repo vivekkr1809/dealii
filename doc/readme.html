@@ -7,7 +7,7 @@
     <title>The deal.II Readme</title>
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
     <link href="screen.css" rel="StyleSheet" />
-    <meta name="copyright" content="Copyright (C) 1998 - 2018 by the deal.II Authors" />
+    <meta name="copyright" content="Copyright (C) 1998 - 2019 by the deal.II Authors" />
     <meta name="keywords" content="deal.II" />
 </head>
 
@@ -161,30 +161,39 @@
 
     <p>
         <acronym>deal.II</acronym> uses the
-        <a href="http://www.cmake.org/" target="_top">CMake</a> integrated configuration and build system. Unpacking will create a subdirectory <tt>deal.II/</tt> in the current directory. Then do the following steps:</p>
+        <a href="http://www.cmake.org/" target="_top">CMake</a> integrated configuration and build system. Unpacking will create a subdirectory <tt>deal.II/</tt> in the current directory. Then do the following steps to configure the build process (make sure the installation directory is not the same as the location where you unpacked <tt>deal.II/</tt>):</p>
 
     <pre>
   mkdir build
   cd build
   cmake -DCMAKE_INSTALL_PREFIX=/path/to/install/dir ../deal.II
-  make install
+    </pre>
+    We recommend compiling deal.II in parallel if your machine has
+    more than one processor core. This can be done by providing
+    the <code>--jobs=N</code> flag to <code>make</code> with a
+    numerical argument <code>N</code>. (The
+    argument <code>--jobs=N</code> is often abbreviated
+    as <code>-jN</code>.) Here we compile with four <code>make</code>
+    jobs:
+    <pre>
+  make --jobs=4 install
   make test
     </pre>
+    One should usually use one job for each processor core on the machine.
 
     <p>
         These steps compile, link, install the deal.II library, and run a few consistency checks. The whole process should take between a few minutes and an hour, depending on your machine.
     </p>
 
     <p>
-        <b>Note:</b></p>
+        <b>Notes:</b></p>
     <ul>
-        <li> <code>/path/to/install/dir</code> is the directory which deal.II should be installed into. This can be a directory in your home directory (e.g., <code>~/bin/deal.II</code>) or a directory such as <code>/usr/local</code> if you have root privileges.
-            Another option is to use something like <code>`pwd`/../installed/</code> (note the backticks). Make sure the installation directory is not the same as the location where you unpacked <tt>deal.II/</tt>.
+        <li> The part "<code>/path/to/install/dir</code>" in the
+            command above needs to be replaced by the path to the directory which deal.II should be installed into. This can be a directory in your home directory (e.g., <code>~/bin/deal.II</code>) or a directory such as <code>/usr/local</code> if you have root privileges.
+            Another option is to use something like <code>`pwd`/../installed/</code> (note the backticks). 
         </li>
 
-        <li> If your machine has multiple processors, use <code>make
-	  -jN install</code> in the second to last step instead, where <code>N</code> is the number of simultaneous build processes you want <code>make</code> to use at any given time. Allowing <code>make</code> to use more simultaneous build processes (assuming you have that many processor
-            cores) will greatly lower the build time. <code>make test</code> automatically runs in parallel and no <code>-jN</code> flag should be supplied to it.
+        <li> <code>make test</code> automatically runs in parallel and no <code>-jN</code> flag should be supplied to it.
         </li>
 
         <li> If you do not intend to modify the <acronym>deal.II</acronym> sources and recompile things, then you can remove the <code>build/</code> directory after the last step.
@@ -246,9 +255,13 @@
 
     <pre>
       cmake -DDEAL_II_COMPONENT_DOCUMENTATION=ON -DCMAKE_INSTALL_PREFIX=/path/install/dir ../deal.II
+      make documentation
+      make install
     </pre>
 
     <p>
+        As usual, you can pass <code>-jN</code> to <code>make</code>
+        in order to use more than one processor.
         For this to succeed, you will need <a href="http://www.perl.org/" target="_top">Perl 5.x</a>,
         <a href="http://www.doxygen.org/" target="_top">doxygen</a> and <code>dot</code> (which is part of the <a href="http://www.graphviz.org" target="_top">GraphViz</a> package) to be installed.
     </p>
@@ -259,13 +272,6 @@
 
     <p> Finally, the default for locally installed documentation is to render formulas as images. You can force formulas to be displayed via the MathJax system by adding <code>-DDEAL_II_DOXYGEN_USE_MATHJAX=ON</code> to the CMake call above. These formulas
         are then rendered natively by the browser. With <code>-DDEAL_II_DOXYGEN_USE_ONLINE_MATHJAX=OFF</code> CMake will try to find a local installation of MathJax scripts, otherwise the online version of the scripts will be used in the documentation.
-    </p>
-
-    <p>
-        Upon calling <code>make</code> and <code>make install</code>, this will install both this readme, other installation instructions, as well as the
-        <a href="doxygen/deal.II/index.html" target="_top">manual that documents
-      all functions and classes</a> as well as the <a href="doxygen/deal.II/Tutorial.html" target="_top"> tutorial
-      of well-documented example programs</a> (the "steps").
     </p>
 
     <p>
@@ -312,6 +318,7 @@
                 <i>MPI</i>: To enable parallel computations beyond a single node using the <a href="http://mpi-forum.org/" target="_top">Message
 	  Passing Interface (MPI)</a>, pass the
                 <code>-DDEAL_II_WITH_MPI=ON</code> argument to <code>cmake</code>. If <code>cmake</code> found MPI but you specifically do not want to use it, then pass <code>-DDEAL_II_WITH_MPI=OFF</code>.
+                The minimal supported version is MPI-2.0.
             </p>
         </li>
 
@@ -422,6 +429,22 @@
                 <a href="https://developer.nvidia.com/cuda-zone">CUDA</a> is a parallel computing platform and API model created by Nvidia. It allows software developers and software engineers to use CUDA-enabled GPU for general purpose processing. Details
                 about compatibility and configuration can be found <a href=external-libs/cuda.html target="body">here</a>.
             </p>
+
+            <dt><a name="Ginkgo"/>
+                <a href="https://ginkgo-project.github.io/" target="_top">Ginkgo</a></dt>
+            <dd>
+                <p>
+                    <a href="https://ginkgo-project.github.io/" target="_top">Ginkgo</a>
+                    is a numerical linear algebra library with highly optimized kernels
+                    for many core architectures with a focus on fine level parallelism.
+                    It allows for easy switching of the executing paradigm (CUDA, OpenMP, etc.)
+                    while providing a multitude of linear solvers and preconditioners
+                    and extension to other linear operators with minimal changes required in the code.
+                    To enable Ginkgo, pass <code>-DGINKGO_DIR=/path/to/ginkgo</code> to CMake when
+                    configuring deal.II. For more detailed instructions, one can refer to 
+                    <a href="external-libs/ginkgo.html" target="body">this page</a>.
+                </p>
+            </dd>
 
             <dt><a name="Gmsh"/>
              <a href="http://gmsh.info/" target="_top">Gmsh</a></dt>
@@ -585,6 +608,16 @@
                     <a href="https://computation.llnl.gov/projects/sundials" target="_top">SUNDIALS</a> should be readily packaged by most Linux distributions. To use a self compiled version,
                     specify
                     <code>-DSUNDIALS_DIR=/path/to/sundials</code> to the deal.II CMake call.
+                </p>
+            </dd>
+            
+            <dt><a name="SymEngine"/>
+                <a href="https://symengine.github.io/" target="_top">SymEngine</a></dt>
+            <dd>
+                <p>
+                    <a href="https://github.com/symengine/symengine/" target="_top">SymEngine</a> is a symbolic manipulation package, implementing the building blocks of a computer algebra system (CAS) similar to <a href="https://www.sympy.org/en/index.html" target="_top">SymPy</a>. In particular, it can be used for symbolic differentiation. For using
+                    <a href="https://symengine.github.io/" target="_top">SymEngine</a> with deal.II, version 0.4 or newer is required. To use a self compiled version, pass
+                    <code>-DSYMENGINE_DIR=/path/to/symengine</code> to the deal.II CMake call.
                 </p>
             </dd>
 

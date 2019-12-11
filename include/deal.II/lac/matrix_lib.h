@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2002 - 2017 by the deal.II authors
+// Copyright (C) 2002 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_matrix_lib_h
 #define dealii_matrix_lib_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/subscriptor.h>
 
 #include <deal.II/lac/solver_richardson.h>
@@ -23,12 +25,15 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class Vector;
 template <typename number>
 class BlockVector;
 template <typename number>
 class SparseMatrix;
+#endif
 
 /*! @addtogroup Matrix2
  *@{

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -50,6 +50,8 @@ main()
       auto res = kdtree.get_closest_points(p, 1)[0];
       deallog << "P: " << p << ", distance: " << res.second
               << ", index: " << res.first << std::endl;
+      AssertThrow(std::abs(points[res.first].distance(p) - res.second) < 1e-10,
+                  ExcInternalError());
     }
 
   deallog

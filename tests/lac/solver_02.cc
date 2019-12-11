@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,6 +23,7 @@
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/solver_control.h>
 #include <deal.II/lac/solver_gmres.h>
+#include <deal.II/lac/solver_idr.h>
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/vector_memory.h>
@@ -66,4 +67,5 @@ main()
   test<SolverGMRES<Vector<double>>>();
   test<SolverCG<Vector<double>>>();
   test<SolverFGMRES<Vector<double>>>();
+  test<SolverIDR<Vector<double>>>();
 }

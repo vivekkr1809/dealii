@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,7 +43,12 @@ namespace deal_II_exceptions
 {
   namespace internals
   {
-    std::string additional_assert_output;
+    std::string &
+    get_additional_assert_output()
+    {
+      static std::string additional_assert_output;
+      return additional_assert_output;
+    }
 
     bool show_stacktrace = true;
 
@@ -51,9 +56,9 @@ namespace deal_II_exceptions
   } // namespace internals
 
   void
-  set_additional_assert_output(const char *const p)
+  set_additional_assert_output(const std::string &p)
   {
-    internals::additional_assert_output = p;
+    internals::get_additional_assert_output() = p;
   }
 
   void
@@ -82,10 +87,7 @@ ExceptionBase::ExceptionBase()
   , what_str("")
 {
 #ifdef DEAL_II_HAVE_GLIBC_STACKTRACE
-  for (unsigned int i = 0;
-       i < sizeof(raw_stacktrace) / sizeof(raw_stacktrace[0]);
-       ++i)
-    raw_stacktrace[i] = nullptr;
+  std::fill(std::begin(raw_stacktrace), std::end(raw_stacktrace), nullptr);
 #endif
 }
 
@@ -104,10 +106,7 @@ ExceptionBase::ExceptionBase(const ExceptionBase &exc)
                  // by what()
 {
 #ifdef DEAL_II_HAVE_GLIBC_STACKTRACE
-  for (unsigned int i = 0;
-       i < sizeof(raw_stacktrace) / sizeof(raw_stacktrace[0]);
-       ++i)
-    raw_stacktrace[i] = nullptr;
+  std::fill(std::begin(raw_stacktrace), std::end(raw_stacktrace), nullptr);
 #endif
 }
 
@@ -115,7 +114,7 @@ ExceptionBase::ExceptionBase(const ExceptionBase &exc)
 
 ExceptionBase::~ExceptionBase() noexcept
 {
-  free(stacktrace); // free(NULL) is allowed
+  free(stacktrace); // free(nullptr) is allowed
   stacktrace = nullptr;
 }
 
@@ -148,7 +147,7 @@ const char *
 ExceptionBase::what() const noexcept
 {
   // If no error c_string was generated so far, do it now:
-  if (what_str == "")
+  if (what_str.empty())
     {
 #ifdef DEAL_II_HAVE_GLIBC_STACKTRACE
       // We have deferred the symbol lookup to this point to avoid costly
@@ -156,7 +155,7 @@ ExceptionBase::what() const noexcept
       // backtrace_symbols.
 
       // first delete old stacktrace if necessary
-      free(stacktrace); // free(NULL) is allowed
+      free(stacktrace); // free(nullptr) is allowed
       stacktrace = backtrace_symbols(raw_stacktrace, n_stacktrace_frames);
 #endif
 
@@ -324,12 +323,13 @@ ExceptionBase::generate_message() const
       print_info(converter);
       print_stack_trace(converter);
 
-      if (!deal_II_exceptions::internals::additional_assert_output.empty())
+      if (!deal_II_exceptions::internals::get_additional_assert_output()
+             .empty())
         {
           converter
             << "--------------------------------------------------------"
             << std::endl
-            << deal_II_exceptions::internals::additional_assert_output
+            << deal_II_exceptions::internals::get_additional_assert_output()
             << std::endl;
         }
 

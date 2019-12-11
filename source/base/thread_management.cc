@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -213,7 +213,7 @@ namespace Threads
       {
         std::abort();
         return 1;
-      };
+      }
 #  endif
   }
 
@@ -254,7 +254,7 @@ namespace Threads
           }
         else
           return_values[i].second = end;
-      };
+      }
     return return_values;
   }
 } // namespace Threads

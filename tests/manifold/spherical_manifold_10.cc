@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -54,7 +54,7 @@ main()
                               quadrature,
                               update_normal_vectors | update_quadrature_points);
 
-  for (auto cell : tria.active_cell_iterators())
+  for (auto &cell : tria.active_cell_iterators())
     for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
       {
         fe_values.reinit(cell, f);

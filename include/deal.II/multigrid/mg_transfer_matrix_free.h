@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -89,9 +89,24 @@ public:
 
   /**
    * Actually build the information for the prolongation for each level.
+   *
+   * The optional second argument of external partitioners allows the user to
+   * suggest vector partitioning on the levels. In case the partitioners
+   * are found to contain all ghost unknowns that are visited through the
+   * transfer, the given partitioners are chosen. This ensures compatibility
+   * of vectors during prolongate and restrict with external partitioners as
+   * given by the user, which in turn saves some copy operations. However, in
+   * case there are unknowns missing -- and this is typically the case at some
+   * point during h-coarsening since processors will need to drop out and
+   * thus children's unknowns on some processor will be needed as ghosts to a
+   * parent cell on another processor -- the provided external partitioners are
+   * ignored and internal variants are used instead.
    */
   void
-  build(const DoFHandler<dim, dim> &mg_dof);
+  build(const DoFHandler<dim, dim> &mg_dof,
+        const std::vector<std::shared_ptr<const Utilities::MPI::Partitioner>>
+          &external_partitioners =
+            std::vector<std::shared_ptr<const Utilities::MPI::Partitioner>>());
 
   /**
    * Prolongate a vector from level <tt>to_level-1</tt> to level
@@ -244,6 +259,15 @@ private:
    * index), and the indices on the cell (inner index).
    */
   std::vector<std::vector<std::vector<unsigned short>>> dirichlet_indices;
+
+  /**
+   * A vector that holds shared pointers to the partitioners of the
+   * transfer. These partitioners might be shared with what was passed in from
+   * the outside through build() or be shared with the level vectors inherited
+   * from MGLevelGlobalTransfer.
+   */
+  MGLevelObject<std::shared_ptr<const Utilities::MPI::Partitioner>>
+    vector_partitioners;
 
   /**
    * Perform the prolongation operation.
@@ -482,8 +506,8 @@ MGTransferMatrixFree<dim, Number>::interpolate_to_mg(
          ExcDimensionMismatch(
            max_level, dof_handler.get_triangulation().n_global_levels() - 1));
 
-  const parallel::Triangulation<dim, spacedim> *p_tria =
-    (dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
+  const parallel::TriangulationBase<dim, spacedim> *p_tria =
+    (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
       &dof_handler.get_triangulation()));
   MPI_Comm mpi_communicator =
     p_tria != nullptr ? p_tria->get_communicator() : MPI_COMM_SELF;
@@ -607,18 +631,25 @@ MGTransferBlockMatrixFree<dim, Number>::copy_to_mg(
   // dst == defect level block vector. At first run this vector is not
   // initialized. Do this below:
   {
-    const parallel::Triangulation<dim, spacedim> *tria =
-      (dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
+    const parallel::TriangulationBase<dim, spacedim> *tria =
+      (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
         &(mg_dof[0]->get_triangulation())));
     for (unsigned int i = 1; i < n_blocks; ++i)
-      AssertThrow((dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
-                     &(mg_dof[0]->get_triangulation())) == tria),
-                  ExcMessage("The DoFHandler use different Triangulations!"));
+      AssertThrow(
+        (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+           &(mg_dof[0]->get_triangulation())) == tria),
+        ExcMessage("The DoFHandler use different Triangulations!"));
 
+    MGLevelObject<bool> do_reinit;
+    do_reinit.resize(min_level, max_level);
     for (unsigned int level = min_level; level <= max_level; ++level)
       {
-        dst[level].reinit(n_blocks);
-        bool collect_size = false;
+        do_reinit[level] = false;
+        if (dst[level].n_blocks() != n_blocks)
+          {
+            do_reinit[level] = true;
+            continue; // level
+          }
         for (unsigned int b = 0; b < n_blocks; ++b)
           {
             LinearAlgebra::distributed::Vector<Number> &v = dst[level].block(b);
@@ -626,16 +657,29 @@ MGTransferBlockMatrixFree<dim, Number>::copy_to_mg(
                 v.local_size() !=
                   mg_dof[b]->locally_owned_mg_dofs(level).n_elements())
               {
+                do_reinit[level] = true;
+                break; // b
+              }
+          }
+      }
+
+    for (unsigned int level = min_level; level <= max_level; ++level)
+      {
+        if (do_reinit[level])
+          {
+            dst[level].reinit(n_blocks);
+            for (unsigned int b = 0; b < n_blocks; ++b)
+              {
+                LinearAlgebra::distributed::Vector<Number> &v =
+                  dst[level].block(b);
                 v.reinit(mg_dof[b]->locally_owned_mg_dofs(level),
                          tria != nullptr ? tria->get_communicator() :
                                            MPI_COMM_SELF);
-                collect_size = true;
               }
-            else
-              v = 0.;
+            dst[level].collect_sizes();
           }
-        if (collect_size)
-          dst[level].collect_sizes();
+        else
+          dst[level] = 0;
       }
   }
 

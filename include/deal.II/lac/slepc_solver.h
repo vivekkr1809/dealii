@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -319,7 +319,7 @@ namespace SLEPcWrappers
 
     /**
      * Access the real parts of solutions for a solved eigenvector problem,
-     * pair index solutions, $\text{index}\,\in\,0\hdots
+     * pair index solutions, $\text{index}\,\in\,0\dots
      * \text{n\_converged}-1$.
      */
     void
@@ -329,7 +329,7 @@ namespace SLEPcWrappers
 
     /**
      * Access the real and imaginary parts of solutions for a solved
-     * eigenvector problem, pair index solutions, $\text{index}\,\in\,0\hdots
+     * eigenvector problem, pair index solutions, $\text{index}\,\in\,0\dots
      * \text{n\_converged}-1$.
      */
     void

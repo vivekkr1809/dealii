@@ -25,10 +25,13 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class MappingQ;
 template <int dim>
 class Quadrature;
+#endif
 
 /*!@addtogroup fe */
 /*@{*/
@@ -377,15 +380,11 @@ private:
    */
   mutable Threads::Mutex mutex;
 
-  /**
-   * Allow access from other dimensions.
-   */
+  // Allow access from other dimensions.
   template <int dim1, int spacedim1>
   friend class FE_DGQ;
 
-  /**
-   * Allow @p MappingQ class to access to build_renumbering function.
-   */
+  // Allow @p MappingQ class to access to build_renumbering function.
   template <int dim1, int spacedim1>
   friend class MappingQ;
 };

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -89,10 +89,10 @@ Histogram::evaluate(const std::vector<Vector<number>> &values,
               max_value =
                 std::max(max_value,
                          *std::max_element(values[i].begin(), values[i].end()));
-            };
+            }
 
           break;
-        };
+        }
 
       case logarithmic:
         {
@@ -159,7 +159,7 @@ Histogram::evaluate(const std::vector<Vector<number>> &values,
                                       min_value + (n + 1) * delta);
 
           break;
-        };
+        }
 
       case logarithmic:
         {
@@ -172,11 +172,11 @@ Histogram::evaluate(const std::vector<Vector<number>> &values,
                                                (n + 1) * delta));
 
           break;
-        };
+        }
 
       default:
         Assert(false, ExcInternalError());
-    };
+    }
 
   // fill the other lists of intervals
   for (unsigned int i = 1; i < values.size(); ++i)
@@ -200,8 +200,8 @@ Histogram::evaluate(const std::vector<Vector<number>> &values,
             {
               ++intervals[i][n].content;
               break;
-            };
-      };
+            }
+      }
 }
 
 
@@ -233,11 +233,9 @@ Histogram::write_gnuplot(std::ostream &out) const
   // one data set is available
   if (intervals.size() == 1)
     {
-      for (unsigned int n = 0; n < intervals[0].size(); ++n)
-        out << intervals[0][n].left_point << ' ' << intervals[0][n].content
-            << std::endl
-            << intervals[0][n].right_point << ' ' << intervals[0][n].content
-            << std::endl;
+      for (const auto &interval : intervals[0])
+        out << interval.left_point << ' ' << interval.content << std::endl
+            << interval.right_point << ' ' << interval.content << std::endl;
     }
   else
     // otherwise create a whole 3d plot
@@ -270,7 +268,7 @@ Histogram::write_gnuplot(std::ostream &out) const
               << intervals[i][n].content << std::endl;
 
         out << std::endl;
-      };
+      }
 
   AssertThrow(out, ExcIO());
 }
@@ -297,7 +295,7 @@ Histogram::parse_interval_spacing(const std::string &name)
       AssertThrow(false, ExcInvalidName(name));
 
       return linear;
-    };
+    }
 }
 
 

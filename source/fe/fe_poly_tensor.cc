@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -44,34 +44,33 @@ namespace internal
       //---------------------------------------------------------------------------
 
       /**
-       * On noncartesian grids, the sign of the DoFs associated with the faces
+       * On non-Cartesian grids, the sign of the DoFs associated with the faces
        * of the elements has to be changed in some cases.  This procedure
-       * implements an algorithm, which determines the DoFs, which need this
+       * implements an algorithm that determines those DoFs that need this
        * sign change for a given cell.
        */
+      template <int spacedim>
       void
       get_face_sign_change_rt(const dealii::Triangulation<1>::cell_iterator &,
-                              const unsigned int,
-                              std::vector<double> &face_sign)
+                              const FiniteElement<1, spacedim> &,
+                              const std::vector<MappingKind> &,
+                              std::vector<double> &)
       {
         // nothing to do in 1d
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
       }
 
 
 
+      //      template<int spacedim>
       void
       get_face_sign_change_rt(
         const dealii::Triangulation<2>::cell_iterator &cell,
-        const unsigned int                             dofs_per_face,
+        const FiniteElement<2, 2> &                    fe,
+        const std::vector<MappingKind> &               mapping_kind,
         std::vector<double> &                          face_sign)
       {
         const unsigned int dim      = 2;
         const unsigned int spacedim = 2;
-
-        // Default is no sign
-        // change. I.e. multiply by one.
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
 
         for (unsigned int f = GeometryInfo<dim>::faces_per_cell / 2;
              f < GeometryInfo<dim>::faces_per_cell;
@@ -84,14 +83,22 @@ namespace internal
                 const unsigned int nn = cell->neighbor_face_no(f);
 
                 if (nn < GeometryInfo<dim>::faces_per_cell / 2)
-                  for (unsigned int j = 0; j < dofs_per_face; ++j)
+                  for (unsigned int j = 0; j < fe.dofs_per_face; ++j)
                     {
-                      Assert(f * dofs_per_face + j < face_sign.size(),
+                      const unsigned int cell_j = fe.face_to_cell_index(j, f);
+
+                      Assert(f * fe.dofs_per_face + j < face_sign.size(),
+                             ExcInternalError());
+                      Assert(mapping_kind.size() == 1 ||
+                               cell_j < mapping_kind.size(),
                              ExcInternalError());
 
                       // TODO: This is probably only going to work for those
                       // elements for which all dofs are face dofs
-                      face_sign[f * dofs_per_face + j] = -1.0;
+                      if ((mapping_kind.size() > 1 ?
+                             mapping_kind[cell_j] :
+                             mapping_kind[0]) == mapping_raviart_thomas)
+                        face_sign[f * fe.dofs_per_face + j] = -1.0;
                     }
               }
           }
@@ -99,51 +106,58 @@ namespace internal
 
 
 
+      template <int spacedim>
       void
       get_face_sign_change_rt(
         const dealii::Triangulation<3>::cell_iterator & /*cell*/,
-        const unsigned int /*dofs_per_face*/,
-        std::vector<double> &face_sign)
+        const FiniteElement<3, spacedim> & /*fe*/,
+        const std::vector<MappingKind> & /*mapping_kind*/,
+        std::vector<double> & /*face_sign*/)
       {
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
         // TODO: think about what it would take here
       }
 
+
+
+      template <int spacedim>
       void
       get_face_sign_change_nedelec(
         const dealii::Triangulation<1>::cell_iterator & /*cell*/,
-        const unsigned int /*dofs_per_face*/,
-        std::vector<double> &face_sign)
+        const FiniteElement<1, spacedim> & /*fe*/,
+        const std::vector<MappingKind> & /*mapping_kind*/,
+        std::vector<double> & /*face_sign*/)
       {
         // nothing to do in 1d
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
       }
 
 
 
+      template <int spacedim>
       void
       get_face_sign_change_nedelec(
         const dealii::Triangulation<2>::cell_iterator & /*cell*/,
-        const unsigned int /*dofs_per_face*/,
-        std::vector<double> &face_sign)
+        const FiniteElement<2, spacedim> & /*fe*/,
+        const std::vector<MappingKind> & /*mapping_kind*/,
+        std::vector<double> & /*face_sign*/)
       {
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
         // TODO: think about what it would take here
       }
 
 
+      template <int spacedim>
       void
       get_face_sign_change_nedelec(
         const dealii::Triangulation<3>::cell_iterator &cell,
-        const unsigned int /*dofs_per_face*/,
-        std::vector<double> &face_sign)
+        const FiniteElement<3, spacedim> & /*fe*/,
+        const std::vector<MappingKind> &mapping_kind,
+        std::vector<double> &           face_sign)
       {
         const unsigned int dim = 3;
-        std::fill(face_sign.begin(), face_sign.end(), 1.0);
         // TODO: This is probably only going to work for those elements for
         // which all dofs are face dofs
         for (unsigned int l = 0; l < GeometryInfo<dim>::lines_per_cell; ++l)
-          if (!(cell->line_orientation(l)))
+          if (!(cell->line_orientation(l)) &&
+              mapping_kind[0] == mapping_nedelec)
             face_sign[l] = -1.0;
       }
     } // namespace
@@ -152,17 +166,17 @@ namespace internal
 
 
 
-template <class PolynomialType, int dim, int spacedim>
-FE_PolyTensor<PolynomialType, dim, spacedim>::FE_PolyTensor(
-  const unsigned int                degree,
+template <int dim, int spacedim>
+FE_PolyTensor<dim, spacedim>::FE_PolyTensor(
+  const TensorPolynomialsBase<dim> &polynomials,
   const FiniteElementData<dim> &    fe_data,
   const std::vector<bool> &         restriction_is_additive_flags,
   const std::vector<ComponentMask> &nonzero_components)
   : FiniteElement<dim, spacedim>(fe_data,
                                  restriction_is_additive_flags,
                                  nonzero_components)
-  , mapping_type(MappingType::mapping_none)
-  , poly_space(PolynomialType(degree))
+  , mapping_kind({MappingKind::mapping_none})
+  , poly_space(polynomials.clone())
 {
   cached_point(0) = -1;
   // Set up the table converting
@@ -178,11 +192,42 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::FE_PolyTensor(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
+FE_PolyTensor<dim, spacedim>::FE_PolyTensor(const FE_PolyTensor &fe)
+  : FiniteElement<dim, spacedim>(fe)
+  , mapping_kind(fe.mapping_kind)
+  , poly_space(fe.poly_space->clone())
+  , inverse_node_matrix(fe.inverse_node_matrix)
+{}
+
+
+
+template <int dim, int spacedim>
+bool
+FE_PolyTensor<dim, spacedim>::single_mapping_kind() const
+{
+  return mapping_kind.size() == 1;
+}
+
+
+
+template <int dim, int spacedim>
+MappingKind
+FE_PolyTensor<dim, spacedim>::get_mapping_kind(const unsigned int i) const
+{
+  if (single_mapping_kind())
+    return mapping_kind[0];
+
+  Assert(i < mapping_kind.size(), ExcIndexRange(i, 0, mapping_kind.size()));
+  return mapping_kind[i];
+}
+
+
+
+template <int dim, int spacedim>
 double
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_value(
-  const unsigned int,
-  const Point<dim> &) const
+FE_PolyTensor<dim, spacedim>::shape_value(const unsigned int,
+                                          const Point<dim> &) const
 
 {
   Assert(false, (typename FiniteElement<dim, spacedim>::ExcFENotPrimitive()));
@@ -191,9 +236,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_value(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 double
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_value_component(
+FE_PolyTensor<dim, spacedim>::shape_value_component(
   const unsigned int i,
   const Point<dim> & p,
   const unsigned int component) const
@@ -206,11 +251,11 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_value_component(
   if (cached_point != p || cached_values.size() == 0)
     {
       cached_point = p;
-      cached_values.resize(poly_space.n());
+      cached_values.resize(poly_space->n());
 
       std::vector<Tensor<4, dim>> dummy1;
       std::vector<Tensor<5, dim>> dummy2;
-      poly_space.compute(
+      poly_space->evaluate(
         p, cached_values, cached_grads, cached_grad_grads, dummy1, dummy2);
     }
 
@@ -225,11 +270,10 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_value_component(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 Tensor<1, dim>
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad(
-  const unsigned int,
-  const Point<dim> &) const
+FE_PolyTensor<dim, spacedim>::shape_grad(const unsigned int,
+                                         const Point<dim> &) const
 {
   Assert(false, (typename FiniteElement<dim, spacedim>::ExcFENotPrimitive()));
   return Tensor<1, dim>();
@@ -237,9 +281,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 Tensor<1, dim>
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_component(
+FE_PolyTensor<dim, spacedim>::shape_grad_component(
   const unsigned int i,
   const Point<dim> & p,
   const unsigned int component) const
@@ -252,11 +296,11 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_component(
   if (cached_point != p || cached_grads.size() == 0)
     {
       cached_point = p;
-      cached_grads.resize(poly_space.n());
+      cached_grads.resize(poly_space->n());
 
       std::vector<Tensor<4, dim>> dummy1;
       std::vector<Tensor<5, dim>> dummy2;
-      poly_space.compute(
+      poly_space->evaluate(
         p, cached_values, cached_grads, cached_grad_grads, dummy1, dummy2);
     }
 
@@ -272,11 +316,10 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_component(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 Tensor<2, dim>
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_grad(
-  const unsigned int,
-  const Point<dim> &) const
+FE_PolyTensor<dim, spacedim>::shape_grad_grad(const unsigned int,
+                                              const Point<dim> &) const
 {
   Assert(false, (typename FiniteElement<dim, spacedim>::ExcFENotPrimitive()));
   return Tensor<2, dim>();
@@ -284,9 +327,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_grad(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 Tensor<2, dim>
-FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_grad_component(
+FE_PolyTensor<dim, spacedim>::shape_grad_grad_component(
   const unsigned int i,
   const Point<dim> & p,
   const unsigned int component) const
@@ -299,11 +342,11 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_grad_component(
   if (cached_point != p || cached_grad_grads.size() == 0)
     {
       cached_point = p;
-      cached_grad_grads.resize(poly_space.n());
+      cached_grad_grads.resize(poly_space->n());
 
       std::vector<Tensor<4, dim>> dummy1;
       std::vector<Tensor<5, dim>> dummy2;
-      poly_space.compute(
+      poly_space->evaluate(
         p, cached_values, cached_grads, cached_grad_grads, dummy1, dummy2);
     }
 
@@ -322,9 +365,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::shape_grad_grad_component(
 // Fill data of FEValues
 //---------------------------------------------------------------------------
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 void
-FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
+FE_PolyTensor<dim, spacedim>::fill_fe_values(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell,
   const CellSimilarity::Similarity                            cell_similarity,
   const Quadrature<dim> &                                     quadrature,
@@ -358,24 +401,27 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
 
   // Create table with sign changes, due to the special structure of the RT
   // elements.
-  // TODO: Preliminary hack to demonstrate the overall prinicple!
+  // TODO: Preliminary hack to demonstrate the overall principle!
 
   // Compute eventual sign changes depending on the neighborhood
   // between two faces.
   std::fill(fe_data.sign_change.begin(), fe_data.sign_change.end(), 1.0);
 
-  if (mapping_type == mapping_raviart_thomas)
-    internal::FE_PolyTensor::get_face_sign_change_rt(cell,
-                                                     this->dofs_per_face,
-                                                     fe_data.sign_change);
-  else if (mapping_type == mapping_nedelec)
-    internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
-                                                          this->dofs_per_face,
-                                                          fe_data.sign_change);
+  internal::FE_PolyTensor::get_face_sign_change_rt(cell,
+                                                   *this,
+                                                   this->mapping_kind,
+                                                   fe_data.sign_change);
+
+  internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
+                                                        *this,
+                                                        this->mapping_kind,
+                                                        fe_data.sign_change);
 
 
   for (unsigned int i = 0; i < this->dofs_per_cell; ++i)
     {
+      const MappingKind mapping_kind = get_mapping_kind(i);
+
       const unsigned int first =
         output_data.shape_function_to_row_table[i * this->n_components() +
                                                 this->get_nonzero_components(i)
@@ -389,11 +435,11 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
       // and derivatives because of possible sign changes
       if (fe_data.update_each & update_values &&
           ((cell_similarity != CellSimilarity::translation) ||
-           ((mapping_type == mapping_piola) ||
-            (mapping_type == mapping_raviart_thomas) ||
-            (mapping_type == mapping_nedelec))))
+           ((mapping_kind == mapping_piola) ||
+            (mapping_kind == mapping_raviart_thomas) ||
+            (mapping_kind == mapping_nedelec))))
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -408,7 +454,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
               case mapping_contravariant:
                 {
                   mapping.transform(make_array_view(fe_data.shape_values, i),
-                                    mapping_type,
+                                    mapping_kind,
                                     mapping_internal,
                                     make_array_view(
                                       fe_data.transformed_shape_values));
@@ -462,12 +508,12 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
       // update gradients. apply the same logic as above
       if (fe_data.update_each & update_gradients &&
           ((cell_similarity != CellSimilarity::translation) ||
-           ((mapping_type == mapping_piola) ||
-            (mapping_type == mapping_raviart_thomas) ||
-            (mapping_type == mapping_nedelec))))
+           ((mapping_kind == mapping_piola) ||
+            (mapping_kind == mapping_raviart_thomas) ||
+            (mapping_kind == mapping_nedelec))))
 
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -607,12 +653,12 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
       // update hessians. apply the same logic as above
       if (fe_data.update_each & update_hessians &&
           ((cell_similarity != CellSimilarity::translation) ||
-           ((mapping_type == mapping_piola) ||
-            (mapping_type == mapping_raviart_thomas) ||
-            (mapping_type == mapping_nedelec))))
+           ((mapping_kind == mapping_piola) ||
+            (mapping_kind == mapping_raviart_thomas) ||
+            (mapping_kind == mapping_nedelec))))
 
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -883,9 +929,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
       // third derivatives are not implemented
       if (fe_data.update_each & update_3rd_derivatives &&
           ((cell_similarity != CellSimilarity::translation) ||
-           ((mapping_type == mapping_piola) ||
-            (mapping_type == mapping_raviart_thomas) ||
-            (mapping_type == mapping_nedelec))))
+           ((mapping_kind == mapping_piola) ||
+            (mapping_kind == mapping_raviart_thomas) ||
+            (mapping_kind == mapping_nedelec))))
         {
           Assert(false, ExcNotImplemented())
         }
@@ -894,9 +940,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_values(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 void
-FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
+FE_PolyTensor<dim, spacedim>::fill_fe_face_values(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell,
   const unsigned int                                          face_no,
   const Quadrature<dim - 1> &                                 quadrature,
@@ -940,18 +986,20 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
   // on the neighborhood between two faces.
   std::fill(fe_data.sign_change.begin(), fe_data.sign_change.end(), 1.0);
 
-  if (mapping_type == mapping_raviart_thomas)
-    internal::FE_PolyTensor::get_face_sign_change_rt(cell,
-                                                     this->dofs_per_face,
-                                                     fe_data.sign_change);
+  internal::FE_PolyTensor::get_face_sign_change_rt(cell,
+                                                   *this,
+                                                   this->mapping_kind,
+                                                   fe_data.sign_change);
 
-  else if (mapping_type == mapping_nedelec)
-    internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
-                                                          this->dofs_per_face,
-                                                          fe_data.sign_change);
+  internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
+                                                        *this,
+                                                        this->mapping_kind,
+                                                        fe_data.sign_change);
 
   for (unsigned int i = 0; i < this->dofs_per_cell; ++i)
     {
+      const MappingKind mapping_kind = get_mapping_kind(i);
+
       const unsigned int first =
         output_data.shape_function_to_row_table[i * this->n_components() +
                                                 this->get_nonzero_components(i)
@@ -959,7 +1007,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
 
       if (fe_data.update_each & update_values)
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -982,7 +1030,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
                                                     i,
                                                     offset,
                                                     n_q_points),
-                                    mapping_type,
+                                    mapping_kind,
                                     mapping_internal,
                                     transformed_shape_values);
 
@@ -1045,7 +1093,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
 
       if (fe_data.update_each & update_gradients)
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -1209,7 +1257,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
 
       if (fe_data.update_each & update_hessians)
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -1517,9 +1565,9 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_face_values(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 void
-FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
+FE_PolyTensor<dim, spacedim>::fill_fe_subface_values(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell,
   const unsigned int                                          face_no,
   const unsigned int                                          sub_no,
@@ -1556,8 +1604,8 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
                                                 n_q_points,
                                                 cell->subface_case(face_no));
 
-  //   Assert(mapping_type == independent
-  //       || ( mapping_type == independent_on_cartesian
+  //   Assert(mapping_kind == independent
+  //       || ( mapping_kind == independent_on_cartesian
   //            && dynamic_cast<const MappingCartesian<dim>*>(&mapping) != 0),
   //       ExcNotImplemented());
   // TODO: Size assertions
@@ -1568,18 +1616,20 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
   // on the neighborhood between two faces.
   std::fill(fe_data.sign_change.begin(), fe_data.sign_change.end(), 1.0);
 
-  if (mapping_type == mapping_raviart_thomas)
-    internal::FE_PolyTensor::get_face_sign_change_rt(cell,
-                                                     this->dofs_per_face,
-                                                     fe_data.sign_change);
+  internal::FE_PolyTensor::get_face_sign_change_rt(cell,
+                                                   *this,
+                                                   this->mapping_kind,
+                                                   fe_data.sign_change);
 
-  else if (mapping_type == mapping_nedelec)
-    internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
-                                                          this->dofs_per_face,
-                                                          fe_data.sign_change);
+  internal::FE_PolyTensor::get_face_sign_change_nedelec(cell,
+                                                        *this,
+                                                        this->mapping_kind,
+                                                        fe_data.sign_change);
 
   for (unsigned int i = 0; i < this->dofs_per_cell; ++i)
     {
+      const MappingKind mapping_kind = get_mapping_kind(i);
+
       const unsigned int first =
         output_data.shape_function_to_row_table[i * this->n_components() +
                                                 this->get_nonzero_components(i)
@@ -1587,7 +1637,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
 
       if (fe_data.update_each & update_values)
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -1610,7 +1660,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
                                                     i,
                                                     offset,
                                                     n_q_points),
-                                    mapping_type,
+                                    mapping_kind,
                                     mapping_internal,
                                     transformed_shape_values);
 
@@ -1680,7 +1730,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
             make_array_view(fe_data.transformed_shape_grads,
                             offset,
                             n_q_points);
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -1826,7 +1876,7 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
 
       if (fe_data.update_each & update_hessians)
         {
-          switch (mapping_type)
+          switch (mapping_kind)
             {
               case mapping_none:
                 {
@@ -2133,95 +2183,100 @@ FE_PolyTensor<PolynomialType, dim, spacedim>::fill_fe_subface_values(
 
 
 
-template <class PolynomialType, int dim, int spacedim>
+template <int dim, int spacedim>
 UpdateFlags
-FE_PolyTensor<PolynomialType, dim, spacedim>::requires_update_flags(
+FE_PolyTensor<dim, spacedim>::requires_update_flags(
   const UpdateFlags flags) const
 {
   UpdateFlags out = update_default;
 
-  switch (mapping_type)
+  for (unsigned int i = 0; i < this->dofs_per_cell; ++i)
     {
-      case mapping_none:
+      const MappingKind mapping_kind = get_mapping_kind(i);
+
+      switch (mapping_kind)
         {
-          if (flags & update_values)
-            out |= update_values;
+          case mapping_none:
+            {
+              if (flags & update_values)
+                out |= update_values;
 
-          if (flags & update_gradients)
-            out |= update_gradients | update_values |
-                   update_jacobian_pushed_forward_grads;
+              if (flags & update_gradients)
+                out |= update_gradients | update_values |
+                       update_jacobian_pushed_forward_grads;
 
-          if (flags & update_hessians)
-            out |= update_hessians | update_values | update_gradients |
-                   update_jacobian_pushed_forward_grads |
-                   update_jacobian_pushed_forward_2nd_derivatives;
-          break;
-        }
+              if (flags & update_hessians)
+                out |= update_hessians | update_values | update_gradients |
+                       update_jacobian_pushed_forward_grads |
+                       update_jacobian_pushed_forward_2nd_derivatives;
+              break;
+            }
+          case mapping_raviart_thomas:
+          case mapping_piola:
+            {
+              if (flags & update_values)
+                out |= update_values | update_piola;
 
-      case mapping_raviart_thomas:
-      case mapping_piola:
-        {
-          if (flags & update_values)
-            out |= update_values | update_piola;
+              if (flags & update_gradients)
+                out |= update_gradients | update_values | update_piola |
+                       update_jacobian_pushed_forward_grads |
+                       update_covariant_transformation |
+                       update_contravariant_transformation;
 
-          if (flags & update_gradients)
-            out |= update_gradients | update_values | update_piola |
-                   update_jacobian_pushed_forward_grads |
-                   update_covariant_transformation |
-                   update_contravariant_transformation;
+              if (flags & update_hessians)
+                out |= update_hessians | update_piola | update_values |
+                       update_gradients | update_jacobian_pushed_forward_grads |
+                       update_jacobian_pushed_forward_2nd_derivatives |
+                       update_covariant_transformation;
 
-          if (flags & update_hessians)
-            out |= update_hessians | update_piola | update_values |
-                   update_gradients | update_jacobian_pushed_forward_grads |
-                   update_jacobian_pushed_forward_2nd_derivatives |
-                   update_covariant_transformation;
+              break;
+            }
 
-          break;
-        }
 
-      case mapping_contravariant:
-        {
-          if (flags & update_values)
-            out |= update_values | update_piola;
+          case mapping_contravariant:
+            {
+              if (flags & update_values)
+                out |= update_values | update_piola;
 
-          if (flags & update_gradients)
-            out |= update_gradients | update_values |
-                   update_jacobian_pushed_forward_grads |
-                   update_covariant_transformation |
-                   update_contravariant_transformation;
+              if (flags & update_gradients)
+                out |= update_gradients | update_values |
+                       update_jacobian_pushed_forward_grads |
+                       update_covariant_transformation |
+                       update_contravariant_transformation;
 
-          if (flags & update_hessians)
-            out |= update_hessians | update_piola | update_values |
-                   update_gradients | update_jacobian_pushed_forward_grads |
-                   update_jacobian_pushed_forward_2nd_derivatives |
-                   update_covariant_transformation;
+              if (flags & update_hessians)
+                out |= update_hessians | update_piola | update_values |
+                       update_gradients | update_jacobian_pushed_forward_grads |
+                       update_jacobian_pushed_forward_2nd_derivatives |
+                       update_covariant_transformation;
 
-          break;
-        }
+              break;
+            }
 
-      case mapping_nedelec:
-      case mapping_covariant:
-        {
-          if (flags & update_values)
-            out |= update_values | update_covariant_transformation;
+          case mapping_nedelec:
+          case mapping_covariant:
+            {
+              if (flags & update_values)
+                out |= update_values | update_covariant_transformation;
 
-          if (flags & update_gradients)
-            out |= update_gradients | update_values |
-                   update_jacobian_pushed_forward_grads |
-                   update_covariant_transformation;
+              if (flags & update_gradients)
+                out |= update_gradients | update_values |
+                       update_jacobian_pushed_forward_grads |
+                       update_covariant_transformation;
 
-          if (flags & update_hessians)
-            out |= update_hessians | update_values | update_gradients |
-                   update_jacobian_pushed_forward_grads |
-                   update_jacobian_pushed_forward_2nd_derivatives |
-                   update_covariant_transformation;
+              if (flags & update_hessians)
+                out |= update_hessians | update_values | update_gradients |
+                       update_jacobian_pushed_forward_grads |
+                       update_jacobian_pushed_forward_2nd_derivatives |
+                       update_covariant_transformation;
 
-          break;
-        }
+              break;
+            }
 
-      default:
-        {
-          Assert(false, ExcNotImplemented());
+          default:
+            {
+              Assert(false, ExcNotImplemented());
+            }
         }
     }
 

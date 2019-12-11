@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2018 by the deal.II authors
+ * Copyright (C) 2018 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -683,36 +683,6 @@ namespace Step60
                                               DoFHandler<dim, spacedim>>>(
           *embedded_configuration_dh, embedded_configuration);
 
-    // In order to construct a well posed coupling interpolation operator $C$,
-    // there are some constraints on the relative dimension of the grids between
-    // the embedding and the embedded domains. The coupling operator $C$ and the
-    // spaces $V$ and $Q$ have to satisfy an inf-sup condition in order for the
-    // problem to have a solution. It turns out that the non-matching $L^2$
-    // projection satisfies such inf-sup, provided that the spaces $V$ and $Q$
-    // are compatible between each other (for example, provided that they are
-    // chosen to be the ones described in the introduction).
-    //
-    // However, the *discrete* inf-sup condition must also hold. No
-    // complications arise here, but it turns out that the discrete inf-sup
-    // constant deteriorates when the non-matching grids have local diameters
-    // that are too far away from each other. In particular, it turns out that
-    // if you choose an embedding grid which is *finer* with respect to the
-    // embedded grid, the inf-sup constant deteriorates much more than if you
-    // let the embedded grid be finer.
-    //
-    // In order to avoid issues, in this tutorial we will throw an exception if
-    // the parameters chosen by the user are such that the maximal diameter of
-    // the embedded grid is greater than the minimal diameter of the embedding
-    // grid.
-    //
-    // This choice guarantees that almost every cell of the embedded grid spans
-    // no more than two cells of the embedding grid, with some rare exceptions,
-    // that are negligible in terms of the resulting inf-sup.
-    const double embedded_space_maximal_diameter =
-      GridTools::maximal_cell_diameter(*embedded_grid, *embedded_mapping);
-    double embedding_space_minimal_diameter =
-      GridTools::minimal_cell_diameter(*space_grid);
-
     setup_embedded_dofs();
 
     // In this tutorial program we not only refine $\Omega$ globally,
@@ -799,7 +769,7 @@ namespace Step60
           GridTools::compute_point_locations(*space_grid_tools_cache,
                                              support_points);
         const auto &cells = std::get<0>(point_locations);
-        for (auto cell : cells)
+        for (auto &cell : cells)
           {
             cell->set_refine_flag();
             for (unsigned int face_no = 0;
@@ -814,7 +784,34 @@ namespace Step60
         space_grid->execute_coarsening_and_refinement();
       }
 
-    embedding_space_minimal_diameter =
+    // In order to construct a well posed coupling interpolation operator $C$,
+    // there are some constraints on the relative dimension of the grids between
+    // the embedding and the embedded domains. The coupling operator $C$ and the
+    // spaces $V$ and $Q$ have to satisfy an inf-sup condition in order for the
+    // problem to have a solution. It turns out that the non-matching $L^2$
+    // projection satisfies such inf-sup, provided that the spaces $V$ and $Q$
+    // are compatible between each other (for example, provided that they are
+    // chosen to be the ones described in the introduction).
+    //
+    // However, the *discrete* inf-sup condition must also hold. No
+    // complications arise here, but it turns out that the discrete inf-sup
+    // constant deteriorates when the non-matching grids have local diameters
+    // that are too far away from each other. In particular, it turns out that
+    // if you choose an embedding grid which is *finer* with respect to the
+    // embedded grid, the inf-sup constant deteriorates much more than if you
+    // let the embedded grid be finer.
+    //
+    // In order to avoid issues, in this tutorial we will throw an exception if
+    // the parameters chosen by the user are such that the maximal diameter of
+    // the embedded grid is greater than the minimal diameter of the embedding
+    // grid.
+    //
+    // This choice guarantees that almost every cell of the embedded grid spans
+    // no more than two cells of the embedding grid, with some rare exceptions,
+    // that are negligible in terms of the resulting inf-sup.
+    const double embedded_space_maximal_diameter =
+      GridTools::maximal_cell_diameter(*embedded_grid, *embedded_mapping);
+    double embedding_space_minimal_diameter =
       GridTools::minimal_cell_diameter(*space_grid);
 
     deallog << "Embedding minimal diameter: "
@@ -927,12 +924,12 @@ namespace Step60
       TimerOutput::Scope timer_section(monitor, "Assemble system");
 
       // Embedding stiffness matrix $K$, and the right hand side $G$.
-      MatrixTools::create_laplace_matrix(*space_dh,
-                                         QGauss<spacedim>(2 * space_fe->degree +
-                                                          1),
-                                         stiffness_matrix,
-                                         (const Function<spacedim> *)nullptr,
-                                         constraints);
+      MatrixTools::create_laplace_matrix(
+        *space_dh,
+        QGauss<spacedim>(2 * space_fe->degree + 1),
+        stiffness_matrix,
+        static_cast<const Function<spacedim> *>(nullptr),
+        constraints);
 
       VectorTools::create_right_hand_side(*embedded_mapping,
                                           *embedded_dh,

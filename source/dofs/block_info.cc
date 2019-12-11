@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -42,10 +42,8 @@ BlockInfo::initialize(const DoFHandler<dim, spacedim> &dof,
   if (!active_only && dof.has_level_dofs())
     {
       std::vector<std::vector<types::global_dof_index>> sizes(
-        dof.get_triangulation().n_levels());
-
-      for (unsigned int i = 0; i < sizes.size(); ++i)
-        sizes[i].resize(dof.get_fe().n_blocks());
+        dof.get_triangulation().n_levels(),
+        std::vector<types::global_dof_index>(dof.get_fe().n_blocks()));
 
       MGTools::count_dofs_per_block(dof, sizes);
       levels.resize(sizes.size());

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2017 by the deal.II authors
+// Copyright (C) 2004 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -94,7 +94,7 @@ test(const unsigned int poly_degree = 1)
   DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
   SparsityTools::distribute_sparsity_pattern(
     dsp,
-    dof_handler.n_locally_owned_dofs_per_processor(),
+    dof_handler.compute_n_locally_owned_dofs_per_processor(),
     mpi_communicator,
     locally_relevant_dofs);
 

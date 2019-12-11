@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -838,10 +838,10 @@ namespace DoFRenumbering
 
   /**
    * Renumber degrees of freedom by cell. The function takes a vector of cell
-   * iterators (which needs to list <i>all</i> active cells of the DoF handler
-   * objects) and will give degrees of freedom new indices based on where in
-   * the given list of cells the cell is on which the degree of freedom is
-   * located. Degrees of freedom that exist at the interface between two or
+   * iterators (which needs to list <i>all</i> locally owned active cells of the
+   * DoF handler objects) and will give degrees of freedom new indices based on
+   * where in the given list of cells the cell is on which the degree of freedom
+   * is located. Degrees of freedom that exist at the interface between two or
    * more cells will be numbered when they are encountered first.
    *
    * Degrees of freedom that are encountered first on the same cell retain
@@ -852,10 +852,13 @@ namespace DoFRenumbering
    * @param[in] cell_order A vector that contains the order of the cells that
    * defines the order in which degrees of freedom should be renumbered.
    *
-   * @pre @p cell_order must have size
-   * <code>dof_handler.get_triangulation().n_active_cells()</code>. Every
-   * active cell iterator of that triangulation needs to be present in @p
-   * cell_order exactly once.
+   * @pre for serial triangulation @p cell_order must have size
+   * <code>dof_handler.get_triangulation().n_active_cells()</code>, whereas
+   * in case of parallel triangulation its size should be
+   * parallel::TriangulationBase::n_locally_owned_active_cells(). Every active
+   * cell
+   * iterator of that triangulation needs to be present in @p cell_order exactly
+   * once.
    */
   template <typename DoFHandlerType>
   void
@@ -865,34 +868,38 @@ namespace DoFRenumbering
 
   /**
    * Compute a renumbering of degrees of freedom by cell. The function takes a
-   * vector of cell iterators (which needs to list <i>all</i> active cells of
-   * the DoF handler objects) and will give degrees of freedom new indices
-   * based on where in the given list of cells the cell is on which the degree
-   * of freedom is located. Degrees of freedom that exist at the interface
-   * between two or more cells will be numbered when they are encountered
-   * first.
+   * vector of cell iterators (which needs to list <i>all</i> locally owned
+   * active cells of the DoF handler objects) and will give degrees of freedom
+   * new indices based on where in the given list of cells the cell is on which
+   * the degree of freedom is located. Degrees of freedom that exist at the
+   * interface between two or more cells will be numbered when they are
+   * encountered first.
    *
    * Degrees of freedom that are encountered first on the same cell retain
    * their original ordering before the renumbering step.
    *
    * @param[out] renumbering A vector of length
-   * <code>dof_handler.n_dofs()</code> that contains for each degree of
-   * freedom (in their current numbering) their future DoF index. This vector
-   * therefore presents a (very particular) <i>permutation</i> of the current
-   * DoF indices.
+   * <code>dof_handler.n_locally_owned_dofs()</code> that contains for each
+   * degree of freedom (in their current numbering) their future DoF index. This
+   * vector therefore presents a (very particular) <i>permutation</i> of the
+   * current DoF indices.
    * @param[out] inverse_renumbering The reverse of the permutation returned
-   * in the previous argument.
+   * in the previous argument. In case of parallel::TriangulationBase the
+   * inverse is within locally owned DoFs.
    * @param[in] dof_handler The DoFHandler whose degrees of freedom are to be
    * renumbered.
    * @param[in] cell_order A vector that contains the order of the cells that
    * defines the order in which degrees of freedom should be renumbered.
    *
-   * @pre @p cell_order must have size
-   * <code>dof_handler.get_triangulation().n_active_cells()</code>. Every
-   * active cell iterator of that triangulation needs to be present in @p
+   * @pre for serial triangulation @p cell_order must have size
+   * <code>dof_handler.get_triangulation().n_active_cells()</code>, whereas
+   * in case of parallel triangulation its size should be
+   * parallel::TriangulationBase::n_locally_owned_active_cells(). Every active
+   * cell iterator of that triangulation needs to be present in @p
    * cell_order exactly once. @post For each @p i between zero and
-   * <code>dof_handler.n_dofs()</code>, the condition
-   * <code>renumbering[inverse_renumbering[i]] == i</code> will hold.
+   * <code>dof_handler.n_locally_owned_dofs()</code>, the condition
+   * <code>renumbering[inverse_renumbering[i]] ==
+   * dof_handler.locally_owned_dofs().nth_index_in_set(i)</code> will hold.
    */
   template <typename DoFHandlerType>
   void
@@ -1134,6 +1141,16 @@ namespace DoFRenumbering
   random(DoFHandlerType &dof_handler);
 
   /**
+   * Renumber the degrees of freedom in a random way. It does the same thing as
+   * the above function, only that it does this for one single level of a
+   * multilevel discretization. The non-multigrid part of the DoFHandler
+   * is not touched.
+   */
+  template <typename DoFHandlerType>
+  void
+  random(DoFHandlerType &dof_handler, const unsigned int level);
+
+  /**
    * Compute the renumbering vector needed by the random() function. See
    * there for more information on the computed random renumbering.
    *
@@ -1144,6 +1161,17 @@ namespace DoFRenumbering
   void
   compute_random(std::vector<types::global_dof_index> &new_dof_indices,
                  const DoFHandlerType &                dof_handler);
+
+  /**
+   * Compute the renumbering vector needed by the random() function. Same
+   * as the above function but for a single level of a multilevel
+   * discretization.
+   */
+  template <typename DoFHandlerType>
+  void
+  compute_random(std::vector<types::global_dof_index> &new_dof_indices,
+                 const DoFHandlerType &                dof_handler,
+                 const unsigned int                    level);
 
   /**
    * @}

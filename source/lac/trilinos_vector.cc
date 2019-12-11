@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -300,7 +300,7 @@ namespace TrilinosWrappers
         {
           TrilinosWrappers::types::int_type *glob_elements =
             TrilinosWrappers::my_global_elements(
-              v.block(block).vector_partitioner());
+              v.block(block).trilinos_partitioner());
           for (size_type i = 0; i < v.block(block).local_size(); ++i)
             global_ids[added_elements++] = glob_elements[i] + block_offset;
           owned_elements.add_indices(v.block(block).owned_elements,
@@ -313,7 +313,7 @@ namespace TrilinosWrappers
                          n_elements,
                          global_ids.data(),
                          0,
-                         v.block(0).vector_partitioner().Comm());
+                         v.block(0).trilinos_partitioner().Comm());
 
       auto actual_vec = std_cxx14::make_unique<Epetra_FEVector>(new_map);
 
@@ -433,8 +433,9 @@ namespace TrilinosWrappers
       // somewhere. This can happen when a vector lives in GrowingVectorMemory
       // data structures. Thus, the following code is commented out.
       //
-      // if (my_comm != NULL && v_comm != NULL && my_comm->DataPtr() !=
-      // v_comm->DataPtr())
+      // if (my_comm != nullptr &&
+      //     v_comm != nullptr &&
+      //     my_comm->DataPtr() != v_comm->DataPtr())
       //  {
       //    int communicators_same = 0;
       //    const int ierr = MPI_Comm_compare (my_comm->GetMpiComm(),
@@ -616,7 +617,7 @@ namespace TrilinosWrappers
       // GlobalAssemble().
       double                double_mode = mode;
       const Epetra_MpiComm *comm_ptr =
-        dynamic_cast<const Epetra_MpiComm *>(&(vector_partitioner().Comm()));
+        dynamic_cast<const Epetra_MpiComm *>(&(trilinos_partitioner().Comm()));
       Assert(comm_ptr != nullptr, ExcInternalError());
       Utilities::MPI::MinMaxAvg result =
         Utilities::MPI::min_max_avg(double_mode, comm_ptr->GetMpiComm());
@@ -717,7 +718,7 @@ namespace TrilinosWrappers
         return false;
 
       size_type i;
-      for (i = 0; i < local_size(); i++)
+      for (i = 0; i < local_size(); ++i)
         if ((*(v.vector))[0][i] != (*vector)[0][i])
           return false;
 
@@ -827,8 +828,7 @@ namespace TrilinosWrappers
       if (size() != local_size())
         {
           auto global_id = [&](const size_type index) {
-            return gid(vector->Map(),
-                       static_cast<TrilinosWrappers::types::int_type>(index));
+            return gid(vector->Map(), index);
           };
           out << "size:" << size() << " local_size:" << local_size() << " :"
               << std::endl;

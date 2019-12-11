@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,8 +22,6 @@
 #include <deal.II/base/geometry_info.h>
 #include <deal.II/base/template_constraints.h>
 
-#include <deal.II/distributed/tria_base.h>
-
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_faces.h>
@@ -34,12 +32,6 @@
 #include <cmath>
 
 DEAL_II_NAMESPACE_OPEN
-
-namespace parallel
-{
-  template <int, int>
-  class Triangulation;
-}
 
 
 /*--------------------- Functions: TriaAccessorBase -------------------------*/
@@ -518,6 +510,40 @@ InvalidAccessor<structdim, dim, spacedim>::manifold_id() const
 {
   return numbers::flat_manifold_id;
 }
+
+
+
+template <int structdim, int dim, int spacedim>
+unsigned int
+InvalidAccessor<structdim, dim, spacedim>::user_index() const
+{
+  return numbers::invalid_unsigned_int;
+}
+
+
+
+template <int structdim, int dim, int spacedim>
+void
+InvalidAccessor<structdim, dim, spacedim>::set_user_index(
+  const unsigned int) const
+{
+  Assert(false,
+         ExcMessage("You are trying to set the user index of an "
+                    "invalid object."));
+}
+
+
+
+template <int structdim, int dim, int spacedim>
+void
+InvalidAccessor<structdim, dim, spacedim>::set_manifold_id(
+  const types::manifold_id) const
+{
+  Assert(false,
+         ExcMessage("You are trying to set the manifold id of an "
+                    "invalid object."));
+}
+
 
 
 template <int structdim, int dim, int spacedim>
@@ -1485,6 +1511,23 @@ TriaAccessor<structdim, dim, spacedim>::child(const unsigned int i) const
 
 
 template <int structdim, int dim, int spacedim>
+inline unsigned int
+TriaAccessor<structdim, dim, spacedim>::child_iterator_to_index(
+  const TriaIterator<TriaAccessor<structdim, dim, spacedim>> &child) const
+{
+  const auto n_children = this->n_children();
+  for (unsigned int child_n = 0; child_n < n_children; ++child_n)
+    if (this->child(child_n) == child)
+      return child_n;
+
+  Assert(false,
+         ExcMessage("The given child is not a child of the current object."));
+  return numbers::invalid_unsigned_int;
+}
+
+
+
+template <int structdim, int dim, int spacedim>
 inline TriaIterator<TriaAccessor<structdim, dim, spacedim>>
 TriaAccessor<structdim, dim, spacedim>::isotropic_child(
   const unsigned int i) const
@@ -2298,6 +2341,18 @@ TriaAccessor<0, dim, spacedim>::copy_from(const TriaAccessor &t)
 
 
 template <int dim, int spacedim>
+inline bool
+TriaAccessor<0, dim, spacedim>::
+operator<(const TriaAccessor<0, dim, spacedim> &other) const
+{
+  Assert(tria == other.tria, TriaAccessorExceptions::ExcCantCompareIterators());
+
+  return (global_vertex_index < other.global_vertex_index);
+}
+
+
+
+template <int dim, int spacedim>
 inline IteratorState::IteratorStates
 TriaAccessor<0, dim, spacedim>::state() const
 {
@@ -2323,6 +2378,15 @@ inline int
 TriaAccessor<0, dim, spacedim>::index() const
 {
   return global_vertex_index;
+}
+
+
+
+template <int dim, int spacedim>
+inline const Triangulation<dim, spacedim> &
+TriaAccessor<0, dim, spacedim>::get_triangulation() const
+{
+  return *tria;
 }
 
 
@@ -2544,6 +2608,16 @@ TriaAccessor<0, dim, spacedim>::max_refinement_depth()
 
 
 template <int dim, int spacedim>
+inline unsigned int
+TriaAccessor<0, dim, spacedim>::child_iterator_to_index(
+  const TriaIterator<TriaAccessor<0, dim, spacedim>> &)
+{
+  return numbers::invalid_unsigned_int;
+}
+
+
+
+template <int dim, int spacedim>
 inline TriaIterator<TriaAccessor<0, dim, spacedim>>
 TriaAccessor<0, dim, spacedim>::child(const unsigned int)
 {
@@ -2565,7 +2639,7 @@ template <int dim, int spacedim>
 inline RefinementCase<0>
 TriaAccessor<0, dim, spacedim>::refinement_case()
 {
-  return RefinementCase<0>(RefinementPossibilities<0>::no_refinement);
+  return {RefinementPossibilities<0>::no_refinement};
 }
 
 
@@ -2673,6 +2747,18 @@ TriaAccessor<0, 1, spacedim>::copy_from(const TriaAccessor &t)
 
 
 template <int spacedim>
+inline bool
+TriaAccessor<0, 1, spacedim>::
+operator<(const TriaAccessor<0, 1, spacedim> &other) const
+{
+  Assert(tria == other.tria, TriaAccessorExceptions::ExcCantCompareIterators());
+
+  return (global_vertex_index < other.global_vertex_index);
+}
+
+
+
+template <int spacedim>
 inline IteratorState::IteratorStates
 TriaAccessor<0, 1, spacedim>::state()
 {
@@ -2694,6 +2780,15 @@ inline int
 TriaAccessor<0, 1, spacedim>::index() const
 {
   return global_vertex_index;
+}
+
+
+
+template <int spacedim>
+inline const Triangulation<1, spacedim> &
+TriaAccessor<0, 1, spacedim>::get_triangulation() const
+{
+  return *tria;
 }
 
 
@@ -2936,6 +3031,17 @@ TriaAccessor<0, 1, spacedim>::max_refinement_depth()
 }
 
 
+
+template <int spacedim>
+inline unsigned int
+TriaAccessor<0, 1, spacedim>::child_iterator_to_index(
+  const TriaIterator<TriaAccessor<0, 1, spacedim>> &)
+{
+  return numbers::invalid_unsigned_int;
+}
+
+
+
 template <int spacedim>
 inline TriaIterator<TriaAccessor<0, 1, spacedim>>
 TriaAccessor<0, 1, spacedim>::child(const unsigned int)
@@ -2956,7 +3062,7 @@ template <int spacedim>
 inline RefinementCase<0>
 TriaAccessor<0, 1, spacedim>::refinement_case()
 {
-  return RefinementCase<0>(RefinementPossibilities<0>::no_refinement);
+  return {RefinementPossibilities<0>::no_refinement};
 }
 
 template <int spacedim>
@@ -3089,10 +3195,61 @@ namespace internal
 
 
 template <int dim, int spacedim>
+inline TriaIterator<CellAccessor<dim, spacedim>>
+CellAccessor<dim, spacedim>::child(const unsigned int i) const
+{
+  TriaIterator<CellAccessor<dim, spacedim>> q(this->tria,
+                                              this->present_level + 1,
+                                              this->child_index(i));
+
+  Assert((q.state() == IteratorState::past_the_end) || q->used(),
+         ExcInternalError());
+
+  return q;
+}
+
+
+
+template <int dim, int spacedim>
 inline TriaIterator<TriaAccessor<dim - 1, dim, spacedim>>
 CellAccessor<dim, spacedim>::face(const unsigned int i) const
 {
   return dealii::internal::CellAccessorImplementation::get_face(*this, i);
+}
+
+
+
+template <int dim, int spacedim>
+inline unsigned int
+CellAccessor<dim, spacedim>::face_iterator_to_index(
+  const TriaIterator<TriaAccessor<dim - 1, dim, spacedim>> &face) const
+{
+  for (unsigned int face_n = 0; face_n < GeometryInfo<dim>::faces_per_cell;
+       ++face_n)
+    if (this->face(face_n) == face)
+      return face_n;
+
+  Assert(false,
+         ExcMessage("The given face is not a face of the current cell."));
+  return numbers::invalid_unsigned_int;
+}
+
+
+
+template <int dim, int spacedim>
+inline std::array<TriaIterator<TriaAccessor<dim - 1, dim, spacedim>>,
+                  GeometryInfo<dim>::faces_per_cell>
+CellAccessor<dim, spacedim>::face_iterators() const
+{
+  std::array<TriaIterator<TriaAccessor<dim - 1, dim, spacedim>>,
+             GeometryInfo<dim>::faces_per_cell>
+    face_iterators;
+
+  for (unsigned int i = 0; i < GeometryInfo<dim>::faces_per_cell; ++i)
+    face_iterators[i] =
+      dealii::internal::CellAccessorImplementation::get_face(*this, i);
+
+  return face_iterators;
 }
 
 
@@ -3436,22 +3593,6 @@ CellAccessor<dim, spacedim>::neighbor(const unsigned int i) const
 
 
 template <int dim, int spacedim>
-inline TriaIterator<CellAccessor<dim, spacedim>>
-CellAccessor<dim, spacedim>::child(const unsigned int i) const
-{
-  TriaIterator<CellAccessor<dim, spacedim>> q(this->tria,
-                                              this->present_level + 1,
-                                              this->child_index(i));
-
-  Assert((q.state() == IteratorState::past_the_end) || q->used(),
-         ExcInternalError());
-
-  return q;
-}
-
-
-
-template <int dim, int spacedim>
 inline bool
 CellAccessor<dim, spacedim>::active() const
 {
@@ -3469,16 +3610,14 @@ CellAccessor<dim, spacedim>::is_locally_owned() const
 #ifndef DEAL_II_WITH_MPI
   return true;
 #else
-  if (is_artificial())
-    return false;
 
-  const parallel::Triangulation<dim, spacedim> *pt =
-    dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(this->tria);
-
-  if (pt == nullptr)
-    return true;
-  else
-    return (this->subdomain_id() == pt->locally_owned_subdomain());
+  // Serial triangulations report invalid_subdomain_id as their locally owned
+  // subdomain, so the first condition checks whether we have a serial
+  // triangulation, in which case all cells are locally owned. The second
+  // condition compares the subdomain id in the parallel case.
+  return (this->tria->locally_owned_subdomain() ==
+            numbers::invalid_subdomain_id ||
+          this->subdomain_id() == this->tria->locally_owned_subdomain());
 
 #endif
 }
@@ -3492,13 +3631,13 @@ CellAccessor<dim, spacedim>::is_locally_owned_on_level() const
   return true;
 #else
 
-  const parallel::Triangulation<dim, spacedim> *pt =
-    dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(this->tria);
-
-  if (pt == nullptr)
-    return true;
-  else
-    return (this->level_subdomain_id() == pt->locally_owned_subdomain());
+  // Serial triangulations report invalid_subdomain_id as their locally owned
+  // subdomain, so the first condition checks whether we have a serial
+  // triangulation, in which case all cells are locally owned. The second
+  // condition compares the subdomain id in the parallel case.
+  return (this->tria->locally_owned_subdomain() ==
+            numbers::invalid_subdomain_id ||
+          this->level_subdomain_id() == this->tria->locally_owned_subdomain());
 
 #endif
 }
@@ -3510,20 +3649,22 @@ CellAccessor<dim, spacedim>::is_ghost() const
 {
   Assert(this->active(),
          ExcMessage("is_ghost() can only be called on active cells!"));
-  if (is_artificial() || this->has_children())
+  if (this->has_children())
     return false;
 
 #ifndef DEAL_II_WITH_MPI
   return false;
 #else
 
-  const parallel::Triangulation<dim, spacedim> *pt =
-    dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(this->tria);
-
-  if (pt == nullptr)
-    return false;
-  else
-    return (this->subdomain_id() != pt->locally_owned_subdomain());
+  // Serial triangulations report invalid_subdomain_id as their locally owned
+  // subdomain, so the first condition rules out that case as all cells to a
+  // serial triangulation are locally owned and none is ghosted. The second
+  // and third conditions check whether the cell's subdomain is not the
+  // locally owned one and not artificial.
+  return (this->tria->locally_owned_subdomain() !=
+            numbers::invalid_subdomain_id &&
+          this->subdomain_id() != this->tria->locally_owned_subdomain() &&
+          this->subdomain_id() != numbers::artificial_subdomain_id);
 
 #endif
 }
@@ -3540,13 +3681,12 @@ CellAccessor<dim, spacedim>::is_artificial() const
   return false;
 #else
 
-  const parallel::Triangulation<dim, spacedim> *pt =
-    dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(this->tria);
-
-  if (pt == nullptr)
-    return false;
-  else
-    return this->subdomain_id() == numbers::artificial_subdomain_id;
+  // Serial triangulations report invalid_subdomain_id as their locally owned
+  // subdomain, so the first condition rules out that case as all cells to a
+  // serial triangulation are locally owned and none is artificial.
+  return (this->tria->locally_owned_subdomain() !=
+            numbers::invalid_subdomain_id &&
+          this->subdomain_id() == numbers::artificial_subdomain_id);
 
 #endif
 }

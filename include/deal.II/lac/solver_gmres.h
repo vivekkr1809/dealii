@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -95,7 +95,7 @@ namespace internal
 
     private:
       /**
-       * Pool were vectors are obtained from.
+       * Pool where vectors are obtained from.
        */
       VectorMemory<VectorType> &mem;
 
@@ -175,7 +175,7 @@ namespace internal
  * @author Wolfgang Bangerth, Guido Kanschat, Ralf Hartmann.
  */
 template <class VectorType = Vector<double>>
-class SolverGMRES : public Solver<VectorType>
+class SolverGMRES : public SolverBase<VectorType>
 {
 public:
   /**
@@ -237,6 +237,11 @@ public:
    * allocate memory.
    */
   SolverGMRES(SolverControl &cn, const AdditionalData &data = AdditionalData());
+
+  /**
+   * The copy constructor is deleted.
+   */
+  SolverGMRES(const SolverGMRES<VectorType> &) = delete;
 
   /**
    * Solve the linear system $Ax=b$ for x.
@@ -431,13 +436,6 @@ protected:
    * Auxiliary matrix for inverting @p H
    */
   FullMatrix<double> H1;
-
-
-private:
-  /**
-   * No copy constructor.
-   */
-  SolverGMRES(const SolverGMRES<VectorType> &);
 };
 
 /**
@@ -456,13 +454,10 @@ private:
  * <tt>2*SolverFGMRES::AdditionalData::max_basis_size+1</tt> auxiliary
  * vectors.
  *
- * Caveat: Documentation of this class is not up to date. There are also a few
- * parameters of GMRES we would like to introduce here.
- *
  * @author Guido Kanschat, 2003
  */
 template <class VectorType = Vector<double>>
-class SolverFGMRES : public Solver<VectorType>
+class SolverFGMRES : public SolverBase<VectorType>
 {
 public:
   /**
@@ -473,13 +468,24 @@ public:
     /**
      * Constructor. By default, set the maximum basis size to 30.
      */
-    explicit AdditionalData(const unsigned int max_basis_size   = 30,
-                            const bool /*use_default_residual*/ = true)
+    explicit AdditionalData(const unsigned int max_basis_size = 30)
       : max_basis_size(max_basis_size)
     {}
 
     /**
-     * Maximum number of tmp vectors.
+     * @deprecated: use the other constructor as the second argument is
+     unused.
+     */
+    DEAL_II_DEPRECATED
+    AdditionalData(const unsigned int max_basis_size,
+                   const bool         use_default_residual)
+      : max_basis_size(max_basis_size)
+    {
+      (void)use_default_residual;
+    }
+
+    /**
+     * Maximum basis size.
      */
     unsigned int max_basis_size;
   };
@@ -615,7 +621,7 @@ template <class VectorType>
 SolverGMRES<VectorType>::SolverGMRES(SolverControl &           cn,
                                      VectorMemory<VectorType> &mem,
                                      const AdditionalData &    data)
-  : Solver<VectorType>(cn, mem)
+  : SolverBase<VectorType>(cn, mem)
   , additional_data(data)
 {}
 
@@ -624,7 +630,7 @@ SolverGMRES<VectorType>::SolverGMRES(SolverControl &           cn,
 template <class VectorType>
 SolverGMRES<VectorType>::SolverGMRES(SolverControl &       cn,
                                      const AdditionalData &data)
-  : Solver<VectorType>(cn)
+  : SolverBase<VectorType>(cn)
   , additional_data(data)
 {}
 
@@ -1176,7 +1182,7 @@ template <class VectorType>
 SolverFGMRES<VectorType>::SolverFGMRES(SolverControl &           cn,
                                        VectorMemory<VectorType> &mem,
                                        const AdditionalData &    data)
-  : Solver<VectorType>(cn, mem)
+  : SolverBase<VectorType>(cn, mem)
   , additional_data(data)
 {}
 
@@ -1185,7 +1191,7 @@ SolverFGMRES<VectorType>::SolverFGMRES(SolverControl &           cn,
 template <class VectorType>
 SolverFGMRES<VectorType>::SolverFGMRES(SolverControl &       cn,
                                        const AdditionalData &data)
-  : Solver<VectorType>(cn)
+  : SolverBase<VectorType>(cn)
   , additional_data(data)
 {}
 

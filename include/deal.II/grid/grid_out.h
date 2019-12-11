@@ -28,11 +28,14 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 class ParameterHandler;
 template <int dim, int spacedim>
 class Triangulation;
 template <int dim, int spacedim>
 class Mapping;
+#endif
 
 
 /**
@@ -669,42 +672,67 @@ namespace GridOutFlags
    */
   struct Svg
   {
-    /// Height of the plot in SVG units, computed from width if zero. Defaults
-    /// to 1000
+    /**
+     *  Height of the plot in SVG units, computed from width if zero. Defaults
+     *  to 1000.
+     */
     unsigned int height;
-    /// The width of the plot. Computed automatically from height if zero
-    /// (default)
+
+    /**
+     *  The width of the plot. Computed automatically from height if zero
+     *  (default).
+     */
     unsigned int width;
-    /// Thickness of the lines between cells
+
+    /**
+     *  Thickness of the lines between cells.
+     */
     unsigned int line_thickness;
-    /// Thickness of lines at the boundary
+    /**
+     * Thickness of lines at the boundary.
+     */
     unsigned int boundary_line_thickness;
 
-    /// Margin around the plotted area
+    /**
+     *  Margin around the plotted area.
+     */
     bool margin;
 
     /**
-     * Background style.
+     * An `enum` describing all possible background styles.
      */
     enum Background
     {
-      /// Use transparent value of SVG
+      /**
+       * Use transparent value of SVG.
+       */
       transparent,
-      /// Use white background
+
+      /**
+       * Use white background.
+       */
       white,
-      /// Use a gradient from white (top) to steelblue (bottom), and add date
-      /// and time plus a deal.II logo. Automatically draws a margin.
+
+      /**
+       * Use a gradient from white (top) to steelblue (bottom), and add date
+       * and time plus a deal.II logo. Automatically draws a margin.
+       */
       dealii
     };
 
+    /**
+     * The style used for the background of the mesh.
+     */
     Background background;
 
     // View angles for the perspective view of the grid; Default is 0, 0 (top
     // view).
+
     /**
      * The azimuth angle measured from ??? in degrees. Default is 0.
      */
     int azimuth_angle;
+
     /**
      * The angle from vertically above the xy-plane. Default is 0.
      */
@@ -733,28 +761,51 @@ namespace GridOutFlags
     /// (useful in the perspective view).
     bool convert_level_number_to_height;
 
-    /// The factor determining the vertical distance between levels (default =
-    /// 0.3)
+    /**
+     * The factor determining the vertical distance between levels (default =
+     * 0.3.
+     */
     float level_height_factor;
 
-    /// Scaling of the font for cell annotations. Defaults to 1.
+    /**
+     * Scaling of the font for cell annotations. Defaults to 1.
+     */
     float cell_font_scaling;
-    /// Write level number into each cell. Defaults to true
+    /**
+     * Write level number into each cell. Defaults to false.
+     */
     bool label_level_number;
-    /// Write cell index into each cell. Defaults to true
+
+    /**
+     * Write cell index into each cell. Defaults to false.
+     */
     bool label_cell_index;
-    /// Write material id of each cell. Defaults to false
+
+    /**
+     * Write material id of each cell. Defaults to false.
+     */
     bool label_material_id;
-    /// Write subdomain id of each cell. Defaults to false
+
+    /**
+     * Write subdomain id of each cell. Defaults to false.
+     */
     bool label_subdomain_id;
-    /// Write level subdomain id of each cell. Defaults to false
+
+    /**
+     * Write level subdomain id of each cell. Defaults to false.
+     */
     bool label_level_subdomain_id;
 
-    /// Draw a colorbar next to the plotted grid with respect to the chosen
-    /// coloring of the cells
+    /**
+     * Draw a colorbar next to the plotted grid with respect to the chosen
+     * coloring of the cells.
+     */
     bool draw_colorbar;
-    /// Draw a legend next to the plotted grid, explaining the label of the
-    /// cells
+
+    /**
+     * Draw a legend next to the plotted grid, explaining the label of the
+     * cells.
+     */
     bool draw_legend;
 
     /**
@@ -762,18 +813,18 @@ namespace GridOutFlags
      */
     Svg(const unsigned int line_thickness                 = 2,
         const unsigned int boundary_line_thickness        = 4,
-        bool               margin                         = true,
+        const bool         margin                         = true,
         const Background   background                     = white,
         const int          azimuth_angle                  = 0,
         const int          polar_angle                    = 0,
         const Coloring     coloring                       = level_number,
         const bool         convert_level_number_to_height = false,
-        const bool         label_level_number             = true,
-        const bool         label_cell_index               = true,
+        const bool         label_level_number             = false,
+        const bool         label_cell_index               = false,
         const bool         label_material_id              = false,
         const bool         label_subdomain_id             = false,
-        const bool         draw_colorbar                  = true,
-        const bool         draw_legend                    = true);
+        const bool         draw_colorbar                  = false,
+        const bool         draw_legend                    = false);
   };
 
   /**
@@ -814,7 +865,41 @@ namespace GridOutFlags
    * @ingroup output
    */
   struct Vtk : public DataOutBase::VtkFlags
-  {};
+  {
+    /**
+     * Default constructor.
+     */
+    Vtk(const bool output_cells         = true,
+        const bool output_faces         = true,
+        const bool output_edges         = true,
+        const bool output_only_relevant = true)
+      : output_cells(output_cells)
+      , output_faces(output_faces)
+      , output_edges(output_edges)
+      , output_only_relevant(output_only_relevant)
+    {}
+
+    /**
+     * Output cells.
+     */
+    bool output_cells;
+
+    /**
+     * Output faces.
+     */
+    bool output_faces;
+
+    /**
+     * Output co-faces/edges.
+     */
+    bool output_edges;
+
+    /**
+     * Output only faces/co-faces that differ from the default settings
+     * (e.g boundary_id).
+     */
+    bool output_only_relevant;
+  };
 
 
   /**
@@ -1108,7 +1193,9 @@ public:
    * further possible in order to visualize a certain property of the cells
    * such as their level or material id. A colorbar can be drawn to encode the
    * chosen coloring.  Moreover, a cell label can be added, showing level
-   * index, etc.
+   * index, etc. Indeed, by using the set_flags() with an appropriately
+   * generated object of type GridOutFlags::Svg, many aspects of how and
+   * what is being visualized by this function can be customized.
    *
    * @note This function is currently only implemented for two-dimensional
    * grids in two space dimensions.
@@ -1146,21 +1233,42 @@ public:
                std::ostream &                      out) const;
 
   /**
-   * Write triangulation in VTK format.
+   * Write triangulation in VTK format. This function writes a
+   * UNSTRUCTURED_GRID file, that contains the following VTK cell types:
+   * VTK_HEXAHEDRON, VTK_QUAD, and VTK_LINE, depending on the template
+   * dimension.
    *
-   * Due to the way this function writes data to the output stream,
-   * the resulting output files correspond to a faithful representation
-   * of the mesh in that all cells are visible for visualization. However,
-   * the data is not in a format that allows reading this file in again
-   * through the GridIn class. This is because every vertex of the mesh is
-   * duplicated as many times as there are adjacent cells. In other words,
-   * every cell has its own, separate set of vertices that are at the
-   * same location as the vertices of other cells, but are separately
-   * numbered. If such a file is read in through the GridIn class, then
-   * that will result in a mesh that has the correct cells and vertex
-   * locations, but because the vertices are logically separate (though at
-   * the same locations) all cells are unconnected and have no neighbors
-   * across faces.
+   * In three dimensions, this function writes a file that contains
+   *
+   * - VTK_HEXAHEDRON cell types, containing the cell information of the
+   *   Triangulation
+   * - VTK_QUAD cell types, containing all boundary faces with non-zero
+   *   boundary ids, and all faces with non-flat manifold ids
+   * - VTK_LINE cell types, containing all boundary edges with non-zero
+   *   boundary ids, and all edges with non-flat manifold ids
+   *
+   * In two dimensions:
+   *
+   * - VTK_QUAD cell types, containing the cell information of the
+   *   Triangulation
+   * - VTK_LINE cell types, containing all boundary faces with non-zero
+   *   boundary ids, and all faces with non-flat manifold ids
+   *
+   * In one dimension
+   *
+   * - VTK_LINE cell types, containing the cell information of the
+   *   Triangulation
+   *
+   * The output file will contain two CELL_DATA sections, `MaterialID` and
+   * `ManifoldID`, recording for each VTK cell type the material or boundary id,
+   * and the manifold. See the
+   * [VTK file format](http://www.vtk.org/VTK/img/file-formats.pdf)
+   * documentation for an explanation of the generated output.
+   *
+   * The companion GridIn::read_vtk function can be used to read VTK files
+   * generated with this method.
+   *
+   * @author Luca Heltai, 2018
    */
   template <int dim, int spacedim>
   void
@@ -1701,22 +1809,6 @@ private:
                   const unsigned int         next_element_index,
                   std::ostream &             out) const;
 
-
-  /**
-   * This function projects a three-dimensional point (Point<3> point) onto a
-   * two-dimensional image plane, specified by the position of the camera
-   * viewing system (Point<3> camera_position), camera direction (Point<3>
-   * camera_position), camera horizontal (Point<3> camera_horizontal,
-   * necessary for the correct alignment of the later images), and the focus
-   * of the camera (float camera_focus).
-   *
-   * For SVG output of grids.
-   */
-  static Point<2> svg_project_point(Point<3> point,
-                                    Point<3> camera_position,
-                                    Point<3> camera_direction,
-                                    Point<3> camera_horizontal,
-                                    float    camera_focus);
 
   /**
    * Return the number of faces in the triangulation which have a boundary

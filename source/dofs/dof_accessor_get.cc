@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,7 +31,9 @@
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
 #include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 
@@ -67,15 +69,23 @@ DoFCellAccessor<DoFHandlerType, lda>::get_interpolated_dof_values(
           // well, here we need to first get the values from the current
           // cell and then interpolate it to the element requested. this
           // can clearly only happen for hp::DoFHandler objects
-          Vector<number> tmp(this->get_fe().dofs_per_cell);
-          this->get_dof_values(values, tmp);
+          const unsigned int dofs_per_cell = this->get_fe().dofs_per_cell;
+          if (dofs_per_cell == 0)
+            {
+              interpolated_values = 0;
+            }
+          else
+            {
+              Vector<number> tmp(dofs_per_cell);
+              this->get_dof_values(values, tmp);
 
-          FullMatrix<double> interpolation(
-            this->dof_handler->get_fe(fe_index).dofs_per_cell,
-            this->get_fe().dofs_per_cell);
-          this->dof_handler->get_fe(fe_index).get_interpolation_matrix(
-            this->get_fe(), interpolation);
-          interpolation.vmult(interpolated_values, tmp);
+              FullMatrix<double> interpolation(
+                this->dof_handler->get_fe(fe_index).dofs_per_cell,
+                this->get_fe().dofs_per_cell);
+              this->dof_handler->get_fe(fe_index).get_interpolation_matrix(
+                this->get_fe(), interpolation);
+              interpolation.vmult(interpolated_values, tmp);
+            }
         }
     }
   else

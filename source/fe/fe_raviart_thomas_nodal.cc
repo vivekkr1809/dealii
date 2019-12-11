@@ -38,21 +38,20 @@ DEAL_II_NAMESPACE_OPEN
 
 template <int dim>
 FE_RaviartThomasNodal<dim>::FE_RaviartThomasNodal(const unsigned int deg)
-  : FE_PolyTensor<PolynomialsRaviartThomas<dim>, dim>(
-      deg,
-      FiniteElementData<dim>(get_dpo_vector(deg),
-                             dim,
-                             deg + 1,
-                             FiniteElementData<dim>::Hdiv),
-      get_ria_vector(deg),
-      std::vector<ComponentMask>(PolynomialsRaviartThomas<dim>::compute_n_pols(
-                                   deg),
-                                 std::vector<bool>(dim, true)))
+  : FE_PolyTensor<dim>(PolynomialsRaviartThomas<dim>(deg),
+                       FiniteElementData<dim>(get_dpo_vector(deg),
+                                              dim,
+                                              deg + 1,
+                                              FiniteElementData<dim>::Hdiv),
+                       get_ria_vector(deg),
+                       std::vector<ComponentMask>(
+                         PolynomialsRaviartThomas<dim>::n_polynomials(deg),
+                         std::vector<bool>(dim, true)))
 {
   Assert(dim >= 2, ExcImpossibleInDim(dim));
   const unsigned int n_dofs = this->dofs_per_cell;
 
-  this->mapping_type = mapping_raviart_thomas;
+  this->mapping_kind = {mapping_raviart_thomas};
   // First, initialize the
   // generalized support points and
   // quadrature weights, since they
@@ -254,7 +253,7 @@ std::vector<bool>
 FE_RaviartThomasNodal<dim>::get_ria_vector(const unsigned int deg)
 {
   const unsigned int dofs_per_cell =
-    PolynomialsRaviartThomas<dim>::compute_n_pols(deg);
+    PolynomialsRaviartThomas<dim>::n_polynomials(deg);
   unsigned int dofs_per_face = deg + 1;
   for (unsigned int d = 2; d < dim; ++d)
     dofs_per_face *= deg + 1;

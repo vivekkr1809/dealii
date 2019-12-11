@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,14 +14,44 @@
 // ---------------------------------------------------------------------
 
 /**
- * @defgroup auto_symb_diff Automatic differentiation
+ * @defgroup auto_symb_diff Automatic and symbolic differentiation
  *
  * @brief A module dedicated to the implementation of functions and classes that relate
- * to automatic differentiation.
+ * to automatic and symbolic differentiation.
  *
- * Below we provide a very brief introduction as to what automatic differentiation is,
- * what variations of this computational / numerical scheme exist, and how it is integrated
- * within deal.II's framework.
+ * Below we provide a very brief introduction as to what automatic and symbolic differentiation are,
+ * what variations of these computational/numerical schemes exist, and how they are integrated
+ * within deal.II's framework. The purpose of all of these schemes is to automatically compute
+ * the derivative of functions, or approximations of it, in cases where one does not want to
+ * compute them by hand. Common examples are situations in the finite element context is where
+ * one wants to solve a nonlinear problem that is given by requiring that some residual
+ * $F(u,\nabla u)=0$ where $F$ is a complicated function that needs to be differentiated to
+ * apply Newton's method; and situations where one is given a parameter dependent problem
+ * ${\cal A}(q,u,\nabla u) = f$ and wants to form derivatives with regards to the parameters $q$, for example
+ * to optimize an output functional with regards to $q$, or for a sensitivity analysis with
+ * regards to $q$. One should think of $q$ as design parameters: say, the width
+ * or shape of a wing, the stiffness coefficients of a material chosen to
+ * build an object, the power sent to a device, the chemical composition of the
+ * gases sent to a burner. In all of these cases, one should think of $F$ and $\cal A$ as <i>complicated</i>
+ * and cumbersome to differentiate -- at least when doing it by hand. A relatively simple case of
+ * a nonlinear problem that already highlights the tedium of computing derivatives by hand is shown in
+ * step-15. However, in reality, one might, for example,
+ * think about problems such as chemically reactive flows where the fluid equations have coefficients
+ * such as the density and viscosity that depend strongly and nonlinearly on the chemical composition,
+ * temperature, and pressure of the fluid at each point; and where the chemical species react with
+ * each other based on reaction coefficients that also depend nonlinearly and in complicated
+ * ways on the chemical composition, temperature, and pressure. In many cases, the exact formulas
+ * for all of these coefficients can take several lines to write out, may include exponentials
+ * and (harmonic or geometric) averages of several nonlinear terms, and/or may contain table
+ * lookup of and interpolation between data points. Just getting these terms right is difficult
+ * enough; computing derivatives of these terms is impractical in most applications and, in
+ * reality, impossible to get right. Higher derivatives are even more impossible to do
+ * without computer aid. Automatic or symbolic differentiation is a way out of this:
+ * One only has to implement the function that computes these coefficients in terms
+ * of their inputs only once, and gets the (correct!) derivatives without
+ * further coding effort (though at a non-negligible computational cost either at run time, compile
+ * time, or both).
+ *
  *
  * @section auto_diff_1 Automatic differentiation
  *
@@ -33,10 +63,12 @@
  * significant. When used correctly the derivatives of often complicated functions can be computed
  * to a very high accuracy. Although the exact accuracy achievable by these frameworks largely
  * depends on their underlying mathematical formulation, some implementations compute with a precision
- * on the order of machine accuracy. Note that this is different to classical numerical differentiation,
+ * on the order of machine accuracy. Note that this is different to classical numerical
+ * differentiation (using, for example, a finite difference approximation of a function by
+ * evaluating it at different points),
  * which has an accuracy that depends on both the perturbation size as well as the chosen
- * finite-difference scheme (and is measurably larger than well-formulated automatic differentiation
- * approaches).
+ * finite-difference scheme; the error of these methods is measurably larger than
+ * well-formulated automatic differentiation approaches.
  *
  * Three practical examples of auto-differentiation use within a finite-element context
  * would then be
@@ -65,13 +97,13 @@
  * the Tensor and SymmetricTensor classes should support calculations performed with these specialized
  * numbers.
  * (In theory an entire program could be made differentiable. This could be useful in, for example,
- * the sentitivity analysis of solutions with respect to input parameters. However, to date this has
+ * the sensitivity analysis of solutions with respect to input parameters. However, to date this has
  * not been tested.)
  *
  * Implementations of specialized frameworks based on <em>operator overloading</em> typically fall into
  * one of three categories. In each, some customized data classes representing the floating point value
  * of an evaluated function and its derivative(s) by
- * -# exploiting <em>dual</em> / <em>complex-step</em> / <em>hyper-dual</em> formulations (occasionally
+ * -# exploiting <em>dual</em>/<em>complex-step</em>/<em>hyper-dual</em> formulations (occasionally
  *    called <em>tapeless</em> methods),
  * -# those utilizing <em>taping</em> strategies, and
  * -# those using compile-time optimization through <em>expression templates</em>.
@@ -91,12 +123,12 @@
  *    numerical perturbation. The dual number approach thus produces exact first derivatives, while the
  *    complex-step approximation does not. The standard implementation of the dual numbers, however, cannot yield
  *    exact values for second derivatives. Hyper-dual numbers take a different view of this idea, with numbers
- *    begin represented in a form similar to quaternions (i.e. carrying additional non-real components) and the
+ *    being represented in a form similar to quaternions (i.e. carrying additional non-real components) and the
  *    derivatives being computed from a high-order truncation of the Taylor series all four components. The outcome
- *    that, with the appropriate implementation, both first and second derivatives can be computed exactly.
+ *    is that, with the appropriate implementation, both first and second derivatives can be computed exactly.
  * -# With <em>taped</em> approaches, a specified subregion of code is selected as one for which all
  *    operations executed with active (marked) input variables are tracked and recorded in a data structure
- *    referred to as a tape. At the end of the taped region, the recorded function(s) may be revaluated
+ *    referred to as a tape. At the end of the taped region, the recorded function(s) may be reevaluated
  *    by "replaying" the tape with a different set of input variables instead of recomputing the function
  *    directly. Assuming that the taped region represents a smooth function, arbitrarily high-order
  *    derivatives of the function then can be computed by referring to the code path tracked and stored on
@@ -113,14 +145,16 @@
  *    The outermost leaves on the tree represent the independent variables or constants, and are transformed by unary
  *    operators and connected by binary operators (in the most simple case). Therefore, the operations performed on
  *    the function inputs is known at compile time, and with that the associated derivative operation can also be defined
- *    at the same time. The compiled output type returned by this operator need not be generic, but can rather be
+ *    at the same time using the well-known rules of computing the derivative of an operation (such as
+ *    the associativity of derivatives under addition and subtraction, the product rule, and the chain
+ *    rule). The compiled output type returned by this operator need not be generic, but can rather be
  *    specialized based on the specific inputs (possibly carrying a differential history) given to that specific
  *    operator on the vertex of the DAG. In this way, a compile-time optimized set of instructions can be generated
  *    for the very specialized individual operations used to evaluate each intermediate result of the dependent
  *    function.
  *
  * Each of these methods, of course, has its advantages and disadvantages, and one may be more appropriate
- * than another for a given problem that is to be solved. As the aforemetioned implementational details
+ * than another for a given problem that is to be solved. As the aforementioned implementational details
  * (and others not discussed) may be hidden from the user, it may still be important to understand the
  * implications, run-time cost,  and potential limitations, of using any one of these "black-box"
  * auto-differentiable numbers.
@@ -157,8 +191,8 @@
  * In the most practical sense, any of the above categories exploit the chain-rule to compute the total
  * derivative of a composite function. To perform this action, they typically use one of two mechanisms to
  * compute derivatives, specifically
- * - <em>forward-mode</em> (or <em>forward accumulation</em>) auto-differentation, or
- * - <em>reverse-mode</em> (or <em>reverse accumulation</em>) auto-differentation.
+ * - <em>forward-mode</em> (or <em>forward accumulation</em>) auto-differentiation, or
+ * - <em>reverse-mode</em> (or <em>reverse accumulation</em>) auto-differentiation.
  *
  * As a point of interest, the <em>optimal Jacobian accumulation</em>, which performs a minimal set of
  * computations, lies somewhere between these two limiting cases. Its computation for a general composite
@@ -166,6 +200,8 @@
  *
  * With the aid of the diagram below (it and some of the listed details courtesy of this
  * <a href="https://en.wikipedia.org/wiki/Automatic_differentiation">Wikipedia article</a>),
+ * let us think about the represention of the calculation of the function
+ * $f (\mathbf{x}) = \sin (x_{1}) + x_{1} x_{2}$ and its derivatives:
  *
  * <div class="twocolumn" style="width: 80%">
  *   <div class="parent">
@@ -190,8 +226,7 @@
  *   </div>
  * </div>
  *
- * representing the calculation of the function $f (\mathbf{x}) = x_{1} \times x_{2} + \sin (x_{1})$,
- * we will briefly describe what forward and reverse auto-differentiation are.
+ * Specifically, we will briefly describe what forward and reverse auto-differentiation are.
  * Note that in the diagram, along the edges of the graph in text are the directional
  * derivative of function $w$ with respect to the $i$-th variable, represented by
  * the notation $\dot{w} = \dfrac{d w}{d x_{i}}$.
@@ -232,7 +267,7 @@
  * graph is required.
  *
  * In reverse-mode, the chain-rule is computed somewhat unnaturally from the "outside in". The
- * values of the dependent variables first get computed and fixed, and then the preceeding
+ * values of the dependent variables first get computed and fixed, and then the preceding
  * differential operations are evaluated and multiplied in succession with the previous results
  * from left to right. Again, if we encapsulate and fix the order of operations using parentheses,
  * this implies that the reverse calculation is performed by
@@ -450,9 +485,23 @@
  *
  * @subsubsection auto_diff_1_3 User interface to the automatic differentiation libraries
  *
- * As of the current release, there is no formal, unified interface to the automatic
- * differentation libraries that we support. It is therefore necessary for users to
- * manage the initialization and derivative computations themselves.
+ * The deal.II library offers a unified interface to the automatic differentiation libraries that 
+ * we support. To date, the helper classes have been developed for the following contexts:
+ *
+ * - Classes designed to operate at the quadrature point level (or any general continuum point):
+ *   - ScalarFunction: Differentiation of a scalar-valued function. One typical use would be the
+ *                     the development of constitutive laws directly from a strain energy function.
+ *   - VectorFunction: Differentiation of a vector-valued function. This could be used to
+ *                     linearize the kinematic variables of a constitutive law, or assist in solving
+ *                     the evolution equations of local internal variables.
+ * - Classes designed to operate at the cell level:
+ *   - EnergyFunctional: Differentiation of a scalar-valued energy functional, such as might arise
+ *                       from variational formulations.
+ *   - ResidualLinearization: Differentiation of a vector-valued finite element residual, leading to
+ *                            its consistent linearization.
+ *
+ * Naturally, it is also possible for users to manage the initialization and derivative 
+ * computations themselves.
  *
  * The most up-to-date examples of how this is done using ADOL-C can be found in
  * - their <a href="https://projects.coin-or.org/ADOL-C/browser/trunk/ADOL-C/doc/adolc-manual.pdf?format=raw">user manual</a>,
@@ -464,4 +513,118 @@
  * - a <a href="https://github.com/dealii/code-gallery/tree/master/Quasi_static_Finite_strain_Compressible_Elasticity">code-gallery example</a>, and
  * - our <a href="https://github.com/dealii/dealii/tree/master/tests/sacado">test-suite</a>.
  *
+ *
+ * @section symb_diff_1 Symbolic expressions and differentiation
+ *
+ * <a href="https://en.wikipedia.org/wiki/Symbolic_differentiation">Symbolic differentiation</a> is,
+ * in terms of its design and usage, quite different to automatic differentiation.
+ * Underlying any symbolic library is a computer algebra system (CAS) that implements a
+ * language and collection of algorithms to manipulate symbolic (or "string-like") expressions.
+ * This is most similar, from a philosophical point of view, to how algebraic operations would be
+ * performed by hand.
+ *
+ * To help better distinguish between symbolic differentiation and numerical methods like automatic
+ * differentiation, let's consider a very simple example.
+ * Suppose that the function $f(x,y) = [2x+1]^{y}$, where $x$ and $y$ are variables that are independent
+ * of one another.
+ * By applying the chain-rule, the derivatives of this function are simply
+ * $\dfrac{d f(x,y)}{d x} = 2y[2x+1]^{y-1}$ and
+ * $\dfrac{d f(x,y)}{d y} = [2x+1]^{y} \ln(2x+1)$.
+ * These are exactly the results that you get from a CAS after defining the symbolic variables
+ * `x` and `y`, defining the symbolic expression `f = pow(2x+1, y)` and computing the
+ * derivatives `diff(f, x)` and `diff(f, y)`.
+ * At this point there is no assumption of what `x` and `y` represent; they may later be interpreted
+ * as plain (scalar) numbers, complex numbers, or something else for which the power and natural
+ * logarithm functions are well defined.
+ * Obviously this means that there is also no assumption about which point to evaluate either
+ * the expression or its derivatives.
+ * One could readily take the expression for $\dfrac{d f(x, y)}{d x}$ and evaluate it
+ * at $x=1, y=2.5$ and then later, with no recomputation of the derivative expression itself,
+ * evaluate it at $x=3.25, y=-6$.
+ * In fact, the interpretation of any symbolic variable or expression, and the inter-dependencies
+ * between variables, may be defined or redefined at any point during their manipulation;
+ * this leads to a degree of flexibility in computations that cannot be matched by
+ * auto-differentiation.
+ * For example, one could perform the permanent substitution
+ * $g(x) = \dfrac{d f(x, y)}{d x} \vert_{y=1}$ and then recompute
+ * $g(x)$ for several different values of $x$.
+ * One could also post-factum express an interdependency between `x` and `y`, such as
+ * $y \rightarrow y(x) := 2x$.
+ * For such a case, this means that the initially computed derivatives
+ * $\dfrac{d f(x, y)}{d x} \rightarrow \dfrac{\partial f(x, y(x))}{\partial x} = 2y(x) [2x+1]^{y(x)-1} = 4x[2x+1]^{2x-1}$ and
+ * $\dfrac{d f(x, y)}{d y} \rightarrow \dfrac{\partial f(x, y(x))}{\partial y} = [2x+1]^{y(x)} \ln(2x+1) = [2x+1]^{2x} \ln(2x+1)$
+ * truly represent partial derivatives rather than total derivatives.
+ * Of course, if such an inter-dependency was explicitly defined before the derivatives
+ * $\dfrac{d f(x, y(x))}{d x}$ and $\dfrac{d f(x, y(x))}{d y}$ are computed, then this
+ * could correspond to the total derivative (which is the only result that auto-differentiation
+ * is able to achieve for this example).
+ *
+ * Due to the sophisticated CAS that forms the foundation of symbolic operations, the types of
+ * manipulations are not necessarily restricted to differentiation alone, but rather may span a
+ * spectrum of manipulations relevant to discrete differential calculus, topics in pure
+ * mathematics, and more.
+ * The documentation for the <a href="https://www.sympy.org/en/index.html">SymPy</a> library gives
+ * plenty of examples that highlight what a fully-fledged CAS is capable of.
+ * Through the Differentiation::SD::Expression class, and the associated functions in the
+ * Differentiation::SD namespace, we provide a wrapper to the high-performance
+ * <a href="https://github.com/symengine/symengine">SymEngine</a> symbolic manipulation library
+ * that has enriched operator overloading and a consistent interface that makes it easy and
+ * "natural" to use.
+ * In fact, this class can be used as a "drop-in" replacement for arithmetic types in many
+ * situations, transforming the operations from being numeric to symbolic in nature; this is
+ * made especially easy when classes are templated on the underlying number type.
+ * Being focused on numerical simulation of PDEs, the functionality of the CAS that is exposed
+ * within deal.II focuses on symbolic expression creation, manipulation, and differentiation.
+ *
+ * As a final note, it is important to recognize a major deficiency in deal.II's current implementation
+ * of the interface to the supported symbolic library.
+ * To date, convenience wrappers to SymEngine functionality is focused on manipulations that solely
+ * involve dictionary-based (i.e., something reminiscent of "string-based") operations.
+ * Although SymEngine performs these operations in an efficient manner, they are still known to be
+ * computationally expensive, especially when the operations are performed on large expressions.
+ * It should therefore be expected that the performance of the parts of code that perform
+ * differentiation, symbolic substitution, etc., @b may be a limiting factor when using this in
+ * production code.
+ * In the future, deal.II will provide an interface to accelerate the evaluation of lengthy symbolic
+ * expression through the @p BatchOptimizer class (which is already referenced in several places in
+ * the documentation).
+ * In particular, the @p BatchOptimizer will simultaneously optimize a collection of symbolic
+ * expressions using methods such as common subexpression elimination (CSE), as well as by generating
+ * high performance code-paths to evaluate these expressions through the use of a custom-generated
+ * `std::function` or by compiling the expression using the LLVM JIT compiler.
+ * Additionally, the level of functionality currently implemented effectively limits the use of
+ * symbolic algebra to the traditional use case (i.e. scalar and tensor algebra, as might be useful to
+ * define constitutive relations or complex functions for application as boundary conditions or
+ * source terms).
+ * In the future we will also implement classes to assist in performing assembly operations in
+ * the same spirit as that which has been done in the Differentiation::AD namespace.
+ *
+ * A summary of the files that implement the interface to the supported symbolic differentiable
+ * numbers is as follows:
+ * - symengine_math.h: Implementation of math operations that allow the class that implements
+ *   symbolic expressions to be used consistently throughout the library and in user code.
+ *   It provides counterpart definitions for many of the math functions found in the standard
+ *   namespace.
+ * - symengine_number_traits.h: Provides some mechanisms to easily query select properties of
+ *   symbolic numbers, i.e. some type traits.
+ * - symengine_number_types.h: Implementation of the Differentiation::SD::Expression class that can
+ *   be used to represent scalar symbolic variables, scalar symbolic expressions, and more.
+ *   This Expression class has been given a full set of operators overloaded for all mathematical
+ *   and logical operations that are supported by the SymEngine library and are considered useful
+ *   within the context of numerical modeling.
+ * - symengine_product_types.h: Defines some product and scalar types that allow the use of symbolic
+ *   expressions in conjunction with the Tensor and SymmetricTensor classes.
+ * - symengine_scalar_operations.h: Defines numerous operations that can be performed either on or
+ *   with scalar symbolic expressions or variables.
+ *   This includes (but is not limited to) the creation of scalar symbols, performing differentiation
+ *   with respect to scalars, and symbolic substitution within scalar expressions.
+ * - symengine_tensor_operations.h: Defines numerous operations that can be performed either on or
+ *   with tensors of symbolic expressions or variables.
+ *   This includes (but is not limited to) the creation of tensors of symbols, performing
+ *   differentiation with respect to tensors of symbols, differentiation of tensors of symbols, and
+ *   symbolic substitution within tensor expressions.
+ * - symengine_types.h: Provides aliases for some types that are commonly used within the context of
+ *   symbolic computations.
+ * - symengine_utilities.h: Provides some utility functions that are useful within the context of
+ *   symbolic computations.
  */

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,9 +36,15 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declaration
+#    ifndef DOXYGEN
 template <typename number>
 class Vector;
 
+namespace PETScWrappers
+{
+  class VectorBase;
+}
+#    endif
 
 /**
  * A namespace in which wrapper classes for PETSc objects reside.
@@ -49,9 +55,6 @@ class Vector;
  */
 namespace PETScWrappers
 {
-  // forward declaration
-  class VectorBase;
-
   /**
    * @cond internal
    */
@@ -198,10 +201,8 @@ namespace PETScWrappers
        */
       const size_type index;
 
-      /**
-       * Make the vector class a friend, so that it can create objects of the
-       * present type.
-       */
+      // Make the vector class a friend, so that it can create objects of the
+      // present type.
       friend class ::dealii::PETScWrappers::VectorBase;
     };
   } // namespace internal
@@ -268,6 +269,13 @@ namespace PETScWrappers
      * PETSc object in the destructor.
      */
     explicit VectorBase(const Vec &v);
+
+    /**
+     * The copy assignment operator is deleted to avoid accidental usage with
+     * unexpected behavior.
+     */
+    VectorBase &
+    operator=(const VectorBase &) = delete;
 
     /**
      * Destructor
@@ -784,9 +792,7 @@ namespace PETScWrappers
      */
     mutable VectorOperation::values last_action;
 
-    /**
-     * Make the reference class a friend.
-     */
+    // Make the reference class a friend.
     friend class internal::VectorReference;
 
     /**
@@ -806,15 +812,6 @@ namespace PETScWrappers
                          const size_type *  indices,
                          const PetscScalar *values,
                          const bool         add_values);
-
-  private:
-    /**
-     * Assignment operator. This is currently not implemented, so it is
-     * deliberately left as private (and undefined) to prevent accidental
-     * usage.
-     */
-    VectorBase &
-    operator=(const VectorBase &) = delete;
   };
 
 
@@ -1124,7 +1121,7 @@ namespace PETScWrappers
   VectorBase::get_mpi_communicator() const
   {
     static MPI_Comm comm;
-    PetscObjectGetComm((PetscObject)vector, &comm);
+    PetscObjectGetComm(reinterpret_cast<PetscObject>(vector), &comm);
     return comm;
   }
 
@@ -1132,9 +1129,9 @@ namespace PETScWrappers
   VectorBase::extract_subvector_to(const std::vector<size_type> &indices,
                                    std::vector<PetscScalar> &    values) const
   {
-    extract_subvector_to(&(indices[0]),
-                         &(indices[0]) + indices.size(),
-                         &(values[0]));
+    Assert(indices.size() <= values.size(),
+           ExcDimensionMismatch(indices.size(), values.size()));
+    extract_subvector_to(indices.begin(), indices.end(), values.begin());
   }
 
   template <typename ForwardIterator, typename OutputIterator>
@@ -1199,8 +1196,7 @@ namespace PETScWrappers
                 const unsigned int ghostidx =
                   ghost_indices.index_within_set(index);
 
-                Assert(ghostidx + end - begin < (unsigned int)lsize,
-                       ExcInternalError());
+                AssertIndexRange(ghostidx + end - begin, lsize);
                 *(values_begin + i) = *(ptr + ghostidx + end - begin);
               }
           }

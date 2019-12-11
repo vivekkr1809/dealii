@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -478,8 +478,9 @@ class FESystem;
  * The matrix <i>M</i> may be computed with FETools::compute_node_matrix().
  * This function relies on the existence of #generalized_support_points and
  * FiniteElement::convert_generalized_support_point_values_to_dof_values()
- * (see the @ref GlossGeneralizedSupport "glossary entry on generalized
- * support points" for more information). With this, one can then use the
+ * (see the
+ * @ref GlossGeneralizedSupport "glossary entry on generalized support points"
+ * for more information). With this, one can then use the
  * following piece of code in the constructor of a class derived from
  * FiniteElement to compute the $M$ matrix:
  * @code
@@ -680,12 +681,6 @@ public:
    */
   class InternalDataBase
   {
-  private:
-    /**
-     * Copy construction is forbidden.
-     */
-    InternalDataBase(const InternalDataBase &) = delete;
-
   public:
     /**
      * Constructor. Sets update_flags to @p update_default and @p first_cell
@@ -697,6 +692,11 @@ public:
      * Destructor. Made virtual to allow polymorphism.
      */
     virtual ~InternalDataBase() = default;
+
+    /**
+     * Copy construction is forbidden.
+     */
+    InternalDataBase(const InternalDataBase &) = delete;
 
     /**
      * A set of update flags specifying the kind of information that an
@@ -2289,7 +2289,7 @@ public:
    *   the node functionals of the element applied to the given function.
    *
    * @note It is safe to call this function for (transformed) values on the
-   * real cell only for elements with trivial MappingType. For all other
+   * real cell only for elements with trivial MappingKind. For all other
    * elements (for example for H(curl), or H(div) conforming elements)
    * vector values have to be transformed to the reference cell first.
    *

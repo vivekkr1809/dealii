@@ -27,9 +27,10 @@ DEAL_II_NAMESPACE_OPEN
 
 
 // Forward declaration of class ScaLAPACKMatrix for ProcessGrid
+#  ifndef DOXYGEN
 template <typename NumberType>
 class ScaLAPACKMatrix;
-
+#  endif
 
 namespace Utilities
 {
@@ -62,9 +63,7 @@ namespace Utilities
     class ProcessGrid
     {
     public:
-      /**
-       * Declare class ScaLAPACK as friend to provide access to private members.
-       */
+      // Declare class ScaLAPACK as friend to provide access to private members.
       template <typename NumberType>
       friend class dealii::ScaLAPACKMatrix;
 
@@ -117,6 +116,22 @@ namespace Utilities
        */
       unsigned int
       get_process_grid_columns() const;
+
+      /**
+       * Return row of this process in the process grid.
+       *
+       * It's negative for inactive processes.
+       */
+      int
+      get_this_process_row() const;
+
+      /**
+       * Return column of this process in the process grid.
+       *
+       * It's negative for inactive processes.
+       */
+      int
+      get_this_process_column() const;
 
       /**
        * Send @p count values stored consequently starting at @p value from
@@ -214,6 +229,22 @@ namespace Utilities
     ProcessGrid::get_process_grid_columns() const
     {
       return n_process_columns;
+    }
+
+
+
+    inline int
+    ProcessGrid::get_this_process_row() const
+    {
+      return this_process_row;
+    }
+
+
+
+    inline int
+    ProcessGrid::get_this_process_column() const
+    {
+      return this_process_column;
     }
 
 

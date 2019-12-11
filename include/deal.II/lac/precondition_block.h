@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -458,9 +458,7 @@ public:
        */
       typename FullMatrix<inverse_type>::const_iterator b_end;
 
-      /**
-       * Make enclosing class a friend.
-       */
+      // Make enclosing class a friend.
       friend class const_iterator;
     };
 

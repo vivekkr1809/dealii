@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,6 +21,9 @@
 
 #  include <deal.II/base/bounding_box.h>
 #  include <deal.II/base/geometry_info.h>
+#  include <deal.II/base/std_cxx17/optional.h>
+
+#  include <deal.II/boost_adaptors/bounding_box.h>
 
 #  include <deal.II/dofs/dof_handler.h>
 
@@ -36,9 +39,12 @@
 
 #  include <deal.II/lac/sparsity_tools.h>
 
+#  include <deal.II/numerics/rtree.h>
+
 #  include <boost/archive/binary_iarchive.hpp>
 #  include <boost/archive/binary_oarchive.hpp>
-#  include <boost/optional.hpp>
+#  include <boost/geometry/index/detail/serialization.hpp>
+#  include <boost/geometry/index/rtree.hpp>
 #  include <boost/serialization/array.hpp>
 #  include <boost/serialization/vector.hpp>
 
@@ -56,6 +62,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 namespace parallel
 {
   namespace distributed
@@ -72,6 +80,7 @@ namespace hp
 }
 
 class SparsityPattern;
+#  endif
 
 namespace internal
 {
@@ -222,6 +231,55 @@ namespace GridTools
   cell_measure(const T &, ...);
 
   /**
+   * Computes an aspect ratio measure for all locally-owned active cells and
+   * fills a vector with one entry per cell, given a @p triangulation and
+   * @p mapping. The size of the vector that is returned equals the number of
+   * active cells. The vector contains zero for non locally-owned cells. The
+   * aspect ratio of a cell is defined as the ratio of the maximum to minimum
+   * singular value of the Jacobian, taking the maximum over all quadrature
+   * points of a quadrature rule specified via @p quadrature. For example, for
+   * the special case of rectangular elements in 2d with dimensions $a$ and $b$
+   * ($a \geq b$), this function returns the usual aspect ratio definition
+   * $a/b$. The above definition using singular values is a generalization to
+   * arbitrarily deformed elements. This function is intended to be used for
+   * $d=2,3$ space dimensions, but it can also be used for $d=1$ returning a
+   * value of 1.
+   *
+   * @note Inverted elements do not throw an exception. Instead, a value of inf
+   * is written into the vector in case of inverted elements.
+   *
+   * @note Make sure to use enough quadrature points for a precise calculation
+   * of the aspect ratio in case of deformed elements.
+   *
+   * @note In parallel computations the return value will have the length
+   * n_active_cells but the aspect ratio is only computed for the cells that
+   * are locally owned and placed at index CellAccessor::active_cell_index(),
+   * respectively. All other values are set to 0.
+   *
+   * @author Niklas Fehn, Martin Kronbichler, 2019
+   */
+  template <int dim>
+  Vector<double>
+  compute_aspect_ratio_of_cells(const Triangulation<dim> &triangulation,
+                                const Mapping<dim> &      mapping,
+                                const Quadrature<dim> &   quadrature);
+
+  /**
+   * Computes the maximum aspect ratio by taking the maximum over all cells.
+   *
+   * @note When running in parallel with a Triangulation that supports MPI,
+   * this is a collective call and the return value is the maximum over all
+   * processors.
+   *
+   * @author Niklas Fehn, Martin Kronbichler, 2019
+   */
+  template <int dim>
+  double
+  compute_maximum_aspect_ratio(const Triangulation<dim> &triangulation,
+                               const Mapping<dim> &      mapping,
+                               const Quadrature<dim> &   quadrature);
+
+  /**
    * Compute the smallest box containing the entire triangulation.
    *
    * If the input triangulation is a `parallel::distributed::Triangulation`,
@@ -262,6 +320,23 @@ namespace GridTools
   project_to_object(
     const Iterator &                                      object,
     const Point<Iterator::AccessorType::space_dimension> &trial_point);
+
+  /**
+   * Return the arrays that define the coarse mesh of a Triangulation. This
+   * function is the inverse of Triangulation::create_triangulation().
+   *
+   * The return value is a tuple with the vector of vertices, the vector of
+   * cells, and a SubCellData structure. The latter contains additional
+   * information about faces and lines.
+   *
+   * This function is useful in cases where one needs to deconstruct a
+   * Triangulation or manipulate the numbering of the vertices in some way: an
+   * example is GridGenerator::merge_triangulations().
+   */
+  template <int dim, int spacedim>
+  std::
+    tuple<std::vector<Point<spacedim>>, std::vector<CellData<dim>>, SubCellData>
+    get_coarse_mesh_description(const Triangulation<dim, spacedim> &tria);
 
   /*@}*/
   /**
@@ -330,6 +405,17 @@ namespace GridTools
    * predicate is either an object of a type that has an <tt>operator()</tt>,
    * or it is a pointer to the function. In either case, argument and return
    * value have to be of type <tt>Point@<spacedim@></tt>.
+   *
+   * @note The transformations that make sense to use with this function
+   *   should have a Jacobian with a positive determinant. For example,
+   *   rotation, shearing, stretching, or scaling all satisfy this (though
+   *   there is no requirement that the transformation used actually is
+   *   linear, as all of these examples are). On the other hand, reflections
+   *   or inversions have a negative determinant of the Jacobian. The
+   *   current function has no way of asserting a positive determinant
+   *   of the Jacobian, but if you happen to use such a transformation,
+   *   the result will be a triangulation in which cells have a negative
+   *   volume.
    *
    * @note If you are using a parallel::distributed::Triangulation you will
    * have hanging nodes in your local Triangulation even if your "global" mesh
@@ -669,14 +755,16 @@ namespace GridTools
    *
    * @param[in] cache The triangulation's GridTools::Cache .
    * @param[in] points The point's vector.
+   * @param[in] cell_hint (optional) A cell iterator for a cell which likely
+   * contains the first point of @p points.
    *
    * @return A tuple containing the following information:
-   *  - Cells, is a vector of a vector cells of the all cells
-   *   containing at least one of the @p points .
-   *  - A vector qpoints of vector of points, containing in @p qpoints[i]
+   *  - @p cells : A vector of all the cells containing at least one of
+   *   the @p points .
+   *  - @p qpoints : A vector of vectors of points. @p qpoints[i] contains
    *   the reference positions of all points that fall within the cell @p cells[i] .
-   *  - A vector indices of vector of integers, containing the mapping between
-   *   local numbering in qpoints, and global index in points
+   *  - @p indices : A vector of vectors of integers, containing the mapping between
+   *   local numbering in @p qpoints , and global index in @p points .
    *
    * If @p points[a] and @p points[b] are the only two points that fall in @p cells[c],
    * then @p qpoints[c][0] and @p qpoints[c][1] are the reference positions of
@@ -691,6 +779,9 @@ namespace GridTools
    * they belong are the best case. Pre-sorting points, trying to minimize
    * distances between them, might make the function extremely faster.
    *
+   * @note If a point is not found inside the mesh, or is lying inside an
+   * artificial cell of a parallel::TriangulationBase, an exception is thrown.
+   *
    * @note The actual return type of this function, i.e., the type referenced
    * above as @p return_type, is
    * @code
@@ -702,6 +793,11 @@ namespace GridTools
    * @endcode
    * The type is abbreviated in the online documentation to improve readability
    * of this page.
+   *
+   * @note This function optimizes the search by making use of
+   * GridTools::Cache::get_cell_bounding_boxes_rtree(), which either returns
+   * a cached rtree or builds and stores one. Building an rtree might hinder
+   * the performance if the function is called only once on few points.
    *
    * @author Giovanni Alzetta, 2017
    */
@@ -722,13 +818,58 @@ namespace GridTools
         typename Triangulation<dim, spacedim>::active_cell_iterator());
 
   /**
+   * This function is similar to GridTools::compute_point_locations(),
+   * but it tries to find and transform every point of @p points.
+   *
+   * @return A tuple containing four elements; the first three
+   * are documented in GridTools::compute_point_locations().
+   * The last element of the @p return_type contains the
+   * indices of points which are neither found inside the mesh
+   * nor lie in artificial cells. The @p return_type equals the
+   * following tuple type:
+   * @code
+   *   std::tuple<
+   *     std::vector<
+   *        typename Triangulation<dim,spacedim>::active_cell_iterator>,
+   *     std::vector<std::vector<Point<dim>>>,
+   *     std::vector<std::vector<unsigned int>>,
+   *     std::vector<unsigned int>
+   *   >
+   * @endcode
+   *
+   * @note This function optimizes the search by making use of
+   * GridTools::Cache::get_cell_bounding_boxes_rtree(), which either returns
+   * a cached rtree or builds and stores one. Building an rtree might hinder
+   * the performance if the function is called only once on few points.
+   *
+   * For a more detailed documentation see
+   * GridTools::compute_point_locations().
+   */
+  template <int dim, int spacedim>
+#  ifndef DOXYGEN
+  std::tuple<
+    std::vector<typename Triangulation<dim, spacedim>::active_cell_iterator>,
+    std::vector<std::vector<Point<dim>>>,
+    std::vector<std::vector<unsigned int>>,
+    std::vector<unsigned int>>
+#  else
+  return_type
+#  endif
+  compute_point_locations_try_all(
+    const Cache<dim, spacedim> &        cache,
+    const std::vector<Point<spacedim>> &points,
+    const typename Triangulation<dim, spacedim>::active_cell_iterator
+      &cell_hint =
+        typename Triangulation<dim, spacedim>::active_cell_iterator());
+
+  /**
    * Given a @p cache and a list of
    * @p local_points for each process, find the points lying on the locally
    * owned part of the mesh and compute the quadrature rules for them.
    * Distributed compute point locations is a function similar to
-   * GridTools::compute_point_locations but working for parallel::Triangulation
-   * objects and, unlike its serial version, also for a distributed
-   * triangulation (see parallel::distributed::Triangulation).
+   * GridTools::compute_point_locations but working for
+   * parallel::TriangulationBase objects and, unlike its serial version, also
+   * for a distributed triangulation (see parallel::distributed::Triangulation).
    *
    * @param[in] cache a GridTools::Cache object
    * @param[in] local_points the array of points owned by the current process.
@@ -762,7 +903,7 @@ namespace GridTools
    *
    * The function uses the triangulation's mpi communicator: for this reason it
    * throws an assert error if the Triangulation is not derived from
-   * parallel::Triangulation .
+   * parallel::TriangulationBase .
    *
    * In a serial execution the first three elements of the tuple are the same
    * as in GridTools::compute_point_locations .
@@ -1028,7 +1169,8 @@ namespace GridTools
    * only search among @p marked_vertices for the closest vertex.
    * The size of this array should be equal to n_vertices() of the
    * triangulation (as opposed to n_used_vertices() ).
-   * @return An pair of an iterators into the mesh that points to the
+   *
+   * @return A pair of an iterators into the mesh that points to the
    * surrounding cell, and of the coordinates of that point inside the cell in
    * the reference coordinates of that cell. This local position might be
    * located slightly outside an actual unit cell, due to numerical roundoff.
@@ -1101,8 +1243,10 @@ namespace GridTools
    * A version of the previous function that exploits an already existing
    * map between vertices and cells, constructed using the function
    * GridTools::vertex_to_cell_map, a map of vertex_to_cell_centers, obtained
-   * through GridTools::vertex_to_cell_centers_directions, and a guess
-   * `cell_hint`.
+   * through GridTools::vertex_to_cell_centers_directions, a guess
+   * `cell_hint`, and optionally an RTree constructed from the used
+   * vertices of the Triangulation. All of these structures can be queried
+   * from a GridTools::Cache object.
    *
    * @author Luca Heltai, Rene Gassmoeller, 2017
    */
@@ -1124,7 +1268,9 @@ namespace GridTools
     const std::vector<std::vector<Tensor<1, spacedim>>> &vertex_to_cell_centers,
     const typename MeshType<dim, spacedim>::active_cell_iterator &cell_hint =
       typename MeshType<dim, spacedim>::active_cell_iterator(),
-    const std::vector<bool> &marked_vertices = {});
+    const std::vector<bool> &                              marked_vertices = {},
+    const RTree<std::pair<Point<spacedim>, unsigned int>> &used_vertices_rtree =
+      RTree<std::pair<Point<spacedim>, unsigned int>>{});
 
   /**
    * A version of the previous function where we use that mapping on a given
@@ -1202,7 +1348,7 @@ namespace GridTools
     const Mapping<dim, spacedim> & mapping,
     const MeshType<dim, spacedim> &mesh,
     const Point<spacedim> &        p,
-    const double                   tolerance       = 1e-12,
+    const double                   tolerance       = 1e-10,
     const std::vector<bool> &      marked_vertices = {});
 
   /**
@@ -1246,6 +1392,13 @@ namespace GridTools
    * @param[in] cell An iterator pointing to a cell of the mesh.
    * @param[out] active_neighbors A list of active descendants of the given
    * cell
+   *
+   * @note Since in C++ the MeshType template argument can not be deduced from
+   * a function call, you will have to specify it after the function name, as
+   * for example in
+   * @code
+   *   GridTools::get_active_neighbors<DoFHandler<dim>>(cell, active_neighbors)
+   * @endcode
    */
   template <class MeshType>
   void
@@ -1564,6 +1717,53 @@ namespace GridTools
 
 
   /**
+   * Given a covering rtree (see GridTools::Cache::get_covering_rtree()), and an
+   * array of points, find a superset of processes which, individually,
+   * may own the cell containing the points.
+   *
+   * For further details see GridTools::guess_point_owner; here only
+   * different input/output types are reported:
+   *
+   * @param[in] covering_rtree RTRee which enables us to identify which
+   * process(es) in a parallel computation may own the cell that
+   * surrounds a given point.
+   *
+   * @param[in] points A vector of points to consider.
+   *
+   * @return A tuple containing the following information:
+   *  - A map indexed by processor ranks. For each rank it contains
+   *   a vector of the indices of points it might own.
+   *  - A map from the index <code>unsigned int</code> of the point in @p points
+   *   to the rank of the owner; these are points for which a single possible
+   *   owner was found.
+   *  - A map from the index <code>unsigned int</code> of the point in @p points
+   *   to the ranks of the guessed owners; these are points for which multiple
+   *   possible owners were found.
+   *
+   * @note The actual return type of this function, i.e., the type referenced
+   * above as @p return_type, is
+   * @code
+   * std::tuple<std::map<unsigned int, std::vector<unsigned int>>,
+   *            std::map<unsigned int, unsigned int>,
+   *            std::map<unsigned int, std::vector<unsigned int>>>
+   * @endcode
+   * The type is abbreviated in the online documentation to improve readability
+   * of this page.
+   */
+  template <int spacedim>
+#  ifndef DOXYGEN
+  std::tuple<std::map<unsigned int, std::vector<unsigned int>>,
+             std::map<unsigned int, unsigned int>,
+             std::map<unsigned int, std::vector<unsigned int>>>
+#  else
+  return_type
+#  endif
+  guess_point_owner(
+    const RTree<std::pair<BoundingBox<spacedim>, unsigned int>> &covering_rtree,
+    const std::vector<Point<spacedim>> &                         points);
+
+
+  /**
    * Return the adjacent cells of all the vertices. If a vertex is also a
    * hanging node, the associated coarse cell is also returned. The vertices
    * are ordered by the vertex index. This is the number returned by the
@@ -1813,15 +2013,23 @@ namespace GridTools
 
   /**
    * Generates a partitioning of the active cells making up the entire domain
-   * using the same partitioning scheme as in the p4est library. After calling
-   * this function, the subdomain ids of all active cells will have values
-   * between zero and @p n_partitions-1. You can access the subdomain id of a
-   * cell by using <tt>cell-@>subdomain_id()</tt>.
+   * using the same partitioning scheme as in the p4est library if the flag
+   * @p group_siblings is set to true (default behavior of this function).
+   * After calling this function, the subdomain ids of all active cells will
+   * have values between zero and @p n_partitions-1. You can access the
+   * subdomain id of a cell by using <tt>cell-@>subdomain_id()</tt>.
+   *
+   * @note If the flag @p group_siblings is set to false, children of a
+   *       cell might be placed on different processors even though they are all
+   *       active, which is an assumption made by p4est. By relaxing this, we
+   *       can can create partitions owning a single cell (also for refined
+   *       meshes).
    */
   template <int dim, int spacedim>
   void
   partition_triangulation_zorder(const unsigned int            n_partitions,
-                                 Triangulation<dim, spacedim> &triangulation);
+                                 Triangulation<dim, spacedim> &triangulation,
+                                 const bool group_siblings = true);
 
   /**
    * Partitions the cells of a multigrid hierarchy by assigning level subdomain
@@ -1940,6 +2148,11 @@ namespace GridTools
    *
    * @tparam MeshType A type that satisfies the requirements of the
    * @ref ConceptMeshType "MeshType concept".
+   *
+   * @note This function can only be used with
+   * parallel::distributed::Triangulation when both meshes use the same
+   * Triangulation since, with a distributed Triangulation, not all cells are
+   * stored locally, so the resulting list may not cover the entire domain.
    */
   template <typename MeshType>
   std::list<std::pair<typename MeshType::cell_iterator,
@@ -2005,8 +2218,10 @@ namespace GridTools
 
   /*@}*/
   /**
-   * @name Extracting and creating patches of cells surrounding a single cell,
-   * and creating triangulation out of them
+   * @name Extracting and creating patches of cells
+   *
+   * These functions extract and create patches of cells surrounding a single
+   * cell, and creating triangulation out of them.
    */
   /*@{*/
 
@@ -2122,7 +2337,7 @@ namespace GridTools
    * build a Triangulation from those, and then adaptively refine it so that
    * the input cells all also exist in the output Triangulation.
    *
-   * A consequence of this procedure is that that output Triangulation may
+   * A consequence of this procedure is that the output Triangulation may
    * contain more active cells than the ones that exist in the input vector.
    * On the other hand, one typically wants to solve the local problem not on
    * the entire output Triangulation, but only on those cells of it that
@@ -2424,7 +2639,9 @@ namespace GridTools
    * boundary_ids this function defines a 'left' boundary as all faces with
    * local face index <code>2*dimension</code> and boundary indicator @p b_id
    * and, similarly, a 'right' boundary consisting of all face with local face
-   * index <code>2*dimension+1</code> and boundary indicator @p b_id.
+   * index <code>2*dimension+1</code> and boundary indicator @p b_id. Faces
+   * with coordinates only differing in the @p direction component are
+   * identified.
    *
    * This function will collect periodic face pairs on the coarsest mesh level
    * and add them to @p matched_pairs leaving the original contents intact.
@@ -2549,7 +2766,45 @@ namespace GridTools
   copy_material_to_manifold_id(Triangulation<dim, spacedim> &tria,
                                const bool compute_face_ids = false);
 
-
+  /**
+   * Propagate manifold indicators associated with the cells of the
+   * Triangulation @p tria to their co-dimension one and two objects.
+   *
+   * This function sets the @p manifold_id of faces and edges (both on the
+   * interior and on the boundary) to the value returned by the
+   * @p disambiguation_function method, called with the set of
+   * manifold indicators of the cells that share the same face or edge.
+   *
+   * By default, the @p disambiguation_function returns
+   * numbers::flat_manifold_id when the set has size greater than one (i.e.,
+   * when it is not possible to decide what manifold indicator a face or edge
+   * should have according to the manifold indicators of the adjacent cells)
+   * and it returns the manifold indicator contained in the set when it has
+   * dimension one (i.e., when all adjacent cells and faces have the same
+   * manifold indicator).
+   *
+   * The parameter @p overwrite_only_flat_manifold_ids allows you to specify
+   * what to do when a face or an edge already has a manifold indicator
+   * different from numbers::flat_manifold_id. If the flag is @p true, the edge
+   * or face will maintain its original manifold indicator.
+   * If it is @p false, then also the manifold indicator of these faces and edges
+   * is set according to the return value of the @p disambiguation_function.
+   *
+   * @author Luca Heltai, 2019.
+   */
+  template <int dim, int spacedim>
+  void
+  assign_co_dimensional_manifold_indicators(
+    Triangulation<dim, spacedim> &            tria,
+    const std::function<types::manifold_id(
+      const std::set<types::manifold_id> &)> &disambiguation_function =
+      [](const std::set<types::manifold_id> &manifold_ids) {
+        if (manifold_ids.size() == 1)
+          return *manifold_ids.begin();
+        else
+          return numbers::flat_manifold_id;
+      },
+    bool overwrite_only_flat_manifold_ids = true);
   /*@}*/
 
   /**
@@ -2560,12 +2815,12 @@ namespace GridTools
    * every ghost cell as it was given by @p pack on the owning processor.
    * Whether you do or do not receive information to @p unpack on a given
    * ghost cell depends on whether the @p pack function decided that
-   * something needs to be sent. It does so using the boost::optional
-   * mechanism: if the boost::optional return object of the @p pack
+   * something needs to be sent. It does so using the std_cxx17::optional
+   * mechanism: if the std_cxx17::optional return object of the @p pack
    * function is empty, then this implies that no data has to be sent for
    * the locally owned cell it was called on. In that case, @p unpack will
    * also not be called on the ghost cell that corresponds to it on the
-   * receiving side. On the other hand, if the boost::optional object is
+   * receiving side. On the other hand, if the std_cxx17::optional object is
    * not empty, then the data stored within it will be sent to the received
    * and the @p unpack function called with it.
    *
@@ -2583,11 +2838,11 @@ namespace GridTools
    *   that is a ghost cell somewhere else. As mentioned above, the function
    *   may return a regular data object of type @p DataType to indicate
    *   that data should be sent, or an empty
-   *   <code>boost::optional@<DataType@></code> to indicate that nothing has
+   *   <code>std_cxx17::optional@<DataType@></code> to indicate that nothing has
    *   to be sent for this cell.
    * @param unpack The function that will be called for each ghost cell
    *   for which data was sent, i.e., for which the @p pack function
-   *   on the sending side returned a non-empty boost::optional object.
+   *   on the sending side returned a non-empty std_cxx17::optional object.
    *   The @p unpack function is then called with the data sent by the
    *   processor that owns that cell.
    *
@@ -2622,9 +2877,9 @@ namespace GridTools
    * @endcode
    *
    * You will notice that the @p pack lambda function returns an `unsigned int`,
-   * not a `boost::optional<unsigned int>`. The former converts automatically
-   * to the latter, implying that data will always be transported to the
-   * other processor.
+   * not a `std_cxx17::optional<unsigned int>`. The former converts
+   * automatically to the latter, implying that data will always be transported
+   * to the other processor.
    *
    * (In reality, the @p unpack function needs to be a bit more
    * complicated because it is not allowed to call
@@ -2638,7 +2893,7 @@ namespace GridTools
   void
   exchange_cell_data_to_ghosts(
     const MeshType &                                     mesh,
-    const std::function<boost::optional<DataType>(
+    const std::function<std_cxx17::optional<DataType>(
       const typename MeshType::active_cell_iterator &)> &pack,
     const std::function<void(const typename MeshType::active_cell_iterator &,
                              const DataType &)> &        unpack);
@@ -2659,6 +2914,72 @@ namespace GridTools
   exchange_local_bounding_boxes(
     const std::vector<BoundingBox<spacedim>> &local_bboxes,
     MPI_Comm                                  mpi_communicator);
+
+  /**
+   * In this collective operation each process provides a vector
+   * of bounding boxes and a communicator.
+   * All these vectors are gathered on each of the processes,
+   * organized in a search tree which, and then returned.
+   *
+   * The idea is that the vector of bounding boxes describes a
+   * relevant property of the computations on each process
+   * individually, which could also be of use to other processes. An
+   * example would be if the input vector of bounding boxes
+   * corresponded to a covering of the locally owned partition of a
+   * mesh (see
+   * @ref GlossLocallyOwnedCell)
+   * of a
+   * parallel::distributed::Triangulation object. While these may
+   * overlap the bounding boxes of other processes, finding which
+   * process owns the cell that encloses a given point is vastly
+   * easier if the process trying to figure this out has a list of
+   * bounding boxes for each of the other processes at hand.
+   *
+   * The returned search tree object is an r-tree with packing
+   * algorithm, which is provided by boost library. See
+   * https://www.boost.org/doc/libs/1_67_0/libs/geometry/doc/html/geometry/spatial_indexes/introduction.html
+   * for more information.
+   *
+   * In the returned tree, each node contains a pair of elements:
+   * the first being a bounding box,
+   * the second being the rank of the process whose local description
+   * contains the bounding box.
+   *
+   * @note This function is a collective operation.
+   *
+   * @author Giovanni Alzetta, 2018.
+   */
+  template <int spacedim>
+  RTree<std::pair<BoundingBox<spacedim>, unsigned int>>
+  build_global_description_tree(
+    const std::vector<BoundingBox<spacedim>> &local_description,
+    MPI_Comm                                  mpi_communicator);
+
+  /**
+   * Collect for a given triangulation all locally relevant vertices that
+   * coincide due to periodicity.
+   *
+   * Coinciding vertices are put into a group, e.g.: [1, 25, 51], which is
+   * labeled by an arbitrary element from it, e.g.: "1". All coinciding vertices
+   * store the label to its group, so that they can quickly access all the
+   * coinciding vertices in that group: e.g.: 51 ->  "1" -> [1, 25, 51]
+   *
+   * @param[in] tria Triangulation.
+   * @param[out] coinciding_vertex_groups A map of equivalence classes (of
+   *             coinciding vertices) labeled by an arbitrary element from them.
+   *             Vertices not coinciding are ignored.
+   * @param[out] vertex_to_coinciding_vertex_group Map of a vertex to the label
+   *             of a group of coinciding vertices. Vertices not contained in
+   *             this vector are not coinciding with any other vertex.
+   *
+   * @author Peter Munch, 2019.
+   */
+  template <int dim, int spacedim>
+  void
+  collect_coinciding_vertices(
+    const Triangulation<dim, spacedim> &               tria,
+    std::map<unsigned int, std::vector<unsigned int>> &coinciding_vertex_groups,
+    std::map<unsigned int, unsigned int> &vertex_to_coinciding_vertex_group);
 
   /**
    * A structure that allows the transfer of cell data of type @p T from one processor
@@ -2778,6 +3099,24 @@ namespace GridTools
 
 namespace GridTools
 {
+  // declare specializations
+  template <>
+  double
+  cell_measure<1>(const std::vector<Point<1>> &,
+                  const unsigned int (&)[GeometryInfo<1>::vertices_per_cell]);
+
+  template <>
+  double
+  cell_measure<2>(const std::vector<Point<2>> &,
+                  const unsigned int (&)[GeometryInfo<2>::vertices_per_cell]);
+
+  template <>
+  double
+  cell_measure<3>(const std::vector<Point<3>> &,
+                  const unsigned int (&)[GeometryInfo<3>::vertices_per_cell]);
+
+
+
   template <int dim, typename T>
   double
   cell_measure(const T &, ...)
@@ -2785,6 +3124,8 @@ namespace GridTools
     Assert(false, ExcNotImplemented());
     return std::numeric_limits<double>::quiet_NaN();
   }
+
+
 
   template <int dim, typename Predicate, int spacedim>
   void
@@ -3296,8 +3637,7 @@ namespace GridTools
               -> Point<spacedim> {
               return object->get_manifold().get_new_point(
                 make_array_view(vertices.begin(), vertices.end()),
-                make_array_view(&weights[0],
-                                &weights[n_vertices_per_cell - 1] + 1));
+                make_array_view(weights.begin_raw(), weights.end_raw()));
             };
 
             // pick the initial weights as (normalized) inverse distances from
@@ -3508,11 +3848,11 @@ namespace GridTools
     Assert(cell_ids.size() == data.size(),
            ExcDimensionMismatch(cell_ids.size(), data.size()));
     // archive the cellids in an efficient binary format
-    const size_t n_cells = cell_ids.size();
-    ar &         n_cells;
-    for (auto &it : cell_ids)
+    const std::size_t n_cells = cell_ids.size();
+    ar &              n_cells;
+    for (const auto &id : cell_ids)
       {
-        CellId::binary_type binary_cell_id = it.template to_binary<dim>();
+        CellId::binary_type binary_cell_id = id.template to_binary<dim>();
         ar &                binary_cell_id;
       }
 
@@ -3527,8 +3867,8 @@ namespace GridTools
   CellDataTransferBuffer<dim, T>::load(Archive &ar,
                                        const unsigned int /*version*/)
   {
-    size_t n_cells;
-    ar &   n_cells;
+    std::size_t n_cells;
+    ar &        n_cells;
     cell_ids.clear();
     cell_ids.reserve(n_cells);
     for (unsigned int c = 0; c < n_cells; ++c)
@@ -3546,7 +3886,7 @@ namespace GridTools
   void
   exchange_cell_data_to_ghosts(
     const MeshType &                                     mesh,
-    const std::function<boost::optional<DataType>(
+    const std::function<std_cxx17::optional<DataType>(
       const typename MeshType::active_cell_iterator &)> &pack,
     const std::function<void(const typename MeshType::active_cell_iterator &,
                              const DataType &)> &        unpack)
@@ -3561,7 +3901,7 @@ namespace GridTools
 #    else
     constexpr int dim      = MeshType::dimension;
     constexpr int spacedim = MeshType::space_dimension;
-    auto tria = static_cast<const parallel::Triangulation<dim, spacedim> *>(
+    auto tria = static_cast<const parallel::TriangulationBase<dim, spacedim> *>(
       &mesh.get_triangulation());
     Assert(
       tria != nullptr,
@@ -3578,7 +3918,7 @@ namespace GridTools
       vertices_with_ghost_neighbors =
         tria->compute_vertices_with_ghost_neighbors();
 
-    for (auto cell : tria->active_cell_iterators())
+    for (const auto &cell : tria->active_cell_iterators())
       if (cell->is_locally_owned())
         {
           std::set<dealii::types::subdomain_id> send_to;
@@ -3609,16 +3949,14 @@ namespace GridTools
                                                               cell->index(),
                                                               &mesh);
 
-              const boost::optional<DataType> data = pack(mesh_it);
+              const std_cxx17::optional<DataType> data = pack(mesh_it);
 
               if (data)
                 {
                   const CellId cellid = cell->id();
 
-                  for (auto it : send_to)
+                  for (const auto subdomain : send_to)
                     {
-                      const dealii::types::subdomain_id subdomain = it;
-
                       // find the data buffer for proc "subdomain" if it exists
                       // or create an empty one otherwise
                       typename DestinationToBufferMap::iterator p =
@@ -3628,12 +3966,19 @@ namespace GridTools
                           .first;
 
                       p->second.cell_ids.emplace_back(cellid);
-                      p->second.data.emplace_back(data.get());
+                      p->second.data.emplace_back(*data);
                     }
                 }
             }
         }
 
+    // Protect the following communcation:
+    static Utilities::MPI::CollectiveMutex      mutex;
+    Utilities::MPI::CollectiveMutex::ScopedLock lock(mutex,
+                                                     tria->get_communicator());
+
+    const int mpi_tag =
+      Utilities::MPI::internal::Tags::exchange_cell_data_to_ghosts;
 
     // 2. send our messages
     std::set<dealii::types::subdomain_id> ghost_owners   = tria->ghost_owners();
@@ -3650,12 +3995,12 @@ namespace GridTools
         // pack all the data into the buffer for this recipient and send it.
         // keep data around till we can make sure that the packet has been
         // received
-        sendbuffers[idx] = Utilities::pack(data);
+        sendbuffers[idx] = Utilities::pack(data, /*enable_compression*/ false);
         const int ierr   = MPI_Isend(sendbuffers[idx].data(),
                                    sendbuffers[idx].size(),
                                    MPI_BYTE,
                                    *it,
-                                   786,
+                                   mpi_tag,
                                    tria->get_communicator(),
                                    &requests[idx]);
         AssertThrowMPI(ierr);
@@ -3666,10 +4011,11 @@ namespace GridTools
     for (unsigned int idx = 0; idx < n_ghost_owners; ++idx)
       {
         MPI_Status status;
-        int        len;
         int        ierr =
-          MPI_Probe(MPI_ANY_SOURCE, 786, tria->get_communicator(), &status);
+          MPI_Probe(MPI_ANY_SOURCE, mpi_tag, tria->get_communicator(), &status);
         AssertThrowMPI(ierr);
+
+        int len;
         ierr = MPI_Get_count(&status, MPI_BYTE, &len);
         AssertThrowMPI(ierr);
 
@@ -3686,7 +4032,8 @@ namespace GridTools
         AssertThrowMPI(ierr);
 
         auto cellinfo =
-          Utilities::unpack<CellDataTransferBuffer<dim, DataType>>(receive);
+          Utilities::unpack<CellDataTransferBuffer<dim, DataType>>(
+            receive, /*enable_compression*/ false);
 
         DataType *data = cellinfo.data.data();
         for (unsigned int c = 0; c < cellinfo.cell_ids.size(); ++c, ++data)

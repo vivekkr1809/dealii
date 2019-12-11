@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2017 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -146,7 +146,7 @@ PathSearch::find(const std::string &filename,
 
       // try again with the suffix appended, unless there is
       // no suffix
-      if (suffix != "")
+      if (!suffix.empty())
         {
           real_name = *path + filename + suffix;
           if (debug > 1)

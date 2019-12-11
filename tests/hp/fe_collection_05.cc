@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2017 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,14 +15,16 @@
 
 
 /* clang-format off */
-// test the results of FECollection::find_least_dominating_fe_in_collection()
-// for faces (codim=1), namely for:
+// find the least dominating fe from a set of fes on faces (codim=1).
+// for this task we concatenate the two functions
+// FECollection::find_common_subspace() and FECollection::find_dominated_fe().
+// we test the results for the following collections:
 //   {Q1, Q2, Q3, Q4}             with {2,3} => Q3          2
 //   {Q1xQ1, Q2xQ2, Q3xQ4, Q4xQ3} with {2,3} => Q2xQ2       1
 //   {Q1xQ1, Q3xQ4, Q4xQ3}        with {1,2} => Q1xQ1       0
 //   {0x0, 0x0, Q1x0, 0xQ1}       with {2,3} => none        invalid_unsigned_int
 //   {0x0, 0x0, Q1x0, 0xQ1}       with {2,3} => 0x0         0   (with dominating FE_Nothing)
-//   {Q1xQ1, Q1xQ1, Q2xQ1, Q1xQ2} with {2,3} => Q1          0
+//   {Q1xQ1, Q1xQ1, Q2xQ1, Q1xQ2} with {2,3} => Q1xQ1       0
 //   {Q4xQ4, Q5xQ5, Q3xQ4, Q4xQ3} with {2,3} => none        invalid_unsigned_int
 //   {Q1, Q2, Q4, Q3}             with {3}   => Q3          3
 //   {Q3, Q4, Q1, Q1}             with {2,3} => Q1          2   (self-domination)
@@ -54,8 +56,7 @@ test()
     fe_collection.push_back(FE_Q<dim>(2));
     fe_collection.push_back(FE_Q<dim>(3));
     fe_collection.push_back(FE_Q<dim>(4));
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -66,8 +67,7 @@ test()
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(2), 1, FE_Q<dim>(2), 1));
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(3), 1, FE_Q<dim>(4), 1));
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(4), 1, FE_Q<dim>(3), 1));
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -80,8 +80,7 @@ test()
     std::set<unsigned int> fes;
     fes.insert(1);
     fes.insert(2);
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -97,7 +96,7 @@ test()
     fe_collection.push_back(
       FESystem<dim>(FE_Nothing<dim>(), 1, FE_Q<dim>(1), 1));
     const unsigned int ind =
-      fe_collection.find_least_dominating_fe_in_collection(fes, /*codim=*/1);
+      fe_collection.find_dominating_fe_extended(fes, /*codim=*/1);
     if (ind == numbers::invalid_unsigned_int)
       deallog << "numbers::invalid_unsigned_int" << std::endl;
     else
@@ -116,8 +115,7 @@ test()
       FESystem<dim>(FE_Q<dim>(1), 1, FE_Nothing<dim>(1, true), 1));
     fe_collection.push_back(
       FESystem<dim>(FE_Nothing<dim>(1, true), 1, FE_Q<dim>(1), 1));
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -129,8 +127,7 @@ test()
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(1), 1, FE_Q<dim>(1), 1));
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(2), 1, FE_Q<dim>(1), 1));
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(1), 1, FE_Q<dim>(2), 1));
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -142,7 +139,7 @@ test()
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(3), 1, FE_Q<dim>(4), 1));
     fe_collection.push_back(FESystem<dim>(FE_Q<dim>(4), 1, FE_Q<dim>(3), 1));
     const unsigned int ind =
-      fe_collection.find_least_dominating_fe_in_collection(fes, /*codim=*/1);
+      fe_collection.find_dominating_fe_extended(fes, /*codim=*/1);
     if (ind == numbers::invalid_unsigned_int)
       deallog << "numbers::invalid_unsigned_int" << std::endl;
     else
@@ -158,8 +155,7 @@ test()
     fe_collection.push_back(FE_Q<dim>(3));
     std::set<unsigned int> fes;
     fes.insert(3);
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 
@@ -170,8 +166,7 @@ test()
     fe_collection.push_back(FE_Q<dim>(4));
     fe_collection.push_back(FE_Q<dim>(1));
     fe_collection.push_back(FE_Q<dim>(1));
-    deallog << fe_collection.find_least_dominating_fe_in_collection(fes,
-                                                                    /*codim=*/1)
+    deallog << fe_collection.find_dominating_fe_extended(fes, /*codim=*/1)
             << std::endl;
   }
 }

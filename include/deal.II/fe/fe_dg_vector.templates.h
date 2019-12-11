@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2006 - 2017 by the deal.II authors
+// Copyright (C) 2006 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #define dealii_fe_dg_vector_templates_h
 
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/std_cxx14/memory.h>
 
@@ -32,18 +34,18 @@ DEAL_II_NAMESPACE_OPEN
 
 template <class PolynomialType, int dim, int spacedim>
 FE_DGVector<PolynomialType, dim, spacedim>::FE_DGVector(const unsigned int deg,
-                                                        MappingType        map)
-  : FE_PolyTensor<PolynomialType, dim, spacedim>(
-      deg,
+                                                        MappingKind        map)
+  : FE_PolyTensor<dim, spacedim>(
+      PolynomialType(deg),
       FiniteElementData<dim>(get_dpo_vector(deg),
                              dim,
                              deg + 1,
                              FiniteElementData<dim>::L2),
-      std::vector<bool>(PolynomialType::compute_n_pols(deg), true),
-      std::vector<ComponentMask>(PolynomialType::compute_n_pols(deg),
+      std::vector<bool>(PolynomialType::n_polynomials(deg), true),
+      std::vector<ComponentMask>(PolynomialType::n_polynomials(deg),
                                  ComponentMask(dim, true)))
 {
-  this->mapping_type                   = map;
+  this->mapping_kind                   = {map};
   const unsigned int polynomial_degree = this->tensor_degree();
 
   QGauss<dim> quadrature(polynomial_degree + 1);
@@ -69,7 +71,7 @@ std::string
 FE_DGVector<PolynomialType, dim, spacedim>::get_name() const
 {
   std::ostringstream namebuf;
-  namebuf << "FE_DGVector_" << this->poly_space.name() << "<" << dim << ">("
+  namebuf << "FE_DGVector_" << this->poly_space->name() << "<" << dim << ">("
           << this->degree - 1 << ")";
   return namebuf.str();
 }
@@ -81,7 +83,7 @@ FE_DGVector<PolynomialType, dim, spacedim>::get_dpo_vector(
   const unsigned int deg)
 {
   std::vector<unsigned int> dpo(dim + 1);
-  dpo[dim] = PolynomialType::compute_n_pols(deg);
+  dpo[dim] = PolynomialType::n_polynomials(deg);
 
   return dpo;
 }

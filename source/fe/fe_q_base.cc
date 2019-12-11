@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -329,9 +329,9 @@ struct FE_Q_Base<PolynomialType, xdim, xspacedim>::Implementation
         for (unsigned int child = 0;
              child < GeometryInfo<dim - 1>::max_children_per_cell;
              ++child)
-          for (unsigned int i = 0; i < inner_points.size(); ++i)
+          for (const auto &inner_point : inner_points)
             constraint_points.push_back(
-              GeometryInfo<dim - 1>::child_to_cell_coordinates(inner_points[i],
+              GeometryInfo<dim - 1>::child_to_cell_coordinates(inner_point,
                                                                child));
       }
 
@@ -356,7 +356,7 @@ struct FE_Q_Base<PolynomialType, xdim, xspacedim>::Implementation
 
     for (unsigned int i = 0; i < constraint_points.size(); ++i)
       {
-        const double interval = (double)(q_deg * 2);
+        const double interval = static_cast<double>(q_deg * 2);
         bool         mirror[dim - 1];
         Point<dim>   constraint_point;
 

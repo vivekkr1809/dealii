@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2006 - 2017 by the deal.II authors
+ * Copyright (C) 2006 - 2018 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -136,10 +136,6 @@ namespace Step27
   class RightHandSide : public Function<dim>
   {
   public:
-    RightHandSide()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> & p,
                          const unsigned int component) const override;
   };
@@ -321,7 +317,7 @@ namespace Step27
                                      update_quadrature_points |
                                      update_JxW_values);
 
-    const RightHandSide<dim> rhs_function;
+    RightHandSide<dim> rhs_function;
 
     FullMatrix<double> cell_matrix;
     Vector<double>     cell_rhs;
@@ -695,9 +691,9 @@ namespace Step27
         std::pair<std::vector<unsigned int>, std::vector<double>> res =
           FESeries::process_coefficients<dim>(
             fourier_coefficients,
-            std::bind(&LaplaceProblem<dim>::predicate,
-                      this,
-                      std::placeholders::_1),
+            [this](const TableIndices<dim> &indices) {
+              return this->predicate(indices);
+            },
             VectorTools::Linfty_norm);
 
         Assert(res.first.size() == res.second.size(), ExcInternalError());

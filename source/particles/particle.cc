@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,6 +13,8 @@
 //
 // ---------------------------------------------------------------------
 
+#include <deal.II/base/signaling_nan.h>
+
 #include <deal.II/particles/particle.h>
 
 DEAL_II_NAMESPACE_OPEN
@@ -21,8 +23,8 @@ namespace Particles
 {
   template <int dim, int spacedim>
   Particle<dim, spacedim>::Particle()
-    : location()
-    , reference_location()
+    : location(numbers::signaling_nan<Point<spacedim>>())
+    , reference_location(numbers::signaling_nan<Point<dim>>())
     , id(0)
     , property_pool(nullptr)
     , properties(PropertyPool::invalid_handle)
@@ -272,6 +274,15 @@ namespace Particles
 
   template <int dim, int spacedim>
   void
+  Particle<dim, spacedim>::set_id(const types::particle_index &new_id)
+  {
+    id = new_id;
+  }
+
+
+
+  template <int dim, int spacedim>
+  void
   Particle<dim, spacedim>::set_property_pool(PropertyPool &new_property_pool)
   {
     property_pool = &new_property_pool;
@@ -284,6 +295,8 @@ namespace Particles
   Particle<dim, spacedim>::set_properties(
     const ArrayView<const double> &new_properties)
   {
+    Assert(property_pool != nullptr, ExcInternalError());
+
     if (properties == PropertyPool::invalid_handle)
       properties = property_pool->allocate_properties_array();
 
@@ -313,7 +326,7 @@ namespace Particles
   const ArrayView<const double>
   Particle<dim, spacedim>::get_properties() const
   {
-    Assert(property_pool != nullptr, ExcInternalError());
+    Assert(has_properties(), ExcInternalError());
 
     return property_pool->get_properties(properties);
   }
@@ -325,6 +338,17 @@ namespace Particles
   Particle<dim, spacedim>::get_properties()
   {
     Assert(property_pool != nullptr, ExcInternalError());
+
+    // If this particle has no properties yet, allocate and initialize them.
+    if (properties == PropertyPool::invalid_handle)
+      {
+        properties = property_pool->allocate_properties_array();
+
+        ArrayView<double> my_properties =
+          property_pool->get_properties(properties);
+
+        std::fill(my_properties.begin(), my_properties.end(), 0.0);
+      }
 
     return property_pool->get_properties(properties);
   }

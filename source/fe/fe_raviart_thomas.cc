@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -45,22 +45,22 @@ DEAL_II_NAMESPACE_OPEN
 
 template <int dim>
 FE_RaviartThomas<dim>::FE_RaviartThomas(const unsigned int deg)
-  : FE_PolyTensor<PolynomialsRaviartThomas<dim>, dim>(
-      deg,
+  : FE_PolyTensor<dim>(
+      PolynomialsRaviartThomas<dim>(deg),
       FiniteElementData<dim>(get_dpo_vector(deg),
                              dim,
                              deg + 1,
                              FiniteElementData<dim>::Hdiv),
-      std::vector<bool>(PolynomialsRaviartThomas<dim>::compute_n_pols(deg),
+      std::vector<bool>(PolynomialsRaviartThomas<dim>::n_polynomials(deg),
                         true),
-      std::vector<ComponentMask>(PolynomialsRaviartThomas<dim>::compute_n_pols(
+      std::vector<ComponentMask>(PolynomialsRaviartThomas<dim>::n_polynomials(
                                    deg),
                                  std::vector<bool>(dim, true)))
 {
   Assert(dim >= 2, ExcImpossibleInDim(dim));
   const unsigned int n_dofs = this->dofs_per_cell;
 
-  this->mapping_type = mapping_raviart_thomas;
+  this->mapping_kind = {mapping_raviart_thomas};
   // First, initialize the
   // generalized support points and
   // quadrature weights, since they
@@ -469,12 +469,12 @@ FE_RaviartThomas<dim>::has_support_on_face(const unsigned int shape_index,
 
               default:
                 return true;
-            };
-        };
+            }
+        }
 
       default: // other rt_order
         return true;
-    };
+    }
 
   return true;
 }

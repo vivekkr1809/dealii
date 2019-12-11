@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -92,6 +92,10 @@ namespace dealii
             c1->active_fe_index() != c2->active_fe_index())
           return false;
 
+        if (c1->active() && c2->active() &&
+            c1->future_fe_index() != c2->future_fe_index())
+          return false;
+
         // compare dofs on this cell and then on the faces
         if (c1->has_children() == false)
           {
@@ -174,12 +178,23 @@ test()
   hp::FECollection<dim, spacedim> fe_collection;
   fe_collection.push_back(FESystem<dim, spacedim>(
     FE_Q<dim, spacedim>(2), dim, FE_Q<dim, spacedim>(1), 1));
+  fe_collection.push_back(FESystem<dim, spacedim>(
+    FE_Q<dim, spacedim>(3), dim, FE_Q<dim, spacedim>(2), 1));
 
   hp::DoFHandler<dim, spacedim> dof_1(tria);
   hp::DoFHandler<dim, spacedim> dof_2(tria);
 
+  dof_1.begin_active()->set_active_fe_index(1);
+  dof_2.begin_active()->set_active_fe_index(1);
+
   dof_1.distribute_dofs(fe_collection);
   dof_2.distribute_dofs(fe_collection);
+
+  dof_1.begin_active()->set_future_fe_index(0);
+  dof_2.begin_active()->set_future_fe_index(0);
+
+  (++dof_1.begin_active())->set_future_fe_index(1);
+  (++dof_2.begin_active())->set_future_fe_index(1);
 
   // right now, both hp::DoFHandlers are the same. Renumber one of them
   DoFRenumbering::random(dof_1);

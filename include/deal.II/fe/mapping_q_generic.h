@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,6 +38,9 @@ DEAL_II_NAMESPACE_OPEN
 
 template <int, int>
 class MappingQ;
+
+template <int, int>
+class MappingQCache;
 
 
 /*!@addtogroup mapping */
@@ -192,35 +195,35 @@ public:
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<1, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<1, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const DerivativeForm<1, dim, spacedim>> &input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<2, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<2, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<2, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const DerivativeForm<2, dim, spacedim>> &input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<3, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<3, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<3, spacedim>> &output) const override;
 
@@ -450,7 +453,7 @@ public:
 
     /**
      * In case the quadrature rule given represents a tensor product
-     * we need to store the evaluations of the 1d polynomials at the
+     * we need to store the evaluations of the 1d polynomials at
      * the 1d quadrature points. That is what this variable is for.
      */
     internal::MatrixFreeFunctions::ShapeInfo<VectorizedArray<double>>
@@ -729,12 +732,15 @@ protected:
     const typename Triangulation<dim, spacedim>::cell_iterator &cell,
     std::vector<Point<spacedim>> &                              a) const;
 
-  /**
-   * Make MappingQ a friend since it needs to call the fill_fe_values()
-   * functions on its MappingQGeneric(1) sub-object.
-   */
+  // Make MappingQ a friend since it needs to call the fill_fe_values()
+  // functions on its MappingQGeneric(1) sub-object.
   template <int, int>
   friend class MappingQ;
+
+  // Make MappingQCache a friend since it needs to call the
+  // compute_mapping_support_points() function.
+  template <int, int>
+  friend class MappingQCache;
 };
 
 

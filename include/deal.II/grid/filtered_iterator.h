@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2002 - 2018 by the deal.II authors
+// Copyright (C) 2002 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -341,7 +341,7 @@ namespace IteratorFilters
  * filter (called a <em>predicate</em>, following the notation of the C++
  * standard library). Once initialized with a predicate and a value for the
  * iterator, a filtered iterator hops to the next or previous element that
- * satisfies the predicate if operators ++ or -- are invoked. Intermediate
+ * satisfies the predicate if operators ++ or \-- are invoked. Intermediate
  * iterator values that lie in between but do not satisfy the predicate are
  * skipped. It is thus very simple to write loops over a certain class of
  * objects without the need to explicitly write down the condition they have
@@ -387,11 +387,11 @@ namespace IteratorFilters
  * @endcode
  * then
  * @code
- *   std::bind (&level_equal_to<active_cell_iterator>, std::placeholders::_1, 3)
+ *   [](const BIterator& c){ return level_equal_to<active_cell_iterator>(c, 3);}
  * @endcode
  * is another valid predicate (here: a function that returns true if either
  * the iterator is past the end or the level is equal to the second argument;
- * this second argument is bound to a fixed value using the @p std::bind
+ * this second argument is taken considered fixed when creating the lambda
  * function).
  *
  * Finally, classes can be predicates. The following class is one:
@@ -566,11 +566,6 @@ public:
    * argument.
    */
   FilteredIterator(const FilteredIterator &fi);
-
-  /**
-   * Destructor.
-   */
-  ~FilteredIterator();
 
   /**
    * Assignment operator. Copy the iterator value of the argument, but as
@@ -854,7 +849,7 @@ namespace internal
  *   ...
  *   const auto filtered_iterators_range =
  *     filter_iterators(dof_handler.active_cell_iterators(),
- *                      IteratorFilters::LocallyOwned());
+ *                      IteratorFilters::LocallyOwnedCell());
  *   for (const auto &cell : filtered_iterators_range)
  *     {
  *       fe_values.reinit (cell);
@@ -960,17 +955,9 @@ inline FilteredIterator<BaseIterator>::FilteredIterator(
     // address of fi, GCC would not cast fi to the base class of type
     // BaseIterator but tries to go through constructing a new
     // BaseIterator with an Accessor.
-  BaseIterator(*(BaseIterator *)(&fi))
+  BaseIterator(*static_cast<const BaseIterator *>(&fi))
   , predicate(fi.predicate->clone())
 {}
-
-
-
-template <typename BaseIterator>
-inline FilteredIterator<BaseIterator>::~FilteredIterator()
-{
-  predicate.reset();
-}
 
 
 

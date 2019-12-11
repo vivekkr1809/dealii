@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2017 by the deal.II authors
+// Copyright (C) 2011 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -63,7 +63,7 @@ test()
 
   test1.compress(VectorOperation::add);
 
-  // TrilinosWrappers::MPI::Vector test(test1.vector_partitioner()); // works
+  // TrilinosWrappers::MPI::Vector test(test1.trilinos_partitioner()); // works
   // TrilinosWrappers::MPI::Vector test(locally_owned); // works
   TrilinosWrappers::MPI::Vector test(test1); // fails
 

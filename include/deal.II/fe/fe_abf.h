@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -100,7 +100,7 @@ DEAL_II_NAMESPACE_OPEN
  * Kanschat and Wolfgang Bangerth
  */
 template <int dim>
-class FE_ABF : public FE_PolyTensor<PolynomialsABF<dim>, dim>
+class FE_ABF : public FE_PolyTensor<dim>
 {
 public:
   /**
@@ -244,9 +244,7 @@ private:
   Table<3, double> interior_weights_abf;
 
 
-  /**
-   * Allow access from other dimensions.
-   */
+  // Allow access from other dimensions.
   template <int dim1>
   friend class FE_ABF;
 };

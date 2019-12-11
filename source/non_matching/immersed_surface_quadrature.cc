@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,7 +28,7 @@ namespace NonMatching
   {
     AssertDimension(weights.size(), points.size());
     AssertDimension(normals.size(), points.size());
-    for (auto normal : normals)
+    for (const auto &normal : normals)
       {
         (void)normal;
         Assert(std::abs(normal.norm() - 1.0) < 1e-9,

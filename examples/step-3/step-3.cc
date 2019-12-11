@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 1999 - 2018 by the deal.II authors
+ * Copyright (C) 1999 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -82,13 +82,13 @@ using namespace dealii;
 
 // Instead of the procedural programming of previous examples, we encapsulate
 // everything into a class for this program. The class consists of functions
-// which each perform certain aspects of a finite element program, a `main'
+// which each perform certain aspects of a finite element program, a `main`
 // function which controls what is done first and what is done next, and a
 // list of member variables.
 
 // The public part of the class is rather short: it has a constructor and a
-// function `run' that is called from the outside and acts as something like
-// the `main' function: it coordinates which operations of this class shall be
+// function `run` that is called from the outside and acts as something like
+// the `main` function: it coordinates which operations of this class shall be
 // run in which order. Everything else in the class, i.e. all the functions
 // that actually do anything, are in the private section of the class:
 class Step3
@@ -272,7 +272,7 @@ void Step3::assemble_system()
   // 2D. This quadrature formula integrates polynomials of degrees up to three
   // exactly (in 1D). It is easy to check that this is sufficient for the
   // present problem:
-  QGauss<2> quadrature_formula(2);
+  QGauss<2> quadrature_formula(fe.degree + 1);
   // And we initialize the object which we have briefly talked about above. It
   // needs to be told which finite element we want to use, and the quadrature
   // points and their weights (jointly described by a Quadrature object). As
@@ -493,15 +493,15 @@ void Step3::assemble_system()
   // example, you may have inflow and outflow boundaries in fluid dynamics, or
   // clamped and free parts of bodies in deformation computations of
   // bodies. Then you will want to denote these different parts of the
-  // boundary by different numbers and tell the interpolate_boundary_values
+  // boundary by indicators, and tell the interpolate_boundary_values
   // function to only compute the boundary values on a certain part of the
-  // boundary (e.g. the clamped part, or the inflow boundary). By default, all
-  // boundaries have the number `0`, and since we have not changed that, this
-  // is still so; therefore, if we give `0` as the desired portion of the
-  // boundary, this means we get the whole boundary. If you have boundaries
-  // with kinds of boundaries, you have to number them differently. The
-  // function call below will then only determine boundary values for parts of
-  // the boundary.
+  // boundary (e.g. the clamped part, or the inflow boundary). By default,
+  // all boundaries have a 0 boundary indicator, unless otherwise specified. If
+  // sections of the boundary have different boundary conditions, you have to
+  // number those parts with different boundary indicators. The function call
+  // below will then only determine boundary values for those parts of the
+  // boundary for which the boundary indicator is in fact the zero specified as
+  // the second argument.
   //
   // The function describing the boundary values is an object of type Function
   // or of a derived class. One of the derived classes is
@@ -594,11 +594,12 @@ void Step3::output_results() const
   data_out.build_patches();
 
   // Now we have everything in place for the actual output. Just open a file
-  // and write the data into it, using GNUPLOT format (there are other
-  // functions which write their data in postscript, AVS, GMV, or some other
-  // format):
-  std::ofstream output("solution.gpl");
-  data_out.write_gnuplot(output);
+  // and write the data into it, using VTK format (there are many other
+  // functions in the DataOut class we are using here that can write the
+  // data in postscript, AVS, GMV, Gnuplot, or some other file
+  // formats):
+  std::ofstream output("solution.vtk");
+  data_out.write_vtk(output);
 }
 
 

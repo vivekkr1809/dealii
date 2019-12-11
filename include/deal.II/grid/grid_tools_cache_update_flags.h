@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -37,36 +37,56 @@ namespace GridTools
     /**
      * Update Nothing.
      */
-    update_nothing = 0x00,
+    update_nothing = 0x000,
 
     /**
      * Update vertex_to_cell_map, as returned by
      * GridTools::vertex_to_cell_map().
      */
-    update_vertex_to_cell_map = 0x01,
+    update_vertex_to_cell_map = 0x001,
 
     /**
      * Update vertex_to_cell_centers_directions, as returned by
      * GridTools::vertex_to_cell_centers_directions()
      */
     update_vertex_to_cell_centers_directions =
-      update_vertex_to_cell_map | 0x0002,
+      update_vertex_to_cell_map | 0x002,
 
     /**
      * Update a KDTree object, initialized with the vertices of the
      * Triangulation.
      */
-    update_vertex_kdtree = 0x04,
+    update_vertex_kdtree = 0x004,
 
     /**
      * Update a mapping of used vertices.
      */
-    update_used_vertices = 0x08,
+    update_used_vertices = 0x008,
+
+    /**
+     * Update an RTree of the used vertices.
+     */
+    update_used_vertices_rtree = 0x010,
+
+    /**
+     * Update an RTree of the cell bounding boxes.
+     */
+    update_cell_bounding_boxes_rtree = 0x020,
+
+    /**
+     * Update the covering rtree object, initialized with pairs
+     * of a bounding box and an unsigned int. The bounding
+     * boxes are used to describe approximately which portion
+     * of the mesh contains locally owned cells by the
+     * process of rank the second element of the pair.
+     *
+     */
+    update_covering_rtree = 0x040,
 
     /**
      * Update all objects.
      */
-    update_all = 0xFF,
+    update_all = 0x0FF,
   };
 
 
@@ -84,6 +104,8 @@ namespace GridTools
       s << "|vertex_to_cell_map";
     if (u & update_vertex_to_cell_centers_directions)
       s << "|vertex_to_cells_centers_directions";
+    if (u & update_covering_rtree)
+      s << "|covering_rtree";
 #ifdef DEAL_II_WITH_NANOFLANN
     if (u & update_vertex_kdtree)
       s << "|vertex_kdtree";

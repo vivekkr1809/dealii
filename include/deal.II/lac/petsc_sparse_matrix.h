@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,9 +29,10 @@
 
 DEAL_II_NAMESPACE_OPEN
 // forward declaration
+#    ifndef DOXYGEN
 template <typename MatrixType>
 class BlockMatrixBase;
-
+#    endif
 
 namespace PETScWrappers
 {
@@ -146,6 +147,17 @@ namespace PETScWrappers
     operator=(const double d);
 
     /**
+     * The copy constructor is deleted.
+     */
+    SparseMatrix(const SparseMatrix &) = delete;
+
+    /**
+     * The copy assignment operator is deleted.
+     */
+    SparseMatrix &
+    operator=(const SparseMatrix &) = delete;
+
+    /**
      * Throw away the present matrix and generate one that has the same
      * properties as if it were created by the constructor of this class with
      * the same argument list as the present function.
@@ -242,16 +254,6 @@ namespace PETScWrappers
 
   private:
     /**
-     * Purposefully not implemented
-     */
-    SparseMatrix(const SparseMatrix &) = delete;
-    /**
-     * Purposefully not implemented
-     */
-    SparseMatrix &
-    operator=(const SparseMatrix &) = delete;
-
-    /**
      * Do the actual work for the respective reinit() function and the
      * matching constructor, i.e. create a matrix. Getting rid of the previous
      * matrix is left to the caller.
@@ -279,9 +281,7 @@ namespace PETScWrappers
     do_reinit(const SparsityPatternType &sparsity_pattern,
               const bool                 preset_nonzero_locations);
 
-    /**
-     * To allow calling protected prepare_add() and prepare_set().
-     */
+    // To allow calling protected prepare_add() and prepare_set().
     friend class BlockMatrixBase<SparseMatrix>;
   };
 
@@ -755,9 +755,7 @@ namespace PETScWrappers
                 const IndexSet &           local_columns,
                 const SparsityPatternType &sparsity_pattern);
 
-      /**
-       * To allow calling protected prepare_add() and prepare_set().
-       */
+      // To allow calling protected prepare_add() and prepare_set().
       friend class BlockMatrixBase<SparseMatrix>;
     };
 

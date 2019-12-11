@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2003 - 2018 by the deal.II authors
+ * Copyright (C) 2003 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -561,7 +561,7 @@ namespace Step16
 
     KellyErrorEstimator<dim>::estimate(
       dof_handler,
-      QGauss<dim - 1>(3),
+      QGauss<dim - 1>(fe.degree + 1),
       std::map<types::boundary_id, const Function<dim> *>(),
       solution,
       estimated_error_per_cell);

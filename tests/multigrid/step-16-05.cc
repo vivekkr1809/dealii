@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -163,7 +163,7 @@ void
 LaplaceProblem<dim>::setup_system()
 {
   mg_dof_handler.distribute_dofs(fe);
-  mg_dof_handler.distribute_mg_dofs(fe);
+  mg_dof_handler.distribute_mg_dofs();
 
   sparsity_pattern.reinit(mg_dof_handler.n_dofs(),
                           mg_dof_handler.n_dofs(),
@@ -398,7 +398,7 @@ LaplaceProblem<dim>::solve()
                                     mg_smoother;
   typename Smoother::AdditionalData smoother_data;
   smoother_data.smoothing_range     = 20.;
-  smoother_data.degree              = 2;
+  smoother_data.degree              = 3;
   smoother_data.eig_cg_n_iterations = 20;
   mg_smoother.initialize(mg_matrices, smoother_data);
 

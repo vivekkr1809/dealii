@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -104,6 +104,7 @@ DataOutStack<dim, spacedim, DoFHandlerType>::declare_data_vector(
   const std::vector<std::string> &names,
   const VectorType                vector_type)
 {
+#ifdef DEBUG
   // make sure this function is
   // not called after some parameter
   // values have already been
@@ -112,24 +113,17 @@ DataOutStack<dim, spacedim, DoFHandlerType>::declare_data_vector(
 
   // also make sure that no name is
   // used twice
-  for (std::vector<std::string>::const_iterator name = names.begin();
-       name != names.end();
-       ++name)
+  for (const auto &name : names)
     {
-      for (typename std::vector<DataVector>::const_iterator data_set =
-             dof_data.begin();
-           data_set != dof_data.end();
-           ++data_set)
-        for (unsigned int i = 0; i < data_set->names.size(); ++i)
-          Assert(*name != data_set->names[i], ExcNameAlreadyUsed(*name));
+      for (const auto &data_set : dof_data)
+        for (const auto &data_set_name : data_set.names)
+          Assert(name != data_set_name, ExcNameAlreadyUsed(name));
 
-      for (typename std::vector<DataVector>::const_iterator data_set =
-             cell_data.begin();
-           data_set != cell_data.end();
-           ++data_set)
-        for (unsigned int i = 0; i < data_set->names.size(); ++i)
-          Assert(*name != data_set->names[i], ExcNameAlreadyUsed(*name));
-    };
+      for (const auto &data_set : cell_data)
+        for (const auto &data_set_name : data_set.names)
+          Assert(name != data_set_name, ExcNameAlreadyUsed(name));
+    }
+#endif
 
   switch (vector_type)
     {
@@ -142,7 +136,7 @@ DataOutStack<dim, spacedim, DoFHandlerType>::declare_data_vector(
         cell_data.emplace_back();
         cell_data.back().names = names;
         break;
-    };
+    }
 }
 
 
@@ -198,15 +192,18 @@ DataOutStack<dim, spacedim, DoFHandlerType>::add_data_vector(
             (names.size() == dof_handler->get_fe(0).n_components())),
          Exceptions::DataOutImplementation::ExcInvalidNumberOfNames(
            names.size(), dof_handler->get_fe(0).n_components()));
-  for (unsigned int i = 0; i < names.size(); ++i)
-    Assert(names[i].find_first_not_of("abcdefghijklmnopqrstuvwxyz"
+  for (const auto &name : names)
+    {
+      (void)name;
+      Assert(name.find_first_not_of("abcdefghijklmnopqrstuvwxyz"
+                                    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                    "0123456789_<>()") == std::string::npos,
+             Exceptions::DataOutImplementation::ExcInvalidCharacter(
+               name,
+               name.find_first_not_of("abcdefghijklmnopqrstuvwxyz"
                                       "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                      "0123456789_<>()") == std::string::npos,
-           Exceptions::DataOutImplementation::ExcInvalidCharacter(
-             names[i],
-             names[i].find_first_not_of("abcdefghijklmnopqrstuvwxyz"
-                                        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                                        "0123456789_<>()")));
+                                      "0123456789_<>()")));
+    }
 
   if (vec.size() == dof_handler->n_dofs())
     {
@@ -217,7 +214,7 @@ DataOutStack<dim, spacedim, DoFHandlerType>::add_data_vector(
             data_vector->data.reinit(vec.size());
             std::copy(vec.begin(), vec.end(), data_vector->data.begin());
             return;
-          };
+          }
 
       // ok. not found. there is a
       // slight chance that
@@ -242,9 +239,9 @@ DataOutStack<dim, spacedim, DoFHandlerType>::add_data_vector(
             data_vector->data.reinit(vec.size());
             std::copy(vec.begin(), vec.end(), data_vector->data.begin());
             return;
-          };
+          }
       Assert(false, ExcVectorNotDeclared(names[0]));
-    };
+    }
 
   // we have either return or Assert
   // statements above, so shouldn't
@@ -383,7 +380,7 @@ DataOutStack<dim, spacedim, DoFHandlerType>::build_patches(
 
           default:
             Assert(false, ExcNotImplemented());
-        };
+        }
 
 
       // now fill in the data values.

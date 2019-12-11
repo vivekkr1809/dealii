@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_matrix_free_dof_info_templates_h
 #define dealii_matrix_free_dof_info_templates_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/multithread_info.h>
@@ -181,6 +183,73 @@ namespace internal
       fe_index_conversion.clear();
     }
 
+
+
+    void
+    DoFInfo::get_dof_indices_on_cell_batch(std::vector<unsigned int> &my_rows,
+                                           const unsigned int         cell,
+                                           const bool apply_constraints) const
+    {
+      const unsigned int n_fe_components = start_components.back();
+      const unsigned int fe_index =
+        dofs_per_cell.size() == 1 ? 0 : cell_active_fe_index[cell];
+      const unsigned int dofs_this_cell = dofs_per_cell[fe_index];
+
+      const unsigned int n_vectorization  = vectorization_length;
+      constexpr auto     dof_access_index = dof_access_cell;
+      AssertIndexRange(cell,
+                       n_vectorization_lanes_filled[dof_access_index].size());
+      const unsigned int n_vectorization_actual =
+        n_vectorization_lanes_filled[dof_access_index][cell];
+
+      // we might have constraints, so the final number
+      // of indices is not known a priori.
+      // conservatively reserve the maximum without constraints
+      my_rows.reserve(n_vectorization * dofs_this_cell);
+      my_rows.resize(0);
+      unsigned int total_size = 0;
+      for (unsigned int v = 0; v < n_vectorization_actual; ++v)
+        {
+          const unsigned int ib =
+            (cell * n_vectorization + v) * n_fe_components;
+          const unsigned int ie =
+            (cell * n_vectorization + v + 1) * n_fe_components;
+
+          // figure out constraints by comparing constraint_indicator row
+          // shift for this cell within the block as compared to the next
+          // one
+          const bool has_constraints =
+            row_starts[ib].second != row_starts[ib + n_fe_components].second;
+
+          auto do_copy = [&](const unsigned int *begin,
+                             const unsigned int *end) {
+            const unsigned int shift = total_size;
+            total_size += (end - begin);
+            my_rows.resize(total_size);
+            std::copy(begin, end, my_rows.begin() + shift);
+          };
+
+          if (!has_constraints || apply_constraints)
+            {
+              const unsigned int *begin =
+                dof_indices.data() + row_starts[ib].first;
+              const unsigned int *end =
+                dof_indices.data() + row_starts[ie].first;
+              do_copy(begin, end);
+            }
+          else
+            {
+              Assert(row_starts_plain_indices[cell * n_vectorization + v] !=
+                       numbers::invalid_unsigned_int,
+                     ExcNotInitialized());
+              const unsigned int *begin =
+                plain_dof_indices.data() +
+                row_starts_plain_indices[cell * n_vectorization + v];
+              const unsigned int *end = begin + dofs_this_cell;
+              do_copy(begin, end);
+            }
+        }
+    }
 
 
     template <typename number>
@@ -365,10 +434,8 @@ namespace internal
                                     vector_partitioner->local_range().first);
       const std::size_t  n_ghosts = ghost_dofs.size();
 #ifdef DEBUG
-      for (std::vector<unsigned int>::iterator dof = dof_indices.begin();
-           dof != dof_indices.end();
-           ++dof)
-        AssertIndexRange(*dof, n_owned + n_ghosts);
+      for (const auto dof_index : dof_indices)
+        AssertIndexRange(dof_index, n_owned + n_ghosts);
 #endif
 
       const unsigned int        n_components = start_components.back();
@@ -631,8 +698,8 @@ namespace internal
         (vector_partitioner->local_range().second -
          vector_partitioner->local_range().first) +
         vector_partitioner->ghost_indices().n_elements();
-      for (std::size_t i = 0; i < dof_indices.size(); ++i)
-        AssertIndexRange(dof_indices[i], index_range);
+      for (const auto dof_index : dof_indices)
+        AssertIndexRange(dof_index, index_range);
 
       // sanity check 2: for the constraint indicators, the first index should
       // be smaller than the number of indices in the row, and the second
@@ -1149,7 +1216,10 @@ namespace internal
       const unsigned int n_components = start_components.back();
       const unsigned int n_dofs       = vector_partitioner->local_size() +
                                   vector_partitioner->n_ghost_indices();
-      std::vector<unsigned int> touched_by(
+      std::vector<unsigned int> touched_first_by(
+        (n_dofs + chunk_size_zero_vector - 1) / chunk_size_zero_vector,
+        numbers::invalid_unsigned_int);
+      std::vector<unsigned int> touched_last_by(
         (n_dofs + chunk_size_zero_vector - 1) / chunk_size_zero_vector,
         numbers::invalid_unsigned_int);
       for (unsigned int part = 0;
@@ -1173,8 +1243,10 @@ namespace internal
                   {
                     const unsigned int myindex =
                       dof_indices[it] / chunk_size_zero_vector;
-                    if (touched_by[myindex] == numbers::invalid_unsigned_int)
-                      touched_by[myindex] = chunk;
+                    if (touched_first_by[myindex] ==
+                        numbers::invalid_unsigned_int)
+                      touched_first_by[myindex] = chunk;
+                    touched_last_by[myindex] = chunk;
                   }
               }
             if (faces.size() > 0)
@@ -1194,42 +1266,123 @@ namespace internal
                       {
                         const unsigned int myindex =
                           dof_indices[it] / chunk_size_zero_vector;
-                        if (touched_by[myindex] ==
+                        if (touched_first_by[myindex] ==
                             numbers::invalid_unsigned_int)
-                          touched_by[myindex] = chunk;
+                          touched_first_by[myindex] = chunk;
+                        touched_last_by[myindex] = chunk;
                       }
                   }
           }
-      // ensure that all indices are touched at least during the last round
-      for (auto &i : touched_by)
-        if (i == numbers::invalid_unsigned_int)
-          i = task_info.cell_partition_data.back() - 1;
 
-      vector_zero_range_list_index.resize(
-        1 + task_info
-              .partition_row_index[task_info.partition_row_index.size() - 2],
-        numbers::invalid_unsigned_int);
-      std::map<unsigned int, std::vector<unsigned int>> chunk_must_zero_vector;
-      for (unsigned int i = 0; i < touched_by.size(); ++i)
-        chunk_must_zero_vector[touched_by[i]].push_back(i);
-      vector_zero_range_list.clear();
-      vector_zero_range_list_index[0] = 0;
-      for (unsigned int chunk = 0;
-           chunk < vector_zero_range_list_index.size() - 1;
-           ++chunk)
-        {
-          auto it = chunk_must_zero_vector.find(chunk);
-          if (it != chunk_must_zero_vector.end())
+      // ensure that all indices are touched at least during the last round
+      for (auto &index : touched_first_by)
+        if (index == numbers::invalid_unsigned_int)
+          index =
+            task_info
+              .partition_row_index[task_info.partition_row_index.size() - 2] -
+            1;
+
+      // lambda to convert from a map, with keys associated to the buckets by
+      // which we sliced the index space, length chunk_size_zero_vector, and
+      // values equal to the slice index which are touched by the respective
+      // partition, to a "vectors-of-vectors" like data structure. Rather than
+      // using the vectors, we set up a sparsity-pattern like structure where
+      // one index specifies the start index (range_list_index), and the other
+      // the actual ranges (range_list).
+      auto convert_map_to_range_list =
+        [=](const unsigned int n_partitions,
+            const std::map<unsigned int, std::vector<unsigned int>> &ranges_in,
+            std::vector<unsigned int> &range_list_index,
+            std::vector<std::pair<unsigned int, unsigned int>> &range_list,
+            const unsigned int                                  max_size) {
+          range_list_index.resize(n_partitions + 1);
+          range_list_index[0] = 0;
+          range_list.clear();
+          for (unsigned int partition = 0; partition < n_partitions;
+               ++partition)
             {
-              for (unsigned int i : it->second)
-                vector_zero_range_list.push_back(i);
-              vector_zero_range_list_index[chunk + 1] =
-                vector_zero_range_list.size();
+              auto it = ranges_in.find(partition);
+              if (it != ranges_in.end())
+                {
+                  for (unsigned int i = 0; i < it->second.size(); ++i)
+                    {
+                      const unsigned int first_i = i;
+                      while (i + 1 < it->second.size() &&
+                             it->second[i + 1] == it->second[i] + 1)
+                        ++i;
+                      range_list.emplace_back(
+                        std::min(it->second[first_i] * chunk_size_zero_vector,
+                                 max_size),
+                        std::min((it->second[i] + 1) * chunk_size_zero_vector,
+                                 max_size));
+                    }
+                  range_list_index[partition + 1] = range_list.size();
+                }
+              else
+                range_list_index[partition + 1] = range_list_index[partition];
             }
-          else
-            vector_zero_range_list_index[chunk + 1] =
-              vector_zero_range_list_index[chunk];
-        }
+        };
+
+      // first we determine the ranges to zero the vector
+      std::map<unsigned int, std::vector<unsigned int>> chunk_must_zero_vector;
+      for (unsigned int i = 0; i < touched_first_by.size(); ++i)
+        chunk_must_zero_vector[touched_first_by[i]].push_back(i);
+      const unsigned int n_partitions =
+        task_info.partition_row_index[task_info.partition_row_index.size() - 2];
+      convert_map_to_range_list(n_partitions,
+                                chunk_must_zero_vector,
+                                vector_zero_range_list_index,
+                                vector_zero_range_list,
+                                vector_partitioner->local_size());
+
+      // the other two operations only work on the local range (without
+      // ghosts), so we skip the latter parts of the vector now
+      touched_first_by.resize(
+        (vector_partitioner->local_size() + chunk_size_zero_vector - 1) /
+        chunk_size_zero_vector);
+
+      // set the import indices in the vector partitioner to one index higher
+      // to indicate that we want to process it first. This additional index
+      // is reflected in the argument 'n_partitions+1' in the
+      // convert_map_to_range_list function below.
+      for (auto it : vector_partitioner->import_indices())
+        for (unsigned int i = it.first; i < it.second; ++i)
+          touched_first_by[i / chunk_size_zero_vector] = n_partitions;
+      std::map<unsigned int, std::vector<unsigned int>> chunk_must_do_pre;
+      for (unsigned int i = 0; i < touched_first_by.size(); ++i)
+        chunk_must_do_pre[touched_first_by[i]].push_back(i);
+      convert_map_to_range_list(n_partitions + 1,
+                                chunk_must_do_pre,
+                                cell_loop_pre_list_index,
+                                cell_loop_pre_list,
+                                vector_partitioner->local_size());
+
+      touched_last_by.resize(
+        (vector_partitioner->local_size() + chunk_size_zero_vector - 1) /
+        chunk_size_zero_vector);
+
+      // set the indices which were not touched by the cell loop (i.e.,
+      // constrained indices) to the last valid partition index. Since
+      // partition_row_index contains one extra slot for ghosted faces (which
+      // are not part of the cell/face loops), we use the second to last entry
+      // in the partition list.
+      for (auto &index : touched_last_by)
+        if (index == numbers::invalid_unsigned_int)
+          index =
+            task_info
+              .partition_row_index[task_info.partition_row_index.size() - 2] -
+            1;
+      for (auto it : vector_partitioner->import_indices())
+        for (unsigned int i = it.first; i < it.second; ++i)
+          touched_last_by[i / chunk_size_zero_vector] = n_partitions;
+      std::map<unsigned int, std::vector<unsigned int>> chunk_must_do_post;
+      for (unsigned int i = 0; i < touched_last_by.size(); ++i)
+        chunk_must_do_post[touched_last_by[i]].push_back(i);
+      convert_map_to_range_list(n_partitions + 1,
+                                chunk_must_do_post,
+                                cell_loop_post_list_index,
+                                cell_loop_post_list,
+                                vector_partitioner->local_size());
     }
 
 
@@ -1420,12 +1573,13 @@ namespace internal
         n_rows / internal::bucket_size_threading + 1);
       parallel::apply_to_subranges(0,
                                    task_info.n_active_cells,
-                                   std::bind(&internal::compute_row_lengths,
-                                             std::placeholders::_1,
-                                             std::placeholders::_2,
-                                             std::cref(*this),
-                                             std::ref(mutexes),
-                                             std::ref(row_lengths)),
+                                   [this,
+                                    &mutexes,
+                                    &row_lengths](const unsigned int begin,
+                                                  const unsigned int end) {
+                                     internal::compute_row_lengths(
+                                       begin, end, *this, mutexes, row_lengths);
+                                   },
                                    20);
 
       // disregard dofs that only sit on a single cell because they cannot
@@ -1440,16 +1594,15 @@ namespace internal
       SparsityPattern connectivity_dof(n_rows,
                                        task_info.n_active_cells,
                                        row_lengths);
-      parallel::apply_to_subranges(0,
-                                   task_info.n_active_cells,
-                                   std::bind(&internal::fill_connectivity_dofs,
-                                             std::placeholders::_1,
-                                             std::placeholders::_2,
-                                             std::cref(*this),
-                                             std::cref(row_lengths),
-                                             std::ref(mutexes),
-                                             std::ref(connectivity_dof)),
-                                   20);
+      parallel::apply_to_subranges(
+        0,
+        task_info.n_active_cells,
+        [this, &row_lengths, &mutexes, &connectivity_dof](
+          const unsigned int begin, const unsigned int end) {
+          internal::fill_connectivity_dofs(
+            begin, end, *this, row_lengths, mutexes, connectivity_dof);
+        },
+        20);
       connectivity_dof.compress();
 
 
@@ -1461,16 +1614,19 @@ namespace internal
       // create a connectivity list between cells. The connectivity graph
       // should apply the renumbering, i.e., the entry for cell j is the entry
       // for cell renumbering[j] in the original ordering.
-      parallel::apply_to_subranges(0,
-                                   task_info.n_active_cells,
-                                   std::bind(&internal::fill_connectivity,
-                                             std::placeholders::_1,
-                                             std::placeholders::_2,
-                                             std::cref(*this),
-                                             std::cref(reverse_numbering),
-                                             std::cref(connectivity_dof),
-                                             std::ref(connectivity)),
-                                   20);
+      parallel::apply_to_subranges(
+        0,
+        task_info.n_active_cells,
+        [this, &reverse_numbering, &connectivity_dof, &connectivity](
+          const unsigned int begin, const unsigned int end) {
+          internal::fill_connectivity(begin,
+                                      end,
+                                      *this,
+                                      reverse_numbering,
+                                      connectivity_dof,
+                                      connectivity);
+        },
+        20);
     }
 
 
@@ -1519,13 +1675,13 @@ namespace internal
         }
 
       AssertIndexRange(counter, local_size + 1);
-      for (std::size_t i = 0; i < renumbering.size(); ++i)
-        if (renumbering[i] == numbers::invalid_dof_index)
-          renumbering[i] = counter++;
+      for (types::global_dof_index &dof_index : renumbering)
+        if (dof_index == numbers::invalid_dof_index)
+          dof_index = counter++;
 
       // transform indices to global index space
-      for (std::size_t i = 0; i < renumbering.size(); ++i)
-        renumbering[i] = vector_partitioner->local_to_global(renumbering[i]);
+      for (types::global_dof_index &dof_index : renumbering)
+        dof_index = vector_partitioner->local_to_global(dof_index);
 
       AssertDimension(counter, renumbering.size());
     }

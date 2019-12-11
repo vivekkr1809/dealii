@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -30,7 +30,7 @@
 using namespace dealii;
 
 int
-main(void)
+main()
 {
   const double       tol = 1e-12;
   const unsigned int n   = 10;

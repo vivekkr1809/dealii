@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2017 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,6 +13,8 @@
 //
 // ---------------------------------------------------------------------
 
+
+#include <deal.II/boost_adaptors/bounding_box.h>
 
 #include <deal.II/fe/mapping.h>
 
@@ -35,6 +37,45 @@ Mapping<dim, spacedim>::get_vertices(
 }
 
 
+
+template <int dim, int spacedim>
+Point<spacedim>
+Mapping<dim, spacedim>::get_center(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+  const bool map_center_of_reference_cell) const
+{
+  if (map_center_of_reference_cell)
+    {
+      Point<dim> reference_center;
+      for (unsigned int d = 0; d < dim; ++d)
+        reference_center[d] = .5;
+      return transform_unit_to_real_cell(cell, reference_center);
+    }
+  else
+    {
+      const auto      vertices = get_vertices(cell);
+      Point<spacedim> center;
+      for (const auto &v : vertices)
+        center += v;
+      return center / GeometryInfo<dim>::vertices_per_cell;
+    }
+}
+
+
+
+template <int dim, int spacedim>
+BoundingBox<spacedim>
+Mapping<dim, spacedim>::get_bounding_box(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell) const
+{
+  if (preserves_vertex_locations())
+    return cell->bounding_box();
+  else
+    return BoundingBox<spacedim>(get_vertices(cell));
+}
+
+
+
 template <int dim, int spacedim>
 Point<dim - 1>
 Mapping<dim, spacedim>::project_real_point_to_unit_point_on_face(
@@ -49,26 +90,29 @@ Mapping<dim, spacedim>::project_real_point_to_unit_point_on_face(
 
   Point<dim> unit_cell_pt = transform_real_to_unit_cell(cell, p);
 
-  Point<dim - 1> unit_face_pt;
+  const unsigned int unit_normal_direction =
+    GeometryInfo<dim>::unit_normal_direction[face_no];
 
   if (dim == 2)
     {
-      if (GeometryInfo<dim>::unit_normal_direction[face_no] == 0)
-        unit_face_pt = Point<dim - 1>(unit_cell_pt(1));
-      else if (GeometryInfo<dim>::unit_normal_direction[face_no] == 1)
-        unit_face_pt = Point<dim - 1>(unit_cell_pt(0));
+      if (unit_normal_direction == 0)
+        return Point<dim - 1>{unit_cell_pt(1)};
+      else if (unit_normal_direction == 1)
+        return Point<dim - 1>{unit_cell_pt(0)};
     }
   else if (dim == 3)
     {
-      if (GeometryInfo<dim>::unit_normal_direction[face_no] == 0)
-        unit_face_pt = Point<dim - 1>(unit_cell_pt(1), unit_cell_pt(2));
-      else if (GeometryInfo<dim>::unit_normal_direction[face_no] == 1)
-        unit_face_pt = Point<dim - 1>(unit_cell_pt(0), unit_cell_pt(2));
-      else if (GeometryInfo<dim>::unit_normal_direction[face_no] == 2)
-        unit_face_pt = Point<dim - 1>(unit_cell_pt(0), unit_cell_pt(1));
+      if (unit_normal_direction == 0)
+        return Point<dim - 1>{unit_cell_pt(1), unit_cell_pt(2)};
+      else if (unit_normal_direction == 1)
+        return Point<dim - 1>{unit_cell_pt(0), unit_cell_pt(2)};
+      else if (unit_normal_direction == 2)
+        return Point<dim - 1>{unit_cell_pt(0), unit_cell_pt(1)};
     }
 
-  return unit_face_pt;
+  // We should never get here
+  Assert(false, ExcInternalError());
+  return {};
 }
 
 /* ---------------------------- InternalDataBase --------------------------- */

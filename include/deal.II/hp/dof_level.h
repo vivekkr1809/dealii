@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,6 +26,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 namespace hp
 {
   template <int, int>
@@ -49,6 +51,7 @@ namespace internal
     struct Implementation;
   }
 } // namespace internal
+#endif
 
 
 namespace internal
@@ -123,6 +126,12 @@ namespace internal
       using signed_active_fe_index_type = signed short int;
 
       /**
+       * Invalid active_fe_index which will be used as a default value to
+       * determine whether a future_fe_index has been set or not.
+       */
+      static const active_fe_index_type invalid_active_fe_index;
+
+      /**
        * Given an active_fe_index, return whether the corresponding
        * set of DoF indices are compressed. See the general documentation
        * of this class for a description of when this is the case.
@@ -144,12 +153,26 @@ namespace internal
        * the different cells on the current level. The vector stores one
        * element per cell since the active_fe_index is unique for cells.
        *
-       * If a cell is not active on the level corresponding to the current
-       * object (i.e., it has children on higher levels) then it does not have
-       * an associated fe index and we store an invalid fe index marker
-       * instead.
+       * Each active_fe_index will be preset to zero, i.e. the default finite
+       * element. However, only active cells are eligible to have a finite
+       * element assigned, which will be verified by corresponding accessor
+       * functions of the DoFCellAccessor class.
        */
       std::vector<active_fe_index_type> active_fe_indices;
+
+      /**
+       * Indices specifying the finite element of hp::FECollection that the cell
+       * will be assigned to after the triangulation changed (due to refinement
+       * and/or coarsening, or repartitioning). The vector stores one element
+       * per cell since the future_fe_index is unique for cells.
+       *
+       * Each future_fe_index will be preset to invalid_active_fe_index,
+       * indicating that the active_fe_index will remain unchanged. However,
+       * only active cells are eligible to have a finite element assigned, which
+       * will be verified by corresponding accessor functions of the
+       * DoFCellAccessor class.
+       */
+      std::vector<active_fe_index_type> future_fe_indices;
 
       /**
        * Store the start index for the degrees of freedom of each object in
@@ -241,6 +264,32 @@ namespace internal
                           const unsigned int fe_index);
 
       /**
+       * Return the fe_index of the future finite element on this object. If no
+       * future_fe_index has been specified, return the active_fe_index instead.
+       */
+      unsigned int
+      future_fe_index(const unsigned int obj_index) const;
+
+      /**
+       * Set the fe_index of the future finite element on this object.
+       */
+      void
+      set_future_fe_index(const unsigned int obj_index,
+                          const unsigned int fe_index);
+
+      /**
+       * Return whether a future fe index has been set on this object.
+       */
+      bool
+      future_fe_index_set(const unsigned int obj_index) const;
+
+      /**
+       * Revoke the future finite element assigned to this object.
+       */
+      void
+      clear_future_fe_index(const unsigned int obj_index);
+
+      /**
        * Return a pointer to the beginning of the DoF indices cache for a
        * given cell.
        *
@@ -319,10 +368,8 @@ namespace internal
       normalize_active_fe_indices();
 
 
-      /**
-       * Make hp::DoFHandler and its auxiliary class a friend since it is the
-       * class that needs to create these data structures.
-       */
+      // Make hp::DoFHandler and its auxiliary class a friend since it is the
+      // class that needs to create these data structures.
       template <int, int>
       friend class dealii::hp::DoFHandler;
       friend struct dealii::internal::hp::DoFHandlerImplementation::
@@ -338,7 +385,7 @@ namespace internal
     inline bool
     DoFLevel::is_compressed_entry(const active_fe_index_type active_fe_index)
     {
-      return ((signed_active_fe_index_type)active_fe_index < 0);
+      return (static_cast<signed_active_fe_index_type>(active_fe_index) < 0);
     }
 
 
@@ -349,8 +396,8 @@ namespace internal
     {
       // convert the active_fe_index into a signed type, flip all
       // bits, and get the unsigned representation back
-      return (active_fe_index_type) ~(
-        signed_active_fe_index_type)active_fe_index;
+      return static_cast<active_fe_index_type>(
+        ~(static_cast<signed_active_fe_index_type>(active_fe_index)));
     }
 
 
@@ -366,7 +413,7 @@ namespace internal
 
       // make sure we are on an object for which DoFs have been
       // allocated at all
-      Assert(dof_offsets[obj_index] != (offset_type)(-1),
+      Assert(dof_offsets[obj_index] != static_cast<offset_type>(-1),
              ExcMessage("You are trying to access degree of freedom "
                         "information for an object on which no such "
                         "information is available"));
@@ -400,7 +447,7 @@ namespace internal
       // make sure we are on an
       // object for which DoFs have
       // been allocated at all
-      Assert(dof_offsets[obj_index] != (offset_type)(-1),
+      Assert(dof_offsets[obj_index] != static_cast<offset_type>(-1),
              ExcMessage("You are trying to access degree of freedom "
                         "information for an object on which no such "
                         "information is available"));
@@ -455,8 +502,77 @@ namespace internal
                "You are using an active_fe_index that is larger than an "
                "internal limitation for these objects. Try to work with "
                "hp::FECollection objects that have a more modest size."));
+      Assert(fe_index != invalid_active_fe_index,
+             ExcMessage(
+               "You are using an active_fe_index that is reserved for "
+               "internal purposes for these objects. Try to work with "
+               "hp::FECollection objects that have a more modest size."));
 
       active_fe_indices[obj_index] = fe_index;
+    }
+
+
+
+    inline unsigned int
+    DoFLevel::future_fe_index(const unsigned int obj_index) const
+    {
+      Assert(obj_index < future_fe_indices.size(),
+             ExcIndexRange(obj_index, 0, future_fe_indices.size()));
+
+      if (future_fe_index_set(obj_index))
+        return future_fe_indices[obj_index];
+
+      return active_fe_index(obj_index);
+    }
+
+
+
+    inline void
+    DoFLevel::set_future_fe_index(const unsigned int obj_index,
+                                  const unsigned int fe_index)
+    {
+      Assert(obj_index < future_fe_indices.size(),
+             ExcIndexRange(obj_index, 0, future_fe_indices.size()));
+
+      // check whether the given fe_index is within the range of
+      // values that we interpret as "not compressed". if not, then
+      // the index is so large that we cannot accept it. (but this
+      // will not likely happen because it requires someone using an
+      // FECollection that has more than 32k entries.)
+      Assert(is_compressed_entry(fe_index) == false,
+             ExcMessage(
+               "You are using a future_fe_index that is larger than an "
+               "internal limitation for these objects. Try to work with "
+               "hp::FECollection objects that have a more modest size."));
+      Assert(fe_index != invalid_active_fe_index,
+             ExcMessage(
+               "You are using a future_fe_index that is reserved for "
+               "internal purposes for these objects. Try to work with "
+               "hp::FECollection objects that have a more modest size."));
+
+      future_fe_indices[obj_index] = fe_index;
+    }
+
+
+
+    inline bool
+    DoFLevel::future_fe_index_set(const unsigned int obj_index) const
+    {
+      Assert(obj_index < future_fe_indices.size(),
+             ExcIndexRange(obj_index, 0, future_fe_indices.size()));
+
+      return (future_fe_indices[obj_index] != invalid_active_fe_index);
+    }
+
+
+
+    inline void
+    DoFLevel::clear_future_fe_index(const unsigned int obj_index)
+    {
+      Assert(obj_index < future_fe_indices.size(),
+             ExcIndexRange(obj_index, 0, future_fe_indices.size()));
+
+      future_fe_indices[obj_index] = invalid_active_fe_index;
     }
 
 
@@ -491,6 +607,7 @@ namespace internal
       ar & this->cell_dof_indices_cache;
       ar & this->dof_indices;
       ar & this->dof_offsets;
+      ar & this->future_fe_indices;
     }
   } // namespace hp
 

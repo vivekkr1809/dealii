@@ -1,6 +1,6 @@
 //-----------------------------------------------------------
 //
-//    Copyright (C) 2017 - 2018 by the deal.II authors
+//    Copyright (C) 2017 - 2019 by the deal.II authors
 //
 //    This file is part of the deal.II library.
 //
@@ -132,12 +132,19 @@ namespace SUNDIALS
       copy(*src_ypred, ypred);
       copy(*src_fpred, fpred);
 
-      int err = solver.setup_jacobian(convfail,
+      // avoid reinterpret_cast
+      bool jcurPtr_tmp = false;
+      int  err         = solver.setup_jacobian(convfail,
                                       arkode_mem->ark_tn,
                                       arkode_mem->ark_gamma,
                                       *src_ypred,
                                       *src_fpred,
-                                      (bool &)*jcurPtr);
+                                      jcurPtr_tmp);
+#  if DEAL_II_SUNDIALS_VERSION_GTE(2, 0, 0)
+      *jcurPtr = jcurPtr_tmp ? SUNTRUE : SUNFALSE;
+#  else
+      *jcurPtr = jcurPtr_tmp ? TRUE : FALSE;
+#  endif
 
       return err;
     }
@@ -279,8 +286,8 @@ namespace SUNDIALS
 #  ifdef DEAL_II_WITH_MPI
     if (is_serial_vector<VectorType>::value == false)
       {
-        const IndexSet is                = solution.locally_owned_elements();
-        const size_t   local_system_size = is.n_elements();
+        const IndexSet    is                = solution.locally_owned_elements();
+        const std::size_t local_system_size = is.n_elements();
 
         yy = N_VNew_Parallel(communicator, local_system_size, system_size);
 
@@ -378,8 +385,8 @@ namespace SUNDIALS
 #  ifdef DEAL_II_WITH_MPI
     if (is_serial_vector<VectorType>::value == false)
       {
-        const IndexSet is                = solution.locally_owned_elements();
-        const size_t   local_system_size = is.n_elements();
+        const IndexSet    is                = solution.locally_owned_elements();
+        const std::size_t local_system_size = is.n_elements();
 
         yy = N_VNew_Parallel(communicator, local_system_size, system_size);
 
@@ -424,7 +431,7 @@ namespace SUNDIALS
     status = ARKodeSetInitStep(arkode_mem, current_time_step);
     AssertARKode(status);
 
-    status = ARKodeSetUserData(arkode_mem, (void *)this);
+    status = ARKodeSetUserData(arkode_mem, this);
     AssertARKode(status);
 
     status = ARKodeSetStopTime(arkode_mem, data.final_time);
@@ -435,7 +442,7 @@ namespace SUNDIALS
     AssertARKode(status);
 
     // Initialize solver
-    ARKodeMem ARKode_mem = (ARKodeMem)arkode_mem;
+    auto ARKode_mem = static_cast<ARKodeMem>(arkode_mem);
 
     if (solve_jacobian_system)
       {

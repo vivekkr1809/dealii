@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -131,6 +131,7 @@ namespace parallel
     };
 
 
+
     /**
      * Take a function object and create a Body object from it. We do this in
      * this helper function since alternatively we would have to specify the
@@ -143,6 +144,43 @@ namespace parallel
     {
       return Body<F>(f);
     }
+
+
+
+#ifdef DEAL_II_WITH_THREADS
+    /**
+     * Encapsulate tbb::parallel_for.
+     */
+    template <typename Iterator, typename Functor>
+    void
+    parallel_for(Iterator           x_begin,
+                 Iterator           x_end,
+                 const Functor &    functor,
+                 const unsigned int grainsize)
+    {
+      tbb::parallel_for(tbb::blocked_range<Iterator>(x_begin, x_end, grainsize),
+                        functor,
+                        tbb::auto_partitioner());
+    }
+
+
+
+    /**
+     * Encapsulate tbb::parallel_for when an affinite_partitioner is provided.
+     */
+    template <typename Iterator, typename Functor>
+    void
+    parallel_for(Iterator                                          x_begin,
+                 Iterator                                          x_end,
+                 const Functor &                                   functor,
+                 const unsigned int                                grainsize,
+                 const std::shared_ptr<tbb::affinity_partitioner> &partitioner)
+    {
+      tbb::parallel_for(tbb::blocked_range<Iterator>(x_begin, x_end, grainsize),
+                        functor,
+                        *partitioner);
+    }
+#endif
   } // namespace internal
 
   /**
@@ -173,7 +211,7 @@ namespace parallel
   transform(const InputIterator &begin_in,
             const InputIterator &end_in,
             OutputIterator       out,
-            Predicate &          predicate,
+            const Predicate &    predicate,
             const unsigned int   grainsize)
   {
 #ifndef DEAL_II_WITH_THREADS
@@ -188,11 +226,10 @@ namespace parallel
     using SyncIterators = SynchronousIterators<Iterators>;
     Iterators x_begin(begin_in, out);
     Iterators x_end(end_in, OutputIterator());
-    tbb::parallel_for(tbb::blocked_range<SyncIterators>(x_begin,
-                                                        x_end,
-                                                        grainsize),
-                      internal::make_body(predicate),
-                      tbb::auto_partitioner());
+    internal::parallel_for(SyncIterators(x_begin),
+                           SyncIterators(x_end),
+                           internal::make_body(predicate),
+                           grainsize);
 #endif
   }
 
@@ -230,7 +267,7 @@ namespace parallel
             const InputIterator1 &end_in1,
             InputIterator2        in2,
             OutputIterator        out,
-            Predicate &           predicate,
+            const Predicate &     predicate,
             const unsigned int    grainsize)
   {
 #ifndef DEAL_II_WITH_THREADS
@@ -246,11 +283,10 @@ namespace parallel
     using SyncIterators = SynchronousIterators<Iterators>;
     Iterators x_begin(begin_in1, in2, out);
     Iterators x_end(end_in1, InputIterator2(), OutputIterator());
-    tbb::parallel_for(tbb::blocked_range<SyncIterators>(x_begin,
-                                                        x_end,
-                                                        grainsize),
-                      internal::make_body(predicate),
-                      tbb::auto_partitioner());
+    internal::parallel_for(SyncIterators(x_begin),
+                           SyncIterators(x_end),
+                           internal::make_body(predicate),
+                           grainsize);
 #endif
   }
 
@@ -290,7 +326,7 @@ namespace parallel
             InputIterator2        in2,
             InputIterator3        in3,
             OutputIterator        out,
-            Predicate &           predicate,
+            const Predicate &     predicate,
             const unsigned int    grainsize)
   {
 #ifndef DEAL_II_WITH_THREADS
@@ -309,11 +345,10 @@ namespace parallel
                     InputIterator2(),
                     InputIterator3(),
                     OutputIterator());
-    tbb::parallel_for(tbb::blocked_range<SyncIterators>(x_begin,
-                                                        x_end,
-                                                        grainsize),
-                      internal::make_body(predicate),
-                      tbb::auto_partitioner());
+    internal::parallel_for(SyncIterators(x_begin),
+                           SyncIterators(x_end),
+                           internal::make_body(predicate),
+                           grainsize);
 #endif
   }
 
@@ -363,11 +398,11 @@ namespace parallel
    *   {
    *     parallel::apply_to_subranges
    *        (0, A.n_rows(),
-   *         std::bind (&mat_vec_on_subranges,
-   *                    std::placeholders::_1, std::placeholders::_2,
-   *                    std::cref(A),
-   *                    std::cref(x),
-   *                    std::ref(y)),
+   *         [&](const unsigned int begin_row,
+   *             const unsigned int end_row)
+   *         {
+   *           mat_vec_on_subranges(begin_row, end_row, A, x, y);
+   *         },
    *         50);
    *   }
    *
@@ -383,14 +418,11 @@ namespace parallel
    *   }
    * @endcode
    *
-   * Note how we use the <code>std::bind</code> function to convert
+   * Note how we use the lambda function to convert
    * <code>mat_vec_on_subranges</code> from a function that takes 5 arguments
-   * to one taking 2 by binding the remaining arguments (the modifiers
-   * <code>std::ref</code> and <code>std::cref</code> make sure
-   * that the enclosed variables are actually passed by reference and constant
-   * reference, rather than by value). The resulting function object requires
-   * only two arguments, begin_row and end_row, with all other arguments
-   * fixed.
+   * to one taking 2 by binding the remaining arguments. The resulting function
+   * object requires only two arguments, `begin_row` and `end_row`, with all
+   * other arguments fixed.
    *
    * The code, if in single-thread mode, will call
    * <code>mat_vec_on_subranges</code> on the entire range
@@ -428,12 +460,13 @@ namespace parallel
     ff(begin, end);
 #  endif
 #else
-    tbb::parallel_for(
-      tbb::blocked_range<RangeType>(begin, end, grainsize),
-      std::bind(&internal::apply_to_subranges<RangeType, Function>,
-                std::placeholders::_1,
-                std::cref(f)),
-      tbb::auto_partitioner());
+    internal::parallel_for(begin,
+                           end,
+                           [&f](const tbb::blocked_range<RangeType> &range) {
+                             internal::apply_to_subranges<RangeType, Function>(
+                               range, f);
+                           },
+                           grainsize);
 #endif
   }
 
@@ -605,10 +638,11 @@ namespace parallel
    *      std::sqrt
    *       (parallel::accumulate_from_subranges<double>
    *        (0, A.n_rows(),
-   *         std::bind (&mat_norm_sqr_on_subranges,
-   *                     std::placeholders::_1, std::placeholders::_2,
-   *                     std::cref(A),
-   *                     std::cref(x)),
+   *         [&](const unsigned int begin_row,
+   *             const unsigned int end_row)
+   *         {
+   *           mat_vec_on_subranges(begin_row, end_row, A, x, y);
+   *         },
    *         50);
    *   }
    *
@@ -826,10 +860,7 @@ namespace parallel
     apply_to_subrange(begin, end);
 #else
     internal::ParallelForWrapper worker(*this);
-    tbb::parallel_for(
-      tbb::blocked_range<std::size_t>(begin, end, minimum_parallel_grain_size),
-      worker,
-      tbb::auto_partitioner());
+    internal::parallel_for(begin, end, worker, minimum_parallel_grain_size);
 #endif
   }
 

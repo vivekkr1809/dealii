@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,10 +31,13 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class FullMatrix;
 template <typename number>
 class Vector;
+#endif
 
 /**
  * A class storing the inverse diagonal blocks for block preconditioners and

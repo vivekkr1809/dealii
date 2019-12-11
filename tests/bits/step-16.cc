@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2017 by the deal.II authors
+// Copyright (C) 2005 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -107,7 +107,7 @@ void
 LaplaceProblem<dim>::setup_system()
 {
   mg_dof_handler.distribute_dofs(fe);
-  mg_dof_handler.distribute_mg_dofs(fe);
+  mg_dof_handler.distribute_mg_dofs();
 
   deallog << "   Number of degrees of freedom: " << mg_dof_handler.n_dofs()
           << std::endl;

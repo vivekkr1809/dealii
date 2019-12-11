@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2013 - 2014 by the deal.II authors
+## Copyright (C) 2013 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -16,6 +16,7 @@
 INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_BINARY_DIR})
 
 SET(_src
+  general_data_storage.cc
   operator.cc
   timestep_control.cc
   )

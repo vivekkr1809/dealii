@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,6 @@
 
 
 #include <deal.II/base/memory_consumption.h>
-#include <deal.II/base/vector_slice.h>
 
 #include <deal.II/lac/block_sparsity_pattern.h>
 
@@ -88,7 +87,7 @@ BlockSparsityPatternBase<SparsityPatternBase>::reinit(
         SparsityPatternBase *sp = sub_objects[i][j];
         sub_objects[i][j]       = nullptr;
         delete sp;
-      };
+      }
   sub_objects.reinit(0, 0);
 
   // then set new sizes
@@ -201,7 +200,7 @@ BlockSparsityPatternBase<SparsityPatternBase>::max_entries_per_row() const
 
       if (this_row > max_entries)
         max_entries = this_row;
-    };
+    }
   return max_entries;
 }
 
@@ -356,8 +355,12 @@ BlockSparsityPattern::reinit(
                              row_lengths[j][0]);
         else
           {
-            VectorSlice<const std::vector<unsigned int>> block_rows(
-              row_lengths[j], start, length);
+            Assert(row_lengths[j].begin() + start + length <=
+                     row_lengths[j].end(),
+                   ExcInternalError());
+            ArrayView<const unsigned int> block_rows(row_lengths[j].data() +
+                                                       start,
+                                                     length);
             block(i, j).reinit(rows.block_size(i),
                                cols.block_size(j),
                                block_rows);

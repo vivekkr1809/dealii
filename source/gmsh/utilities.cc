@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,7 +59,7 @@ namespace Gmsh
   {
     std::string base_name      = prm.output_base_name;
     char        dir_template[] = "ctfbc-XXXXXX";
-    if (base_name == "")
+    if (base_name.empty())
       {
         const char *temp = mkdtemp(dir_template);
         AssertThrow(temp != nullptr,
@@ -76,7 +76,7 @@ namespace Gmsh
 
     dealii::OpenCASCADE::write_IGES(boundary, iges_file_name);
 
-    ofstream geofile;
+    std::ofstream geofile;
     geofile.open(geo_file_name);
     geofile << "Merge \"" << iges_file_name << "\";" << std::endl
             << "Line Loop (2) = {1};" << std::endl

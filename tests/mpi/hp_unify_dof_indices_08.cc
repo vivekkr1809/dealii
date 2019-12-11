@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -88,7 +88,7 @@ test()
   // that to build a hash value from it that is then used to assign an
   // active_fe_index
   hp::DoFHandler<dim> dof_handler(triangulation);
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     if (cell->is_locally_owned())
       cell->set_active_fe_index(
         (cell->active_cell_index() +

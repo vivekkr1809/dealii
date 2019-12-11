@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,8 +29,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class DoFHandler;
+#endif
 
 
 /**
@@ -99,6 +102,44 @@ public:
     const DoFHandler<dim, spacedim> &   dof,
     const std::set<types::boundary_id> &boundary_ids,
     const ComponentMask &               component_mask = ComponentMask());
+
+  /**
+   * Add user defined constraints to be used on level @p level.
+   *
+   * The user can call this function multiple times and any new,
+   * conflicting constraints will overwrite the previous constraints
+   * for that DoF.
+   *
+   * Before the transfer, the user defined constraints will be distributed
+   * to the source vector, and then any DoF index set using
+   * make_zero_boundary_constraints() will be overwritten with
+   * value zero.
+   *
+   * @note This is currently only implemented for MGTransferMatrixFree.
+   */
+  void
+  add_user_constraints(const unsigned int               level,
+                       const AffineConstraints<double> &constraints_on_level);
+
+  /**
+   * Fill the internal data structures with information
+   * about no normal flux boundary dofs.
+   *
+   * This function is limited to meshes whose no normal flux boundaries
+   * have faces which are normal to the x-, y-, or z-axis. Also, for a
+   * specific boundary id, all faces must be facing in the same direction,
+   * i.e., a boundary normal to the x-axis must have a different boundary
+   * id than a boundary normal to the y- or z-axis and so on. If the mesh
+   * was produced, for example, using the <tt>GridGenerator::hyper_cube()</tt>
+   * function, setting <tt>colorize=true</tt> during mesh generation and calling
+   * make_no_normal_flux_constraints() for each no normal flux boundary is
+   * sufficient.
+   */
+  template <int dim, int spacedim>
+  void
+  make_no_normal_flux_constraints(const DoFHandler<dim, spacedim> &dof,
+                                  const types::boundary_id         bid,
+                                  const unsigned int first_vector_component);
 
   /**
    * Reset the data structures.
@@ -173,6 +214,16 @@ public:
   const AffineConstraints<double> &
   get_level_constraint_matrix(const unsigned int level) const;
 
+  /**
+   * Return the user defined constraint matrix for a given level. These
+   * constraints are set using the function add_user_constraints() and
+   * should not contain constraints for DoF indices set in
+   * make_zero_boundary_constraints() as they will be overwritten during
+   * the transfer.
+   */
+  const AffineConstraints<double> &
+  get_user_constraint_matrix(const unsigned int level) const;
+
 private:
   /**
    * The indices of boundary dofs for each level.
@@ -190,6 +241,11 @@ private:
    * periodic boundary conditions for each level .
    */
   std::vector<AffineConstraints<double>> level_constraints;
+
+  /**
+   * Constraint matrices defined by user.
+   */
+  std::vector<AffineConstraints<double>> user_constraints;
 };
 
 
@@ -200,12 +256,14 @@ MGConstrainedDoFs::initialize(const DoFHandler<dim, spacedim> &dof)
   boundary_indices.clear();
   refinement_edge_indices.clear();
   level_constraints.clear();
+  user_constraints.clear();
 
   const unsigned int nlevels = dof.get_triangulation().n_global_levels();
 
   // At this point level_constraint and refinement_edge_indices are empty.
-  level_constraints.resize(nlevels);
   refinement_edge_indices.resize(nlevels);
+  level_constraints.resize(nlevels);
+  user_constraints.resize(nlevels);
   for (unsigned int l = 0; l < nlevels; ++l)
     {
       IndexSet relevant_dofs;
@@ -321,11 +379,86 @@ MGConstrainedDoFs::make_zero_boundary_constraints(
 }
 
 
+template <int dim, int spacedim>
+inline void
+MGConstrainedDoFs::make_no_normal_flux_constraints(
+  const DoFHandler<dim, spacedim> &dof,
+  const types::boundary_id         bid,
+  const unsigned int               first_vector_component)
+{
+  // For a given boundary id, find which vector component is on the boundary
+  // and set a zero boundary constraint for those degrees of freedom.
+  const unsigned int n_components = DoFTools::n_components(dof);
+  Assert(first_vector_component + dim <= n_components,
+         ExcIndexRange(first_vector_component, 0, n_components - dim + 1));
+
+  ComponentMask comp_mask(n_components, false);
+
+
+  typename Triangulation<dim>::face_iterator
+    face = dof.get_triangulation().begin_face(),
+    endf = dof.get_triangulation().end_face();
+  for (; face != endf; ++face)
+    if (face->at_boundary() && face->boundary_id() == bid)
+      for (unsigned int d = 0; d < dim; ++d)
+        {
+          Tensor<1, dim, double> unit_vec;
+          unit_vec[d] = 1.0;
+
+          const Tensor<1, dim> normal_vec =
+            face->get_manifold().normal_vector(face, face->center());
+
+          if (std::abs(std::abs(unit_vec * normal_vec) - 1.0) < 1e-10)
+            comp_mask.set(d + first_vector_component, true);
+          else
+            Assert(
+              std::abs(unit_vec * normal_vec) < 1e-10,
+              ExcMessage(
+                "We can currently only support no normal flux conditions "
+                "for a specific boundary id if all faces are normal to the "
+                "x, y, or z axis."));
+        }
+
+  Assert(comp_mask.n_selected_components() == 1,
+         ExcMessage(
+           "We can currently only support no normal flux conditions "
+           "for a specific boundary id if all faces are facing in the "
+           "same direction, i.e., a boundary normal to the x-axis must "
+           "have a different boundary id than a boundary normal to the "
+           "y- or z-axis and so on. If the mesh here was produced using "
+           "GridGenerator::..., setting colorize=true during mesh generation "
+           "and calling make_no_normal_flux_constraints() for each no normal "
+           "flux boundary will fulfill the condition."));
+
+  this->make_zero_boundary_constraints(dof, {bid}, comp_mask);
+}
+
+
+inline void
+MGConstrainedDoFs::add_user_constraints(
+  const unsigned int               level,
+  const AffineConstraints<double> &constraints_on_level)
+{
+  AssertIndexRange(level, user_constraints.size());
+
+  // Get the relevant DoFs from level_constraints if
+  // the user constraint matrix has not been initialized
+  if (user_constraints[level].get_local_lines().size() == 0)
+    user_constraints[level].reinit(level_constraints[level].get_local_lines());
+
+  user_constraints[level].merge(
+    constraints_on_level,
+    AffineConstraints<double>::MergeConflictBehavior::right_object_wins);
+  user_constraints[level].close();
+}
+
+
 inline void
 MGConstrainedDoFs::clear()
 {
   boundary_indices.clear();
   refinement_edge_indices.clear();
+  user_constraints.clear();
 }
 
 
@@ -405,6 +538,15 @@ inline const AffineConstraints<double> &
 MGConstrainedDoFs::get_level_constraint_matrix(const unsigned int level) const
 {
   return get_level_constraints(level);
+}
+
+
+
+inline const AffineConstraints<double> &
+MGConstrainedDoFs::get_user_constraint_matrix(const unsigned int level) const
+{
+  AssertIndexRange(level, user_constraints.size());
+  return user_constraints[level];
 }
 
 

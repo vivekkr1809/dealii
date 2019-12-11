@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -120,7 +120,7 @@ test()
     FullMatrix<double>        cell_matrix(fe.dofs_per_cell, fe.dofs_per_cell);
     AffineConstraints<double> constraints;
 
-    for (auto cell : dh.active_cell_iterators())
+    for (auto &cell : dh.active_cell_iterators())
       if (cell->is_locally_owned())
         {
           cell_matrix = 0;
@@ -152,7 +152,7 @@ test()
 
   coupling.Tvmult(Mprojected_squares, space_square);
 
-  SolverControl                     cn(100, 1e-12);
+  SolverControl                     cn(100, 1e-12, false, false);
   TrilinosWrappers::SolverCG        solver(cn);
   TrilinosWrappers::PreconditionILU prec;
   prec.initialize(mass_matrix);

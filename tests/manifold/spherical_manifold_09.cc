@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -40,7 +40,7 @@ main()
   tria.set_all_manifold_ids(0);
   tria.set_manifold(0, spherical);
 
-  for (auto cell : tria.active_cell_iterators())
+  for (auto &cell : tria.active_cell_iterators())
     for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
       if (cell->at_boundary(f))
         {
@@ -79,7 +79,7 @@ main()
                 << std::endl;
             }
         }
-  for (auto cell : tria.active_cell_iterators())
+  for (auto &cell : tria.active_cell_iterators())
     for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
       if (cell->at_boundary(f))
         {

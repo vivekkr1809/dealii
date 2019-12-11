@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -51,7 +51,9 @@ check()
   for (unsigned int v = 0; v < VectorizedArray<number>::n_array_elements; ++v)
     diff += std::abs(distance_vec[v]);
 
-  AssertThrow(diff < 100 * std::numeric_limits<number>::epsilon(),
+  AssertThrow(diff < 2 * std::numeric_limits<number>::epsilon() *
+                       VectorizedArray<number>::n_array_elements *
+                       VectorizedArray<number>::n_array_elements,
               ExcMessage("diff is " + std::to_string(diff)));
 
   deallog << "Ok" << std::endl;

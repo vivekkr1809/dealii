@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2017 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -65,7 +65,7 @@ IF(DEAL_II_DOXYGEN_USE_MATHJAX)
       "/usr/share/yelp/mathjax"
       DOC "Root path of MathJax.js"
       )
-    IF(MATHJAX MATCHES "-NOTFOUND")
+    IF(MATHJAX_PATH MATCHES "MATHJAX_PATH-NOTFOUND")
       MESSAGE(FATAL_ERROR "MathJax was not found.")
     ENDIF()
   ENDIF()
@@ -100,6 +100,9 @@ ENDFOREACH()
 
 MESSAGE(STATUS "translated this into")
 MESSAGE(STATUS "found ${_inst_in_dirs}")
+
+# make sure doxygen sees the extra.sty stylefile:
+SET(_extra_packages "${CMAKE_CURRENT_SOURCE_DIR}/extra")
 
 # Generate the input files for doxygen using template .in files in which
 # we have to substitute some CMake variables
@@ -281,6 +284,10 @@ ADD_CUSTOM_COMMAND(
     ${CMAKE_CURRENT_BINARY_DIR}/options.dox
     > ${CMAKE_BINARY_DIR}/doxygen.log 2>&1 # *pssst*
     || ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/doxygen.log ${CMAKE_BINARY_DIR}/doxygen.err
+  COMMAND ${PERL_EXECUTABLE}
+  ARGS
+    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/set_canonical_doxygen.pl
+  COMMAND ${CMAKE_COMMAND} -E echo "-- Documentation is available at ${CMAKE_CURRENT_BINARY_DIR}/deal.II/index.html"
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS
     tutorial

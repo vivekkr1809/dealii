@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2017 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -62,9 +62,9 @@ IntegratedLegendreSZ::get_coefficients(const unsigned int k)
   coefficients[k]     = b * coefficients_km1[k - 1];
   coefficients[k - 1] = b * coefficients_km1[k - 2];
 
-  for (unsigned int i = 0; i < coefficients.size(); i++)
+  for (double &coefficient : coefficients)
     {
-      coefficients[i] *= a;
+      coefficient *= a;
     }
 
   return coefficients;

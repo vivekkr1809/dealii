@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -71,7 +71,7 @@ test()
                                               bottom_left,
                                               top_right);
 
-    for (auto cell : tria.active_cell_iterators())
+    for (auto &cell : tria.active_cell_iterators())
       {
         if (cell->center()[0] < 24.)
           cell->set_material_id(0);
@@ -135,7 +135,7 @@ test()
               .cell_vectorization_category[cell->index()] = cell->material_id();
           }
 
-      mg_additional_data[level].level_mg_handler = level;
+      mg_additional_data[level].mg_level = level;
     }
 
   std::vector<std::shared_ptr<MatrixFree<dim, float>>> mg_mf_data(max_level +

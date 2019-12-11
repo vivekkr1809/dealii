@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_matrix_free_dof_info_h
 #define dealii_matrix_free_dof_info_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/partitioner.h>
@@ -40,8 +42,11 @@ namespace internal
 {
   namespace MatrixFreeFunctions
   {
+    // Forward declaration
+#ifndef DOXYGEN
     template <typename Number>
     struct ConstraintValues;
+#endif
 
     /**
      * The class that stores the indices of the degrees of freedom for all the
@@ -72,10 +77,12 @@ namespace internal
        * caches, saving one global vector access for the case where this is
        * applied rather than `vector = 0.;`.
        *
-       * Size of the chunk is set to 64 kByte which generally fits to current
-       * caches.
+       * We set the granularity to 64 - that is a number sufficiently large
+       * to minimize loop peel overhead within the work (and compatible with
+       * vectorization lengths of up to 16) and small enough to not waste on
+       * the size of the individual chunks.
        */
-      static const unsigned int chunk_size_zero_vector = 8192;
+      static const unsigned int chunk_size_zero_vector = 64;
 
       /**
        * Default empty constructor.
@@ -101,6 +108,30 @@ namespace internal
       unsigned int
       fe_index_from_degree(const unsigned int first_selected_component,
                            const unsigned int fe_degree) const;
+
+      /**
+       * Populate the vector @p locall_indices with locally owned degrees of freedom
+       * stored on the cell block @p cell.
+       * If @p with_constraints is `true`, then the returned vector will contain indices
+       * required to resolve constraints.
+       *
+       * The image below illustrates the output of this function for cell blocks
+       * zero and one with zero Dirichlet boundary conditions at the bottom of
+       * the domain. Note that due to the presence of constraints, the DoFs
+       * returned by this function for the case `with_constraints = true` are
+       * not a simple union
+       * of per cell DoFs on the cell block @p cell.
+       *
+       * @image html dofinfo_get_dof_indices.png
+       *
+       * @note The returned indices may contain duplicates. The unique set can be
+       * obtain using `std::sort()` followed by `std::unique()` and
+       * `std::vector::erase()`.
+       */
+      void
+      get_dof_indices_on_cell_batch(std::vector<unsigned int> &locall_indices,
+                                    const unsigned int         cell,
+                                    const bool with_constraints = true) const;
 
       /**
        * This internal method takes the local indices on a cell and fills them
@@ -350,7 +381,7 @@ namespace internal
        * cells batched together. As opposed to the other classes which are
        * templated on the number type, this class as a pure index container is
        * not templated, so we need to keep the information otherwise contained
-       * in VectorizedArray<Number>::n_array_elements.
+       * in VectorizedArrayType::n_array_elements.
        */
       unsigned int vectorization_length;
 
@@ -573,7 +604,33 @@ namespace internal
       /**
        * Stores the actual ranges in the vector to be cleared.
        */
-      std::vector<unsigned int> vector_zero_range_list;
+      std::vector<std::pair<unsigned int, unsigned int>> vector_zero_range_list;
+
+      /**
+       * Stores an integer to each partition in TaskInfo that indicates when
+       * to schedule operations that will be done before any access to vector
+       * entries.
+       */
+      std::vector<unsigned int> cell_loop_pre_list_index;
+
+      /**
+       * Stores the actual ranges of the operation before any access to vector
+       * entries.
+       */
+      std::vector<std::pair<unsigned int, unsigned int>> cell_loop_pre_list;
+
+      /**
+       * Stores an integer to each partition in TaskInfo that indicates when
+       * to schedule operations that will be done after all access to vector
+       * entries.
+       */
+      std::vector<unsigned int> cell_loop_post_list_index;
+
+      /**
+       * Stores the actual ranges of the operation after all access to vector
+       * entries.
+       */
+      std::vector<std::pair<unsigned int, unsigned int>> cell_loop_post_list;
     };
 
 

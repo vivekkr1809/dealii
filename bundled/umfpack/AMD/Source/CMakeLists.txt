@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2014 by the deal.II authors
+## Copyright (C) 2012 - 2018 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -14,6 +14,8 @@
 ## ---------------------------------------------------------------------
 
 INCLUDE_DIRECTORIES(${UMFPACK_BUNDLED_INCLUDE_DIRS})
+
+STRIP_FLAG(DEAL_II_CXX_FLAGS "-Wfloat-conversion")
 
 SET(src_amd
   amd_1.cc

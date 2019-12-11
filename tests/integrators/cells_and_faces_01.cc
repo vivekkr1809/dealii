@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -194,21 +194,21 @@ test(const FiniteElement<dim> &fe)
   tr.refine_global(1);
   deallog.push("1");
   dofs.distribute_dofs(fe);
-  dofs.distribute_mg_dofs(fe);
+  dofs.distribute_mg_dofs();
   test_mesh(dofs);
   deallog.pop();
   tr.begin(1)->set_refine_flag();
   tr.execute_coarsening_and_refinement();
   deallog.push("2");
   dofs.distribute_dofs(fe);
-  dofs.distribute_mg_dofs(fe);
+  dofs.distribute_mg_dofs();
   test_mesh(dofs);
   deallog.pop();
   tr.begin(2)->set_refine_flag();
   tr.execute_coarsening_and_refinement();
   deallog.push("3");
   dofs.distribute_dofs(fe);
-  dofs.distribute_mg_dofs(fe);
+  dofs.distribute_mg_dofs();
   test_mesh(dofs);
   deallog.pop();
 }

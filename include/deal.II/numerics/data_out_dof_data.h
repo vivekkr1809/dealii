@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -730,9 +730,7 @@ public:
    *
    * @note The actual type for the vector argument may be any vector type from
    * which FEValues can extract values on a cell using the
-   * FEValuesBase::get_function_values() function. In particular, this
-   * includes all of the usual vector types, but also IndexSet (see step-41
-   * for a use of this).
+   * FEValuesBase::get_function_values() function.
    */
   template <class VectorType>
   void
@@ -775,14 +773,15 @@ public:
    * discussion of the arguments except the first one) and allows to set a
    * vector with its own DoFHandler object. This DoFHandler needs to be
    * compatible with the other DoFHandler objects assigned with calls to @p
-   * add_data_vector or @p attach_dof_handler, in the sense that the
+   * add_data_vector or @p attach_dof_handler, in the sense that all of the
    * DoFHandler objects need to be based on the same triangulation. This
-   * function allows you to export data from multiple DoFHandlers that
-   * describe different solution components.
+   * function allows you to export data from multiple DoFHandler objects that
+   * describe different solution components. An example of using this function
+   * is given in step-61.
    *
    * Since this function takes a DoFHandler object and hence naturally
    * represents dof data, the data vector type argument present in the other
-   * methods above is skipped.
+   * methods above is not necessary.
    */
   template <class VectorType>
   void
@@ -824,9 +823,7 @@ public:
    *
    * @note The actual type for the vector argument may be any vector type from
    * which FEValues can extract values on a cell using the
-   * FEValuesBase::get_function_values() function. In particular, this
-   * includes all of the usual vector types, but also IndexSet (see step-41
-   * for a use of this).
+   * FEValuesBase::get_function_values() function.
    *
    * @note The DataPostprocessor object (i.e., in reality the object of your
    * derived class) has to live until the DataOut object is destroyed as the
@@ -996,10 +993,8 @@ protected:
                DataComponentInterpretation::DataComponentInterpretation>>
   get_nonscalar_data_ranges() const override;
 
-  /**
-   * Make all template siblings friends. Needed for the merge_patches()
-   * function.
-   */
+  // Make all template siblings friends. Needed for the merge_patches()
+  // function.
   template <class, int, int>
   friend class DataOut_DoFData;
 

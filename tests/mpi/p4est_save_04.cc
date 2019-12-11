@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -100,7 +100,7 @@ test()
       x.compress(VectorOperation::insert);
       rel_x = x;
 
-      soltrans.prepare_serialization(rel_x);
+      soltrans.prepare_for_serialization(rel_x);
 
       tr.save("file");
       //    tr.write_mesh_vtk("before");

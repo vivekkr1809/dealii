@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_theta_timestepping_h
 #define dealii_theta_timestepping_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/algorithms/operator.h>
 #include <deal.II/algorithms/timestep_control.h>
 
@@ -24,7 +26,10 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 class ParameterHandler;
+#endif
 
 namespace Algorithms
 {
@@ -131,14 +136,16 @@ namespace Algorithms
    * use a SmartPointer here, since the TimestepData will be destroyed before
    * the operator.
    *
-   * @skip class Explicit @until End of declarations
+   * @skip class Explicit
+   * @until End of declarations
    *
    * These operators will be implemented after the main program. But let us
    * look first at how they get used. First, let us define a matrix to be used
    * for our system and also an OutputOperator in order to write the data of
    * each timestep to a file.
    *
-   * @skipline main @until out.initialize
+   * @skipline main
+   * @until out.initialize
    *
    * Now we create objects for the implicit and explicit parts of the steps as
    * well as the ThetaTimestepping itself. We initialize the timestepping with
@@ -160,10 +167,13 @@ namespace Algorithms
    *
    * @until }
    *
+   * Besides the main function, we need to define the members functions
+   * of the implicit and explicit operators.
    * First the constructor, which simply copies the system matrix into the
    * member pointer for later use.
    *
-   * @skip Explicit:: @until }
+   * @skip Explicit::
+   * @until }
    *
    * Now we need to study the application of the implicit and explicit
    * operator. We assume that the pointer <code>matrix</code> points to the
@@ -175,15 +185,19 @@ namespace Algorithms
    * off the notifications, we clear them, such that the matrix is only
    * generated when necessary.
    *
-   * @skipline void @until clear
+   * @skipline void
+   * @until clear
    *
    * Now we multiply the input vector with the new matrix and store on output.
    *
-   * @until } The code for the implicit operator is almost the same, except
-   * that we change the sign in front of the timestep and use the inverse of t
-   * he matrix.
+   * @until }
    *
-   * @until vmult @until }
+   * The code for the implicit operator is almost the same, except
+   * that we change the sign in front of the timestep and use the inverse of
+   * the matrix.
+   *
+   * @until vmult
+   * @until }
    * @author Guido Kanschat
    * @date 2010
    */

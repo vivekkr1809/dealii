@@ -64,7 +64,7 @@ public:
     addit_data.tasks_parallel_scheme =
       MatrixFree<dim, number>::AdditionalData::none;
     addit_data.tasks_block_size = 3;
-    addit_data.level_mg_handler = level;
+    addit_data.mg_level         = level;
     addit_data.mapping_update_flags_inner_faces =
       update_JxW_values | update_normal_vectors | update_jacobians;
     addit_data.mapping_update_flags_boundary_faces =
@@ -337,7 +337,7 @@ test()
   FE_DGQ<dim>     fe(fe_degree);
   DoFHandler<dim> dof(tria);
   dof.distribute_dofs(fe);
-  dof.distribute_mg_dofs(fe);
+  dof.distribute_mg_dofs();
   deallog << "Number of DoFs: " << dof.n_dofs() << std::endl;
 
   MappingQGeneric<dim>                                   mapping(fe_degree + 1);

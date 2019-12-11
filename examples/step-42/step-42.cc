@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2012 - 2018 by the deal.II authors
+ * Copyright (C) 2012 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -137,7 +137,8 @@ namespace Step42
   // The constructor of the ConstitutiveLaw class sets the required material
   // parameter for our deformable body. Material parameters for elastic
   // isotropic media can be defined in a variety of ways, such as the pair $E,
-  // \nu$ (elastic modulus and Poisson's number), using the Lame parameters
+  // \nu$ (elastic modulus and Poisson's number), using the Lam&eacute;
+  // parameters
   // $\lambda,mu$ or several other commonly used conventions. Here, the
   // constructor takes a description of material parameters in the form of
   // $E,\nu$, but since this turns out to these are not the coefficients that
@@ -316,9 +317,6 @@ namespace Step42
 
       virtual double value(const Point<dim> & p,
                            const unsigned int component = 0) const override;
-
-      virtual void vector_value(const Point<dim> &p,
-                                Vector<double> &  values) const override;
     };
 
 
@@ -335,13 +333,6 @@ namespace Step42
       return 0.;
     }
 
-    template <int dim>
-    void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                           Vector<double> &  values) const
-    {
-      for (unsigned int c = 0; c < this->n_components; ++c)
-        values(c) = BoundaryValues<dim>::value(p, c);
-    }
 
 
     // @sect4{The <code>SphereObstacle</code> class}
@@ -411,8 +402,7 @@ namespace Step42
         values(c) = SphereObstacle<dim>::value(p, c);
     }
 
-    // @sect4{The <code>BitmapFile</code> and <code>ChineseObstacle</code>
-    // classes}
+    // @sect4{The <code>BitmapFile</code> and <code>ChineseObstacle</code> classes}
 
     // The following two classes describe the obstacle outlined in the
     // introduction, i.e., the Chinese character. The first of the two,
@@ -471,7 +461,7 @@ namespace Step42
 
       AssertThrow(nx > 0 && ny > 0, ExcMessage("Invalid file format."));
 
-      for (int k = 0; k < nx * ny; k++)
+      for (int k = 0; k < nx * ny; ++k)
         {
           double val;
           f >> val;
@@ -509,8 +499,8 @@ namespace Step42
     template <int dim>
     double BitmapFile<dim>::get_value(const double x, const double y) const
     {
-      const int ix = std::min(std::max((int)(x / hx), 0), nx - 2);
-      const int iy = std::min(std::max((int)(y / hy), 0), ny - 2);
+      const int ix = std::min(std::max(static_cast<int>(x / hx), 0), nx - 2);
+      const int iy = std::min(std::max(static_cast<int>(y / hy), 0), ny - 2);
 
       const double xi  = std::min(std::max((x - ix * hx) / hx, 1.), 0.);
       const double eta = std::min(std::max((y - iy * hy) / hy, 1.), 0.);
@@ -634,7 +624,8 @@ namespace Step42
     void solve_newton();
     void refine_grid();
     void move_mesh(const TrilinosWrappers::MPI::Vector &displacement) const;
-    void output_results(const std::string &filename_base);
+    void output_results(const unsigned int current_refinement_cycle);
+
     void output_contact_force() const;
 
     // As far as member variables are concerned, we start with ones that we use
@@ -821,24 +812,21 @@ namespace Step42
                       pcout,
                       TimerOutput::never,
                       TimerOutput::wall_times)
-    ,
 
-    n_initial_global_refinements(
-      prm.get_integer("number of initial refinements"))
+    , n_initial_global_refinements(
+        prm.get_integer("number of initial refinements"))
     , triangulation(mpi_communicator)
     , fe_degree(prm.get_integer("polynomial degree"))
     , fe(FE_Q<dim>(QGaussLobatto<1>(fe_degree + 1)), dim)
     , dof_handler(triangulation)
-    ,
 
-    e_modulus(200000)
+    , e_modulus(200000)
     , nu(0.3)
     , gamma(0.01)
     , sigma_0(400.0)
     , constitutive_law(e_modulus, nu, sigma_0, gamma)
-    ,
 
-    base_mesh(prm.get("base mesh"))
+    , base_mesh(prm.get("base mesh"))
     , obstacle(prm.get("obstacle") == "read from file" ?
                  static_cast<const Function<dim> *>(
                    new EquationData::ChineseObstacle<dim>(
@@ -847,9 +835,8 @@ namespace Step42
                  static_cast<const Function<dim> *>(
                    new EquationData::SphereObstacle<dim>(
                      base_mesh == "box" ? 1.0 : 0.5)))
-    ,
 
-    transfer_solution(prm.get_bool("transfer solution"))
+    , transfer_solution(prm.get_bool("transfer solution"))
     , n_refinement_cycles(prm.get_integer("number of cycles"))
     , current_refinement_cycle(0)
 
@@ -897,7 +884,7 @@ namespace Step42
   // indicator one.
   Point<3> rotate_half_sphere(const Point<3> &in)
   {
-    return Point<3>(in(2), in(1), -in(0));
+    return {in(2), in(1), -in(0)};
   }
 
   template <int dim>
@@ -948,27 +935,19 @@ namespace Step42
 
         GridGenerator::hyper_rectangle(triangulation, p1, p2);
 
-        Triangulation<3>::active_cell_iterator cell =
-                                                 triangulation.begin_active(),
-                                               endc = triangulation.end();
-        for (; cell != endc; ++cell)
-          for (unsigned int face_no = 0;
-               face_no < GeometryInfo<dim>::faces_per_cell;
-               ++face_no)
-            if (cell->face(face_no)->at_boundary())
+        for (const auto &cell : triangulation.active_cell_iterators())
+          for (const auto &face : cell->face_iterators())
+            if (face->at_boundary())
               {
-                if (std::fabs(cell->face(face_no)->center()[2] - p2[2]) < 1e-12)
-                  cell->face(face_no)->set_boundary_id(1);
-                if (std::fabs(cell->face(face_no)->center()[0] - p1[0]) <
-                      1e-12 ||
-                    std::fabs(cell->face(face_no)->center()[0] - p2[0]) <
-                      1e-12 ||
-                    std::fabs(cell->face(face_no)->center()[1] - p1[1]) <
-                      1e-12 ||
-                    std::fabs(cell->face(face_no)->center()[1] - p2[1]) < 1e-12)
-                  cell->face(face_no)->set_boundary_id(8);
-                if (std::fabs(cell->face(face_no)->center()[2] - p1[2]) < 1e-12)
-                  cell->face(face_no)->set_boundary_id(6);
+                if (std::fabs(face->center()[2] - p2[2]) < 1e-12)
+                  face->set_boundary_id(1);
+                if (std::fabs(face->center()[0] - p1[0]) < 1e-12 ||
+                    std::fabs(face->center()[0] - p2[0]) < 1e-12 ||
+                    std::fabs(face->center()[1] - p1[1]) < 1e-12 ||
+                    std::fabs(face->center()[1] - p2[1]) < 1e-12)
+                  face->set_boundary_id(8);
+                if (std::fabs(face->center()[2] - p1[2]) < 1e-12)
+                  face->set_boundary_id(6);
               }
       }
 
@@ -1058,7 +1037,7 @@ namespace Step42
 
       const unsigned int start = (newton_rhs.local_range().first),
                          end   = (newton_rhs.local_range().second);
-      for (unsigned int j = start; j < end; j++)
+      for (unsigned int j = start; j < end; ++j)
         diag_mass_matrix_vector(j) = mass_matrix.diag_element(j);
       diag_mass_matrix_vector.compress(VectorOperation::insert);
 
@@ -1161,16 +1140,10 @@ namespace Step42
 
     const FEValuesExtractors::Vector displacement(0);
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          if (cell->face(face)->at_boundary() &&
-              cell->face(face)->boundary_id() == 1)
+        for (const auto &face : cell->face_iterators())
+          if (face->at_boundary() && face->boundary_id() == 1)
             {
               fe_values_face.reinit(cell, face);
               cell_matrix = 0;
@@ -1185,7 +1158,7 @@ namespace Step42
 
               cell->get_dof_indices(local_dof_indices);
 
-              for (unsigned int i = 0; i < dofs_per_cell; i++)
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 mass_matrix.add(local_dof_indices[i],
                                 local_dof_indices[i],
                                 cell_matrix(i, i));
@@ -1256,19 +1229,13 @@ namespace Step42
 
     std::vector<types::global_dof_index> dof_indices(dofs_per_face);
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (!cell->is_artificial())
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          if (cell->face(face)->at_boundary() &&
-              cell->face(face)->boundary_id() == 1)
+        for (const auto &face : cell->face_iterators())
+          if (face->at_boundary() && face->boundary_id() == 1)
             {
               fe_values_face.reinit(cell, face);
-              cell->face(face)->get_dof_indices(dof_indices);
+              face->get_dof_indices(dof_indices);
 
               for (unsigned int q_point = 0; q_point < n_face_q_points;
                    ++q_point)
@@ -1388,13 +1355,9 @@ namespace Step42
 
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-
     const FEValuesExtractors::Vector displacement(0);
 
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         {
           fe_values.reinit(cell);
@@ -1455,10 +1418,8 @@ namespace Step42
                 }
             }
 
-          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-               ++face)
-            if (cell->face(face)->at_boundary() &&
-                cell->face(face)->boundary_id() == 1)
+          for (const auto &face : cell->face_iterators())
+            if (face->at_boundary() && face->boundary_id() == 1)
               {
                 fe_values_face.reinit(cell, face);
 
@@ -1553,11 +1514,7 @@ namespace Step42
 
     fraction_of_plastic_q_points_per_cell = 0;
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-    unsigned int cell_number                            = 0;
-    for (; cell != endc; ++cell, ++cell_number)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         {
           fe_values.reinit(cell);
@@ -1574,7 +1531,8 @@ namespace Step42
                 constitutive_law.get_stress_strain_tensor(
                   strain_tensors[q_point], stress_strain_tensor);
               if (q_point_is_plastic)
-                ++fraction_of_plastic_q_points_per_cell(cell_number);
+                ++fraction_of_plastic_q_points_per_cell(
+                  cell->active_cell_index());
 
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
@@ -1590,10 +1548,8 @@ namespace Step42
                 }
             }
 
-          for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-               ++face)
-            if (cell->face(face)->at_boundary() &&
-                cell->face(face)->boundary_id() == 1)
+          for (const auto &face : cell->face_iterators())
+            if (face->at_boundary() && face->boundary_id() == 1)
               {
                 fe_values_face.reinit(cell, face);
 
@@ -1831,7 +1787,7 @@ namespace Step42
           }
         else
           {
-            for (unsigned int i = 0; i < 5; i++)
+            for (unsigned int i = 0; i < 5; ++i)
               {
                 distributed_solution = solution;
 
@@ -1971,10 +1927,7 @@ namespace Step42
   {
     std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
 
-    for (typename DoFHandler<dim>::active_cell_iterator cell =
-           dof_handler.begin_active();
-         cell != dof_handler.end();
-         ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell; ++v)
           if (vertex_touched[cell->vertex_index(v)] == false)
@@ -2008,7 +1961,7 @@ namespace Step42
   // ghost entries for all locally relevant degrees of freedom.
   template <int dim>
   void PlasticityContactProblem<dim>::output_results(
-    const std::string &filename_base)
+    const unsigned int current_refinement_cycle)
   {
     TimerOutput::Scope t(computing_timer, "Graphical output");
 
@@ -2032,6 +1985,16 @@ namespace Step42
                                          mpi_communicator);
     lambda = distributed_lambda;
 
+    TrilinosWrappers::MPI::Vector distributed_active_set_vector(
+      locally_owned_dofs, mpi_communicator);
+    distributed_active_set_vector = 0.;
+    for (const auto index : active_set)
+      distributed_active_set_vector[index] = 1.;
+    distributed_lambda.compress(VectorOperation::insert);
+
+    TrilinosWrappers::MPI::Vector active_set_vector(locally_relevant_dofs,
+                                                    mpi_communicator);
+    active_set_vector = distributed_active_set_vector;
 
     DataOut<dim> data_out;
 
@@ -2048,7 +2011,7 @@ namespace Step42
                              std::vector<std::string>(dim, "contact_force"),
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
-    data_out.add_data_vector(active_set,
+    data_out.add_data_vector(active_set_vector,
                              std::vector<std::string>(dim, "active_set"),
                              DataOut<dim>::type_dof_data,
                              data_component_interpretation);
@@ -2072,31 +2035,9 @@ namespace Step42
     // output files. We then do the same again for the competitor of
     // Paraview, the Visit visualization program, by creating a matching
     // <code>.visit</code> file.
-    const std::string filename =
-      (output_dir + filename_base + "-" +
-       Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4));
-
-    std::ofstream output_vtu((filename + ".vtu"));
-    data_out.write_vtu(output_vtu);
-    pcout << output_dir + filename_base << ".pvtu" << std::endl;
-
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-      {
-        std::vector<std::string> filenames;
-        for (unsigned int i = 0;
-             i < Utilities::MPI::n_mpi_processes(mpi_communicator);
-             ++i)
-          filenames.push_back(filename_base + "-" +
-                              Utilities::int_to_string(i, 4) + ".vtu");
-
-        std::ofstream pvtu_master_output(
-          (output_dir + filename_base + ".pvtu"));
-        data_out.write_pvtu_record(pvtu_master_output, filenames);
-
-        std::ofstream visit_master_output(
-          (output_dir + filename_base + ".visit"));
-        DataOutBase::write_visit_record(visit_master_output, filenames);
-      }
+    const std::string master_name = data_out.write_vtu_with_pvtu_record(
+      output_dir, "solution", current_refinement_cycle, 2, mpi_communicator);
+    pcout << master_name << std::endl;
 
     TrilinosWrappers::MPI::Vector tmp(solution);
     tmp *= -1;
@@ -2149,15 +2090,10 @@ namespace Step42
 
     const FEValuesExtractors::Vector displacement(0);
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
-        for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
-             ++face)
-          if (cell->face(face)->at_boundary() &&
-              cell->face(face)->boundary_id() == 1)
+        for (const auto &face : cell->face_iterators())
+          if (face->at_boundary() && face->boundary_id() == 1)
             {
               fe_values_face.reinit(cell, face);
 
@@ -2213,8 +2149,7 @@ namespace Step42
 
         solve_newton();
 
-        output_results(std::string("solution-") +
-                       Utilities::int_to_string(current_refinement_cycle, 2));
+        output_results(current_refinement_cycle);
 
         computing_timer.print_summary();
         computing_timer.reset();

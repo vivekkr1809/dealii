@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,7 @@
 #  include <deal.II/base/config.h>
 
 #  include <deal.II/base/graph_coloring.h>
+#  include <deal.II/base/iterator_range.h>
 #  include <deal.II/base/multithread_info.h>
 #  include <deal.II/base/parallel.h>
 #  include <deal.II/base/template_constraints.h>
@@ -33,6 +34,7 @@
 #  endif
 
 #  include <functional>
+#  include <iterator>
 #  include <memory>
 #  include <utility>
 #  include <vector>
@@ -124,7 +126,11 @@ DEAL_II_NAMESPACE_OPEN
  * Once an item is processed by the copier, it is deleted and the ScratchData
  * and CopyData objects that were used in its computation are considered
  * unused and may be re-used for the next invocation of the worker function,
- * on this or another thread.
+ * on this or another thread. However, the WorkStream functions make no
+ * attempt to reset these objects to any kind of pristine state -- a worker
+ * should assume that the CopyData object it gets handed has prior content
+ * and clear it first in whatever manner seems appropriate, before putting
+ * content into it that can later be processed again by the copier.
  *
  * The member variables in ScratchData and CopyData can be accessed
  * independently of other concurrent uses of copies of these data structures.
@@ -137,7 +143,13 @@ DEAL_II_NAMESPACE_OPEN
  * CopyData can be resized in accordance with the number of local DoFs on the
  * current cell.
  *
- * The functions in this namespace only really work in parallel when
+ * @note For integration over cells and faces, it is often useful to use
+ * methods more specific to the task than the current function (which doesn't
+ * care whether the iterators are over cells, vector elements, or any other
+ * kind of range). An implementation of an interface specifically suited to
+ * integration is the MeshWorker::mesh_loop() function.
+ *
+ * @note The functions in this namespace only really work in parallel when
  * multithread mode was selected during deal.II configuration. Otherwise they
  * simply work on each item sequentially.
  *
@@ -150,11 +162,6 @@ namespace WorkStream
 
   namespace internal
   {
-    // TODO: The following classes all use std::shared_ptr, but the
-    //  correct pointer class would actually be std::unique_ptr. make this
-    //  replacement whenever we have a class that provides these semantics
-    //  and that is available also as a fall-back whenever via boost or similar
-
     /**
      * A namespace for the implementation of details of the WorkStream pattern
      * and function. This namespace holds classes that deal with the second
@@ -191,7 +198,7 @@ namespace WorkStream
            */
           struct ScratchDataObject
           {
-            std::shared_ptr<ScratchData> scratch_data;
+            std::unique_ptr<ScratchData> scratch_data;
             bool                         currently_in_use;
 
             /**
@@ -206,20 +213,7 @@ namespace WorkStream
               , currently_in_use(in_use)
             {}
 
-            // TODO: when we push back an object to the list of scratch objects,
-            // in
-            //  Worker::operator(), we first create an object and then copy
-            //  it to the end of this list. this involves having two objects
-            //      of the current type having pointers to it, each with their
-            //      own currently_in_use flag. there is probably little harm in
-            //      this because the original one goes out of scope right away
-            //      again, but it's certainly awkward. one way to avoid this
-            //      would be to use unique_ptr but we'd need to figure out a way
-            //      to use it in non-C++11 mode
-            ScratchDataObject(const ScratchDataObject &o)
-              : scratch_data(o.scratch_data)
-              , currently_in_use(o.currently_in_use)
-            {}
+            ScratchDataObject(ScratchDataObject &&o) noexcept = default;
           };
 
 
@@ -272,7 +266,7 @@ namespace WorkStream
            *
            * The pointers to scratch objects stored in each of these lists
            * must be so that they are deleted on all threads when the thread
-           * local object is destroyed. This is achieved by using shared_ptr.
+           * local object is destroyed. This is achieved by using unique_ptr.
            *
            * Note that when a worker needs to create a scratch object, it
            * allocates it using sample_scratch_data to copy from. This has the
@@ -430,7 +424,7 @@ namespace WorkStream
          *
          * The pointers to scratch objects stored in each of these lists must
          * be so that they are deleted on all threads when the thread local
-         * object is destroyed. This is achieved by using shared_ptr.
+         * object is destroyed. This is achieved by using unique_ptr.
          *
          * Note that when a worker needs to create a scratch object, it
          * allocates it using sample_scratch_data to copy from. This has the
@@ -534,7 +528,7 @@ namespace WorkStream
 
                 typename ItemType::ScratchDataList::value_type
                   new_scratch_object(scratch_data, true);
-                scratch_data_list.push_back(new_scratch_object);
+                scratch_data_list.push_back(std::move(new_scratch_object));
               }
           }
 
@@ -699,8 +693,8 @@ namespace WorkStream
       template <typename Iterator, typename ScratchData, typename CopyData>
       struct ScratchAndCopyDataObjects
       {
-        std::shared_ptr<ScratchData> scratch_data;
-        std::shared_ptr<CopyData>    copy_data;
+        std::unique_ptr<ScratchData> scratch_data;
+        std::unique_ptr<CopyData>    copy_data;
         bool                         currently_in_use;
 
         /**
@@ -908,7 +902,8 @@ namespace WorkStream
    *
    * This function that can be used for worker and copier objects that are
    * either pointers to non-member functions or objects that allow to be
-   * called with an operator(), for example objects created by std::bind.
+   * called with an operator(), for example objects created by lambda functions
+   * or std::bind.
    *
    * The two data types <tt>ScratchData</tt> and <tt>CopyData</tt> need to
    * have a working copy constructor. <tt>ScratchData</tt> is only used in the
@@ -925,6 +920,18 @@ namespace WorkStream
    * copies of the <tt>ScratchData</tt> object and
    * <tt>queue_length*chunk_size</tt> copies of the <tt>CopyData</tt> object
    * are generated.
+   *
+   * @note In case the copier does not do anything, pass
+   * `std::function<void(const CopyData &)>()` as @p copier to make sure
+   * a more efficient algorithm is used internally. It is important, however,
+   * to recognize that the empty function object created above is *not*
+   * the same as a lambda function with an empty body,
+   * `[](const CopyData &) {}` -- from the perspective of this function,
+   * there is no way to recognize whether a lambda function provided as
+   * a copier does something or does not do something in its body,
+   * and so it needs to be copied. On the other hand, a default-constructed
+   * `std::function` object *can* be recognized, and is then used to select
+   * a more efficient algorithm.
    */
   template <typename Worker,
             typename Copier,
@@ -949,8 +956,11 @@ namespace WorkStream
    *
    * This function that can be used for worker and copier objects that are
    * either pointers to non-member functions or objects that allow to be
-   * called with an operator(), for example objects created by std::bind. If
-   * the copier is an empty function, it is ignored in the pipeline.
+   * called with an operator(), for example lambda functions
+   * or objects created by std::bind. If the copier is an empty function, it is
+   * ignored in the pipeline. (However, a lambda function with an empty body is
+   * *not* equivalent to an empty `std::function` object and will, consequently,
+   * not be ignored.
    *
    * The argument passed as @p end must be convertible to the same type as @p
    * begin, but doesn't have to be of the same type itself. This allows to
@@ -974,6 +984,18 @@ namespace WorkStream
    * copies of the <tt>ScratchData</tt> object and
    * <tt>queue_length*chunk_size</tt> copies of the <tt>CopyData</tt> object
    * are generated.
+   *
+   * @note In case the copier does not do anything, pass
+   * `std::function<void(const CopyData &)>()` as @p copier to make sure
+   * a more efficient algorithm is used internally. It is important, however,
+   * to recognize that the empty function object created above is *not*
+   * the same as a lambda function with an empty body,
+   * `[](const CopyData &) {}` -- from the perspective of this function,
+   * there is no way to recognize whether a lambda function provided as
+   * a copier does something or does not do something in its body,
+   * and so it needs to be copied. On the other hand, a default-constructed
+   * `std::function` object *can* be recognized, and is then used to select
+   * a more efficient algorithm.
    */
   template <typename Worker,
             typename Copier,
@@ -1089,6 +1111,72 @@ namespace WorkStream
   }
 
 
+
+  /**
+   * Same as the function above, but for iterator ranges and C-style arrays.
+   * A class that fulfills the requirements of an iterator range defines the
+   * functions `IteratorRangeType::begin()` and `IteratorRangeType::end()`,
+   * both of which return iterators to elements that form the bounds of the
+   * range.
+   */
+  template <typename Worker,
+            typename Copier,
+            typename IteratorRangeType,
+            typename ScratchData,
+            typename CopyData,
+            typename = typename std::enable_if<
+              has_begin_and_end<IteratorRangeType>::value>::type>
+  void
+  run(IteratorRangeType  iterator_range,
+      Worker             worker,
+      Copier             copier,
+      const ScratchData &sample_scratch_data,
+      const CopyData &   sample_copy_data,
+      const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+      const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    run(iterator_range.begin(),
+        iterator_range.end(),
+        worker,
+        copier,
+        sample_scratch_data,
+        sample_copy_data,
+        queue_length,
+        chunk_size);
+  }
+
+
+
+  /**
+   * Same as the function above, but for deal.II's IteratorRange.
+   */
+  template <typename Worker,
+            typename Copier,
+            typename Iterator,
+            typename ScratchData,
+            typename CopyData>
+  void
+  run(const IteratorRange<Iterator> &iterator_range,
+      Worker                         worker,
+      Copier                         copier,
+      const ScratchData &            sample_scratch_data,
+      const CopyData &               sample_copy_data,
+      const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+      const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    run(iterator_range.begin(),
+        iterator_range.end(),
+        worker,
+        copier,
+        sample_scratch_data,
+        sample_copy_data,
+        queue_length,
+        chunk_size);
+  }
+
+
   // Implementation 3:
   template <typename Worker,
             typename Copier,
@@ -1154,14 +1242,15 @@ namespace WorkStream
                                                 sample_scratch_data,
                                                 sample_copy_data);
 
-              tbb::parallel_for(
-                tbb::blocked_range<RangeType>(colored_iterators[color].begin(),
-                                              colored_iterators[color].end(),
-                                              /*grain_size=*/chunk_size),
-                std::bind(&WorkerAndCopier::operator(),
-                          std::ref(worker_and_copier),
-                          std::placeholders::_1),
-                tbb::auto_partitioner());
+              parallel::internal::parallel_for(
+                colored_iterators[color].begin(),
+                colored_iterators[color].end(),
+                [&worker_and_copier](
+                  const tbb::blocked_range<
+                    typename std::vector<Iterator>::const_iterator> &range) {
+                  worker_and_copier(range);
+                },
+                chunk_size);
             }
       }
 #  endif
@@ -1197,6 +1286,18 @@ namespace WorkStream
    * copies of the <tt>ScratchData</tt> object and
    * <tt>queue_length*chunk_size</tt> copies of the <tt>CopyData</tt> object
    * are generated.
+   *
+   * @note In case the copier does not do anything, pass
+   * `std::function<void(const CopyData &)>()` as @p copier to make sure
+   * a more efficient algorithm is used internally. It is important, however,
+   * to recognize that the empty function object created above is *not*
+   * the same as a lambda function with an empty body,
+   * `[](const CopyData &) {}` -- from the perspective of this function,
+   * there is no way to recognize whether a lambda function provided as
+   * a copier does something or does not do something in its body,
+   * and so it needs to be copied. On the other hand, a default-constructed
+   * `std::function` object *can* be recognized, and is then used to select
+   * a more efficient algorithm.
    */
   template <typename MainClass,
             typename Iterator,
@@ -1216,12 +1317,118 @@ namespace WorkStream
     // forward to the other function
     run(begin,
         end,
-        std::bind(worker,
-                  std::ref(main_object),
-                  std::placeholders::_1,
-                  std::placeholders::_2,
-                  std::placeholders::_3),
-        std::bind(copier, std::ref(main_object), std::placeholders::_1),
+        [&main_object, worker](const Iterator &iterator,
+                               ScratchData &   scratch_data,
+                               CopyData &      copy_data) {
+          (main_object.*worker)(iterator, scratch_data, copy_data);
+        },
+        [&main_object, copier](const CopyData &copy_data) {
+          (main_object.*copier)(copy_data);
+        },
+        sample_scratch_data,
+        sample_copy_data,
+        queue_length,
+        chunk_size);
+  }
+
+
+  template <typename MainClass,
+            typename Iterator,
+            typename ScratchData,
+            typename CopyData>
+  void
+  run(const IteratorOverIterators<Iterator> &                         begin,
+      const IteratorOverIterators<typename identity<Iterator>::type> &end,
+      MainClass &main_object,
+      void (MainClass::*worker)(const Iterator &, ScratchData &, CopyData &),
+      void (MainClass::*copier)(const CopyData &),
+      const ScratchData &sample_scratch_data,
+      const CopyData &   sample_copy_data,
+      const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+      const unsigned int chunk_size   = 8)
+  {
+    // forward to the other function
+    run(begin,
+        end,
+        [&main_object, worker](const Iterator &iterator,
+                               ScratchData &   scratch_data,
+                               CopyData &      copy_data) {
+          (main_object.*worker)(iterator, scratch_data, copy_data);
+        },
+        [&main_object, copier](const CopyData &copy_data) {
+          (main_object.*copier)(copy_data);
+        },
+        sample_scratch_data,
+        sample_copy_data,
+        queue_length,
+        chunk_size);
+  }
+
+
+
+  /**
+   * Same as the function above, but for iterator ranges and C-style arrays.
+   * A class that fulfills the requirements of an iterator range defines the
+   * functions `IteratorRangeType::begin()` and `IteratorRangeType::end()`,
+   * both of which return iterators to elements that form the bounds of the
+   * range.
+   */
+  template <typename MainClass,
+            typename IteratorRangeType,
+            typename ScratchData,
+            typename CopyData,
+            typename = typename std::enable_if<
+              has_begin_and_end<IteratorRangeType>::value>::type>
+  void
+  run(IteratorRangeType iterator_range,
+      MainClass &       main_object,
+      void (MainClass::*worker)(
+        const typename identity<IteratorRangeType>::type::iterator &,
+        ScratchData &,
+        CopyData &),
+      void (MainClass::*copier)(const CopyData &),
+      const ScratchData &sample_scratch_data,
+      const CopyData &   sample_copy_data,
+      const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+      const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    run(std::begin(iterator_range),
+        std::end(iterator_range),
+        main_object,
+        worker,
+        copier,
+        sample_scratch_data,
+        sample_copy_data,
+        queue_length,
+        chunk_size);
+  }
+
+
+
+  /**
+   * Same as the function above, but for deal.II's IteratorRange.
+   */
+  template <typename MainClass,
+            typename Iterator,
+            typename ScratchData,
+            typename CopyData>
+  void
+  run(IteratorRange<Iterator> iterator_range,
+      MainClass &             main_object,
+      void (MainClass::*worker)(const Iterator &, ScratchData &, CopyData &),
+      void (MainClass::*copier)(const CopyData &),
+      const ScratchData &sample_scratch_data,
+      const CopyData &   sample_copy_data,
+      const unsigned int queue_length = 2 * MultithreadInfo::n_threads(),
+      const unsigned int chunk_size   = 8)
+  {
+    // Call the function above
+    run(std::begin(iterator_range),
+        std::end(iterator_range),
+        main_object,
+        worker,
+        copier,
         sample_scratch_data,
         sample_copy_data,
         queue_length,

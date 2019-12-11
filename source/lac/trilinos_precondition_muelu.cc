@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,20 +18,11 @@
 
 #ifdef DEAL_II_WITH_TRILINOS
 #  if DEAL_II_TRILINOS_VERSION_GTE(11, 14, 0)
-
 #    include <deal.II/lac/sparse_matrix.h>
-#    include <deal.II/lac/trilinos_index_access.h>
 #    include <deal.II/lac/trilinos_sparse_matrix.h>
-#    include <deal.II/lac/vector.h>
 
-#    include <Epetra_MultiVector.h>
-#    include <MueLu.hpp>
-#    include <MueLu_EpetraOperator.hpp>
-#    include <MueLu_MLParameterListInterpreter.hpp>
-#    include <Teuchos_ParameterList.hpp>
-#    include <Teuchos_RCP.hpp>
+#    include <MueLu_CreateEpetraPreconditioner.hpp>
 #    include <ml_MultiLevelPreconditioner.h>
-#    include <ml_include.h>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -64,19 +55,16 @@ namespace TrilinosWrappers
 
   PreconditionAMGMueLu::PreconditionAMGMueLu()
   {
+    // clang-tidy wants to default the constructor if we disable the check
+    // in case we compile without 64-bit indices
 #    ifdef DEAL_II_WITH_64BIT_INDICES
-    AssertThrow(false,
+    constexpr bool enabled = false;
+#    else
+    constexpr bool enabled = true;
+#    endif
+    AssertThrow(enabled,
                 ExcMessage(
                   "PreconditionAMGMueLu does not support 64bit-indices!"));
-#    endif
-  }
-
-
-
-  PreconditionAMGMueLu::~PreconditionAMGMueLu()
-  {
-    preconditioner.reset();
-    trilinos_matrix.reset();
   }
 
 
@@ -96,6 +84,8 @@ namespace TrilinosWrappers
   {
     // Build the AMG preconditioner.
     Teuchos::ParameterList parameter_list;
+
+    parameter_list.set("parameterlist: syntax", "ml");
 
     if (additional_data.elliptic == true)
       ML_Epetra::SetDefaults("SA", parameter_list);
@@ -205,38 +195,10 @@ namespace TrilinosWrappers
   PreconditionAMGMueLu::initialize(const Epetra_CrsMatrix &matrix,
                                    Teuchos::ParameterList &muelu_parameters)
   {
-    // We cannot use MueLu::CreateEpetraOperator directly because, we cannot
-    // transfer ownership of MueLu::EpetraOperator from Teuchos::RCP to
-    // std::shared_ptr.
-
-    // For now, just use serial node, i.e. no multithreaing or GPU.
-    using node = KokkosClassic::DefaultNode::DefaultNodeType;
-    preconditioner.reset();
-
-    // Cast matrix into a MueLu::Matrix. The constness needs to be cast away.
-    // MueLu uses Teuchos::RCP which are Trilinos version of std::shared_ptr.
-    Teuchos::RCP<Epetra_CrsMatrix> rcp_matrix =
-      Teuchos::rcpFromRef(*(const_cast<Epetra_CrsMatrix *>(&matrix)));
-    Teuchos::RCP<Xpetra::CrsMatrix<double, int, int, node>> muelu_crs_matrix =
-      Teuchos::rcp(new Xpetra::EpetraCrsMatrix(rcp_matrix));
-    Teuchos::RCP<Xpetra::Matrix<double, int, int, node>> muelu_matrix =
-      Teuchos::rcp(
-        new Xpetra::CrsMatrixWrap<double, int, int, node>(muelu_crs_matrix));
-
-    // Create the multigrid hierarchy using ML parameters.
-    Teuchos::RCP<MueLu::HierarchyManager<double, int, int, node>>
-      hierarchy_factory;
-    hierarchy_factory = Teuchos::rcp(
-      new MueLu::MLParameterListInterpreter<double, int, int, node>(
-        muelu_parameters));
-    Teuchos::RCP<MueLu::Hierarchy<double, int, int, node>> hierarchy =
-      hierarchy_factory->CreateHierarchy();
-    hierarchy->GetLevel(0)->Set("A", muelu_matrix);
-    hierarchy_factory->SetupHierarchy(*hierarchy);
-
-    // MueLu::EpetraOperator is just a wrapper around a "standard"
-    // Epetra_Operator.
-    preconditioner = std::make_shared<MueLu::EpetraOperator>(hierarchy);
+    const auto teuchos_wrapped_matrix =
+      Teuchos::rcp(const_cast<Epetra_CrsMatrix *>(&matrix), false);
+    preconditioner = MueLu::CreateEpetraPreconditioner(teuchos_wrapped_matrix,
+                                                       muelu_parameters);
   }
 
 

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,7 +59,7 @@ namespace Patterns
             {
               std::string u;
               u.reserve(input.size());
-              for (auto c : input)
+              for (const auto c : input)
                 {
                   switch (c)
                     {
@@ -554,7 +554,7 @@ namespace Patterns
           return true;
 
         tmp.erase(0, tmp.find('|') + 1);
-      };
+      }
 
     // remove whitespace at the end
     while ((tmp.length() != 0) && (std::isspace(*(tmp.end() - 1))))
@@ -866,7 +866,7 @@ namespace Patterns
         (split_list.size() > max_elements))
       return false;
 
-    for (auto &key_value_pair : split_list)
+    for (const auto &key_value_pair : split_list)
       {
         std::vector<std::string> pair =
           Utilities::split_string_list(key_value_pair, key_value_separator);
@@ -1274,21 +1274,18 @@ namespace Patterns
           name.erase(name.length() - 1, 1);
 
         split_names.push_back(name);
-      };
+      }
 
 
     // check the different possibilities
-    for (std::vector<std::string>::const_iterator test_string =
-           split_names.begin();
-         test_string != split_names.end();
-         ++test_string)
+    for (const auto &test_string : split_names)
       {
         bool string_found = false;
 
         tmp = sequence;
         while (tmp.find('|') != std::string::npos)
           {
-            if (*test_string == std::string(tmp, 0, tmp.find('|')))
+            if (test_string == std::string(tmp, 0, tmp.find('|')))
               {
                 // string found, quit
                 // loop. don't change
@@ -1296,18 +1293,18 @@ namespace Patterns
                 // need it anymore.
                 string_found = true;
                 break;
-              };
+              }
 
             tmp.erase(0, tmp.find('|') + 1);
-          };
+          }
         // check last choice, not finished by |
         if (!string_found)
-          if (*test_string == tmp)
+          if (test_string == tmp)
             string_found = true;
 
         if (!string_found)
           return false;
-      };
+      }
 
     return true;
   }

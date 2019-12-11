@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2017 by the deal.II authors
+// Copyright (C) 2012 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,7 @@
 
 // Test the functions in integrators/grad_div.h
 // Output matrices and assert consistency of residuals
+#include <deal.II/base/vector_slice.h>
 
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_nedelec.h>

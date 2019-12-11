@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -229,12 +229,8 @@ namespace TrilinosWrappers
   {
     // In case we call the solver with deal.II vectors, we create views of the
     // vectors in Epetra format.
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      x.local_size()),
-                    A.domain_partitioner().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      b.local_size()),
-                    A.range_partitioner().NumMyElements());
+    AssertDimension(x.local_size(), A.domain_partitioner().NumMyElements());
+    AssertDimension(b.local_size(), A.range_partitioner().NumMyElements());
 
     Epetra_Vector ep_x(View, A.domain_partitioner(), x.begin());
     Epetra_Vector ep_b(View,
@@ -257,12 +253,8 @@ namespace TrilinosWrappers
                     const dealii::LinearAlgebra::distributed::Vector<double> &b,
                     const PreconditionBase &preconditioner)
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      x.local_size()),
-                    A.OperatorDomainMap().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      b.local_size()),
-                    A.OperatorRangeMap().NumMyElements());
+    AssertDimension(x.local_size(), A.OperatorDomainMap().NumMyElements());
+    AssertDimension(b.local_size(), A.OperatorRangeMap().NumMyElements());
 
     Epetra_Vector ep_x(View, A.OperatorDomainMap(), x.begin());
     Epetra_Vector ep_b(View,
@@ -370,13 +362,12 @@ namespace TrilinosWrappers
         const Epetra_LinearProblem &linear_problem)
         : initial_residual(std::numeric_limits<double>::max())
         , current_residual(std::numeric_limits<double>::max())
+        // Consider linear problem converged if any of the collection of
+        // criterion are met
+        , status_test_collection(
+            std_cxx14::make_unique<AztecOO_StatusTestCombo>(
+              AztecOO_StatusTestCombo::OR))
       {
-        // Consider linear problem converged if any of the collection
-        // of criterion are met
-        status_test_collection =
-          std_cxx14::make_unique<AztecOO_StatusTestCombo>(
-            AztecOO_StatusTestCombo::OR);
-
         // Maximum number of iterations
         Assert(max_steps >= 0, ExcInternalError());
         status_test_max_steps =
@@ -574,7 +565,7 @@ namespace TrilinosWrappers
   {
     // Introduce the preconditioner, if the identity preconditioner is used,
     // the precondioner is set to none, ...
-    if (preconditioner.preconditioner.use_count() != 0)
+    if (preconditioner.preconditioner.strong_count() != 0)
       {
         const int ierr = solver.SetPrecOperator(
           const_cast<Epetra_Operator *>(preconditioner.preconditioner.get()));
@@ -913,12 +904,8 @@ namespace TrilinosWrappers
     dealii::LinearAlgebra::distributed::Vector<double> &      x,
     const dealii::LinearAlgebra::distributed::Vector<double> &b)
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      x.local_size()),
-                    A.domain_partitioner().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      b.local_size()),
-                    A.range_partitioner().NumMyElements());
+    AssertDimension(x.local_size(), A.domain_partitioner().NumMyElements());
+    AssertDimension(b.local_size(), A.range_partitioner().NumMyElements());
     Epetra_Vector ep_x(View, A.domain_partitioner(), x.begin());
     Epetra_Vector ep_b(View,
                        A.range_partitioner(),

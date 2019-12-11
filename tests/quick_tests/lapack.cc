@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -112,7 +112,7 @@ main()
   for (unsigned int i = 0; i < A.m(); ++i)
     {
       std::complex<double> lambda = LA.eigenvalue(i);
-      deallog << "Eigenvalues " << (int)(lambda.real() + .0001) << '\t'
-              << (int)(lambda.imag() + .0001) << std::endl;
+      deallog << "Eigenvalues " << static_cast<int>(lambda.real() + .0001)
+              << '\t' << static_cast<int>(lambda.imag() + .0001) << std::endl;
     }
 }

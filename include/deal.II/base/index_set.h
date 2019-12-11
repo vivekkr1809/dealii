@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2018 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,6 +31,9 @@
 
 #ifdef DEAL_II_WITH_TRILINOS
 #  include <Epetra_Map.h>
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+#    include <Tpetra_Map.hpp>
+#  endif
 #endif
 
 #if defined(DEAL_II_WITH_MPI) || defined(DEAL_II_WITH_PETSC)
@@ -137,9 +140,9 @@ public:
 
 #ifdef DEAL_II_WITH_TRILINOS
   /**
-   * Constructor from a trilinos Epetra_Map.
+   * Constructor from a Trilinos Epetra_BlockMap.
    */
-  explicit IndexSet(const Epetra_Map &map);
+  explicit IndexSet(const Epetra_BlockMap &map);
 #endif
 
   /**
@@ -212,7 +215,7 @@ public:
    * <code>[0,size())</code> represented by the current object.
    */
   void
-  add_indices(const IndexSet &other, const unsigned int offset = 0);
+  add_indices(const IndexSet &other, const size_type offset = 0);
 
   /**
    * Return whether the specified index is an element of the index set.
@@ -258,7 +261,7 @@ public:
    * n_elements().
    */
   size_type
-  nth_index_in_set(const unsigned int local_index) const;
+  nth_index_in_set(const size_type local_index) const;
 
   /**
    * Return the how-manyth element of this set (counted in ascending order) @p
@@ -283,8 +286,15 @@ public:
   /**
    * This function returns the local index of the beginning of the largest
    * range.
+   *
+   * In other words, the return value is nth_index_in_set(x), where x is the
+   * first index of the largest contiguous range of indices in the
+   * IndexSet. The return value is therefore equal to the number of elements
+   * in the set that come before the largest range.
+   *
+   * This call assumes that the IndexSet is nonempty.
    */
-  unsigned int
+  size_type
   largest_range_starting_index() const;
 
   /**
@@ -446,6 +456,12 @@ public:
   Epetra_Map
   make_trilinos_map(const MPI_Comm &communicator = MPI_COMM_WORLD,
                     const bool      overlapping  = false) const;
+
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+  Tpetra::Map<int, types::global_dof_index>
+  make_tpetra_map(const MPI_Comm &communicator = MPI_COMM_WORLD,
+                  const bool      overlapping  = false) const;
+#  endif
 #endif
 
 
@@ -592,13 +608,13 @@ public:
     /**
      * Copy constructor from @p other iterator.
      */
-    IntervalIterator(const IntervalIterator &other);
+    IntervalIterator(const IntervalIterator &other) = default;
 
     /**
      * Assignment of another iterator.
      */
     IntervalIterator &
-    operator=(const IntervalIterator &other);
+    operator=(const IntervalIterator &other) = default;
 
     /**
      * Prefix increment.
@@ -966,7 +982,7 @@ private:
  * @relatesalso IndexSet
  */
 inline IndexSet
-complete_index_set(const unsigned int N)
+complete_index_set(const IndexSet::size_type N)
 {
   IndexSet is(N);
   is.add_range(0, N);
@@ -1030,9 +1046,7 @@ inline IndexSet::ElementIterator
 IndexSet::IntervalAccessor::begin() const
 {
   Assert(is_valid(), ExcMessage("invalid iterator"));
-  return IndexSet::ElementIterator(index_set,
-                                   range_idx,
-                                   index_set->ranges[range_idx].begin);
+  return {index_set, range_idx, index_set->ranges[range_idx].begin};
 }
 
 
@@ -1044,9 +1058,7 @@ IndexSet::IntervalAccessor::end() const
 
   // point to first index in next interval unless we are the last interval.
   if (range_idx < index_set->ranges.size() - 1)
-    return IndexSet::ElementIterator(index_set,
-                                     range_idx + 1,
-                                     index_set->ranges[range_idx + 1].begin);
+    return {index_set, range_idx + 1, index_set->ranges[range_idx + 1].begin};
   else
     return index_set->end();
 }
@@ -1133,22 +1145,6 @@ inline IndexSet::IntervalIterator::IntervalIterator()
 inline IndexSet::IntervalIterator::IntervalIterator(const IndexSet *idxset)
   : accessor(idxset)
 {}
-
-
-
-inline IndexSet::IntervalIterator::IntervalIterator(
-  const IndexSet::IntervalIterator &other)
-  : accessor(other.accessor)
-{}
-
-
-
-inline IndexSet::IntervalIterator &
-IndexSet::IntervalIterator::operator=(const IntervalIterator &other)
-{
-  accessor = other.accessor;
-  return *this;
-}
 
 
 
@@ -1495,7 +1491,7 @@ IndexSet::begin() const
 {
   compress();
   if (ranges.size() > 0)
-    return IndexSet::ElementIterator(this, 0, ranges[0].begin);
+    return {this, 0, ranges[0].begin};
   else
     return end();
 }
@@ -1546,9 +1542,9 @@ IndexSet::at(const size_type global_index) const
   // [a,b[ and we will return an iterator pointing directly at global_index
   // (else branch).
   if (global_index < p->begin)
-    return IndexSet::ElementIterator(this, p - ranges.begin(), p->begin);
+    return {this, static_cast<size_type>(p - ranges.begin()), p->begin};
   else
-    return IndexSet::ElementIterator(this, p - ranges.begin(), global_index);
+    return {this, static_cast<size_type>(p - ranges.begin()), global_index};
 }
 
 
@@ -1647,12 +1643,49 @@ IndexSet::add_index(const size_type index)
 
 
 
+inline void
+IndexSet::add_range(const size_type begin, const size_type end)
+{
+  Assert((begin < index_space_size) ||
+           ((begin == index_space_size) && (end == index_space_size)),
+         ExcIndexRangeType<size_type>(begin, 0, index_space_size));
+  Assert(end <= index_space_size,
+         ExcIndexRangeType<size_type>(end, 0, index_space_size + 1));
+  Assert(begin <= end, ExcIndexRangeType<size_type>(begin, 0, end));
+
+  if (begin != end)
+    {
+      const Range new_range(begin, end);
+
+      // the new index might be larger than the last index present in the
+      // ranges. Then we can skip the binary search
+      if (ranges.size() == 0 || begin > ranges.back().end)
+        ranges.push_back(new_range);
+      else
+        ranges.insert(Utilities::lower_bound(ranges.begin(),
+                                             ranges.end(),
+                                             new_range),
+                      new_range);
+      is_compressed = false;
+    }
+}
+
+
+
 template <typename ForwardIterator>
 inline void
 IndexSet::add_indices(const ForwardIterator &begin, const ForwardIterator &end)
 {
-  // insert each element of the range. if some of them happen to be
-  // consecutive, merge them to a range
+  if (begin == end)
+    return;
+
+  // identify ranges in the given iterator range by checking whether some
+  // indices happen to be consecutive. to avoid quadratic complexity when
+  // calling add_range many times (as add_range() going into the middle of an
+  // already existing range must shift entries around), we first collect a
+  // vector of ranges.
+  std::vector<std::pair<size_type, size_type>> tmp_ranges;
+  bool                                         ranges_are_sorted = true;
   for (ForwardIterator p = begin; p != end;)
     {
       const size_type begin_index = *p;
@@ -1665,9 +1698,39 @@ IndexSet::add_indices(const ForwardIterator &begin, const ForwardIterator &end)
           ++q;
         }
 
-      add_range(begin_index, end_index);
+      tmp_ranges.emplace_back(begin_index, end_index);
       p = q;
+
+      // if the starting index of the next go-around of the for loop is less
+      // than the end index of the one just identified, then we will have at
+      // least one pair of ranges that are not sorted, and consequently the
+      // whole collection of ranges is not sorted.
+      if (p != end && *p < end_index)
+        ranges_are_sorted = false;
     }
+
+  if (!ranges_are_sorted)
+    std::sort(tmp_ranges.begin(), tmp_ranges.end());
+
+  // if we have many ranges, we first construct a temporary index set (where
+  // we add ranges in a consecutive way, so fast), otherwise, we work with
+  // add_range(). the number 9 is chosen heuristically given the fact that
+  // there are typically up to 8 independent ranges when adding the degrees of
+  // freedom on a 3D cell or 9 when adding degrees of freedom of faces. if
+  // doing cell-by-cell additions, we want to avoid repeated calls to
+  // IndexSet::compress() which gets called upon merging two index sets, so we
+  // want to be in the other branch then.
+  if (tmp_ranges.size() > 9)
+    {
+      IndexSet tmp_set(size());
+      tmp_set.ranges.reserve(tmp_ranges.size());
+      for (const auto &i : tmp_ranges)
+        tmp_set.add_range(i.first, i.second);
+      this->add_indices(tmp_set);
+    }
+  else
+    for (const auto &i : tmp_ranges)
+      add_range(i.first, i.second);
 }
 
 
@@ -1754,10 +1817,8 @@ IndexSet::n_elements() const
 
 #ifdef DEBUG
   size_type s = 0;
-  for (std::vector<Range>::iterator range = ranges.begin();
-       range != ranges.end();
-       ++range)
-    s += (range->end - range->begin);
+  for (const auto &range : ranges)
+    s += (range.end - range.begin);
   Assert(s == v, ExcInternalError());
 #endif
 
@@ -1775,7 +1836,7 @@ IndexSet::n_intervals() const
 
 
 
-inline unsigned int
+inline IndexSet::size_type
 IndexSet::largest_range_starting_index() const
 {
   Assert(ranges.empty() == false, ExcMessage("IndexSet cannot be empty."));
@@ -1790,7 +1851,7 @@ IndexSet::largest_range_starting_index() const
 
 
 inline IndexSet::size_type
-IndexSet::nth_index_in_set(const unsigned int n) const
+IndexSet::nth_index_in_set(const size_type n) const
 {
   Assert(n < n_elements(), ExcIndexRangeType<size_type>(n, 0, n_elements()));
 
@@ -1916,9 +1977,8 @@ IndexSet::fill_binary_vector(Vector &vector) const
 
   // then write ones into the elements whose indices are contained in the
   // index set
-  for (std::vector<Range>::iterator it = ranges.begin(); it != ranges.end();
-       ++it)
-    for (size_type i = it->begin; i < it->end; ++i)
+  for (const auto &range : ranges)
+    for (size_type i = range.begin; i < range.end; ++i)
       vector[i] = 1;
 }
 

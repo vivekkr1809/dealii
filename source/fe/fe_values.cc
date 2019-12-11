@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,7 +38,9 @@
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/vector_element_access.h>
@@ -184,17 +186,6 @@ namespace FEValuesViews
 
 
   template <int dim, int spacedim>
-  Scalar<dim, spacedim> &
-  Scalar<dim, spacedim>::operator=(const Scalar<dim, spacedim> &)
-  {
-    // we shouldn't be copying these objects
-    Assert(false, ExcInternalError());
-    return *this;
-  }
-
-
-
-  template <int dim, int spacedim>
   Vector<dim, spacedim>::Vector(const FEValuesBase<dim, spacedim> &fe_values,
                                 const unsigned int first_vector_component)
     : fe_values(&fe_values)
@@ -272,17 +263,6 @@ namespace FEValuesViews
     : fe_values(nullptr)
     , first_vector_component(numbers::invalid_unsigned_int)
   {}
-
-
-
-  template <int dim, int spacedim>
-  Vector<dim, spacedim> &
-  Vector<dim, spacedim>::operator=(const Vector<dim, spacedim> &)
-  {
-    // we shouldn't be copying these objects
-    Assert(false, ExcInternalError());
-    return *this;
-  }
 
 
 
@@ -377,18 +357,6 @@ namespace FEValuesViews
 
 
   template <int dim, int spacedim>
-  SymmetricTensor<2, dim, spacedim> &
-  SymmetricTensor<2, dim, spacedim>::
-  operator=(const SymmetricTensor<2, dim, spacedim> &)
-  {
-    // we shouldn't be copying these objects
-    Assert(false, ExcInternalError());
-    return *this;
-  }
-
-
-
-  template <int dim, int spacedim>
   Tensor<2, dim, spacedim>::Tensor(const FEValuesBase<dim, spacedim> &fe_values,
                                    const unsigned int first_tensor_component)
     : fe_values(&fe_values)
@@ -465,17 +433,6 @@ namespace FEValuesViews
     : fe_values(nullptr)
     , first_tensor_component(numbers::invalid_unsigned_int)
   {}
-
-
-
-  template <int dim, int spacedim>
-  Tensor<2, dim, spacedim> &
-  Tensor<2, dim, spacedim>::operator=(const Tensor<2, dim, spacedim> &)
-  {
-    // we shouldn't be copying these objects
-    Assert(false, ExcInternalError());
-    return *this;
-  }
 
 
 
@@ -2642,75 +2599,40 @@ namespace internal
     {
       const FiniteElement<dim, spacedim> &fe = fe_values.get_fe();
 
-      // create the views objects: Allocate a bunch of default-constructed ones
-      // then destroy them again and do in-place construction of those we
-      // actually want to use.
       const unsigned int n_scalars = fe.n_components();
-      scalars.resize(n_scalars);
+      scalars.reserve(n_scalars);
       for (unsigned int component = 0; component < n_scalars; ++component)
-        {
-          // Use an alias here to work around an issue with gcc-4.1:
-          using ScalarView = dealii::FEValuesViews::Scalar<dim, spacedim>;
-          scalars[component].ScalarView::~ScalarView();
-
-          new (&scalars[component])
-            dealii::FEValuesViews::Scalar<dim, spacedim>(fe_values, component);
-        }
+        scalars.emplace_back(fe_values, component);
 
       // compute number of vectors that we can fit into this finite element.
       // note that this is based on the dimensionality 'dim' of the manifold,
       // not 'spacedim' of the output vector
       const unsigned int n_vectors =
         (fe.n_components() >= spacedim ? fe.n_components() - spacedim + 1 : 0);
-      vectors.resize(n_vectors);
+      vectors.reserve(n_vectors);
       for (unsigned int component = 0; component < n_vectors; ++component)
-        {
-          // Use an alias here to work around an issue with gcc-4.1:
-          using VectorView = dealii::FEValuesViews::Vector<dim, spacedim>;
-          vectors[component].VectorView::~VectorView();
-
-          new (&vectors[component])
-            dealii::FEValuesViews::Vector<dim, spacedim>(fe_values, component);
-        }
+        vectors.emplace_back(fe_values, component);
 
       // compute number of symmetric tensors in the same way as above
       const unsigned int n_symmetric_second_order_tensors =
         (fe.n_components() >= (dim * dim + dim) / 2 ?
            fe.n_components() - (dim * dim + dim) / 2 + 1 :
            0);
-      symmetric_second_order_tensors.resize(n_symmetric_second_order_tensors);
+      symmetric_second_order_tensors.reserve(n_symmetric_second_order_tensors);
       for (unsigned int component = 0;
            component < n_symmetric_second_order_tensors;
            ++component)
-        {
-          // Use an alias here to work around an issue with gcc-4.1:
-          using SymmetricTensorView =
-            dealii::FEValuesViews::SymmetricTensor<2, dim, spacedim>;
-          symmetric_second_order_tensors[component]
-            .SymmetricTensorView::~SymmetricTensorView();
-
-          new (&symmetric_second_order_tensors[component])
-            dealii::FEValuesViews::SymmetricTensor<2, dim, spacedim>(fe_values,
-                                                                     component);
-        }
+        symmetric_second_order_tensors.emplace_back(fe_values, component);
 
 
       // compute number of symmetric tensors in the same way as above
       const unsigned int n_second_order_tensors =
         (fe.n_components() >= dim * dim ? fe.n_components() - dim * dim + 1 :
                                           0);
-      second_order_tensors.resize(n_second_order_tensors);
+      second_order_tensors.reserve(n_second_order_tensors);
       for (unsigned int component = 0; component < n_second_order_tensors;
            ++component)
-        {
-          // Use an alias here to work around an issue with gcc-4.1:
-          using TensorView = dealii::FEValuesViews::Tensor<2, dim, spacedim>;
-          second_order_tensors[component].TensorView::~TensorView();
-
-          new (&second_order_tensors[component])
-            dealii::FEValuesViews::Tensor<2, dim, spacedim>(fe_values,
-                                                            component);
-        }
+        second_order_tensors.emplace_back(fe_values, component);
     }
   } // namespace FEValuesViews
 } // namespace internal
@@ -3680,9 +3602,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_values(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  std::vector<typename InputVector::value_type> &                values) const
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
+  std::vector<typename InputVector::value_type> & values) const
 {
   using Number = typename InputVector::value_type;
   Assert(this->update_flags & update_values,
@@ -3732,9 +3654,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_values(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  std::vector<Vector<typename InputVector::value_type>> &        values) const
+  const InputVector &                                    fe_function,
+  const ArrayView<const types::global_dof_index> &       indices,
+  std::vector<Vector<typename InputVector::value_type>> &values) const
 {
   using Number = typename InputVector::value_type;
   // Size of indices must be a multiple of dofs_per_cell such that an integer
@@ -3763,10 +3685,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_values(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  VectorSlice<std::vector<std::vector<typename InputVector::value_type>>>
-       values,
+  const InputVector &                                      fe_function,
+  const ArrayView<const types::global_dof_index> &         indices,
+  ArrayView<std::vector<typename InputVector::value_type>> values,
   bool quadrature_points_fastest) const
 {
   using Number = typename InputVector::value_type;
@@ -3823,8 +3744,8 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_gradients(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
   std::vector<Tensor<1, spacedim, typename InputVector::value_type>> &gradients)
   const
 {
@@ -3877,10 +3798,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_gradients(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  VectorSlice<std::vector<
-    std::vector<Tensor<1, spacedim, typename InputVector::value_type>>>>
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
+  ArrayView<std::vector<Tensor<1, spacedim, typename InputVector::value_type>>>
        gradients,
   bool quadrature_points_fastest) const
 {
@@ -3937,8 +3857,8 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_hessians(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
   std::vector<Tensor<2, spacedim, typename InputVector::value_type>> &hessians)
   const
 {
@@ -3993,10 +3913,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_hessians(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  VectorSlice<std::vector<
-    std::vector<Tensor<2, spacedim, typename InputVector::value_type>>>>
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
+  ArrayView<std::vector<Tensor<2, spacedim, typename InputVector::value_type>>>
        hessians,
   bool quadrature_points_fastest) const
 {
@@ -4050,9 +3969,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_laplacians(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  std::vector<typename InputVector::value_type> &laplacians) const
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
+  std::vector<typename InputVector::value_type> & laplacians) const
 {
   using Number = typename InputVector::value_type;
   Assert(this->update_flags & update_hessians,
@@ -4101,8 +4020,8 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_laplacians(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+  const InputVector &                                    fe_function,
+  const ArrayView<const types::global_dof_index> &       indices,
   std::vector<Vector<typename InputVector::value_type>> &laplacians) const
 {
   using Number = typename InputVector::value_type;
@@ -4132,9 +4051,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_laplacians(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  std::vector<std::vector<typename InputVector::value_type>> &   laplacians,
+  const InputVector &                                         fe_function,
+  const ArrayView<const types::global_dof_index> &            indices,
+  std::vector<std::vector<typename InputVector::value_type>> &laplacians,
   bool quadrature_points_fastest) const
 {
   using Number = typename InputVector::value_type;
@@ -4189,8 +4108,8 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_third_derivatives(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
   std::vector<Tensor<3, spacedim, typename InputVector::value_type>>
     &third_derivatives) const
 {
@@ -4246,10 +4165,9 @@ template <int dim, int spacedim>
 template <class InputVector>
 void
 FEValuesBase<dim, spacedim>::get_function_third_derivatives(
-  const InputVector &                                            fe_function,
-  const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-  VectorSlice<std::vector<
-    std::vector<Tensor<3, spacedim, typename InputVector::value_type>>>>
+  const InputVector &                             fe_function,
+  const ArrayView<const types::global_dof_index> &indices,
+  ArrayView<std::vector<Tensor<3, spacedim, typename InputVector::value_type>>>
        third_derivatives,
   bool quadrature_points_fastest) const
 {
@@ -4385,13 +4303,11 @@ FEValuesBase<dim, spacedim>::maybe_invalidate_previous_present_cell(
           // triangulations
           invalidate_present_cell();
           tria_listener_refinement =
-            cell->get_triangulation().signals.any_change.connect(std::bind(
-              &FEValuesBase<dim, spacedim>::invalidate_present_cell,
-              std::ref(static_cast<FEValuesBase<dim, spacedim> &>(*this))));
+            cell->get_triangulation().signals.any_change.connect(
+              [this]() { this->invalidate_present_cell(); });
           tria_listener_mesh_transform =
-            cell->get_triangulation().signals.mesh_movement.connect(std::bind(
-              &FEValuesBase<dim, spacedim>::invalidate_present_cell,
-              std::ref(static_cast<FEValuesBase<dim, spacedim> &>(*this))));
+            cell->get_triangulation().signals.mesh_movement.connect(
+              [this]() { this->invalidate_present_cell(); });
         }
     }
   else
@@ -4400,13 +4316,11 @@ FEValuesBase<dim, spacedim>::maybe_invalidate_previous_present_cell(
       // at least subscribe to the triangulation to get notified of
       // changes
       tria_listener_refinement =
-        cell->get_triangulation().signals.post_refinement.connect(std::bind(
-          &FEValuesBase<dim, spacedim>::invalidate_present_cell,
-          std::ref(static_cast<FEValuesBase<dim, spacedim> &>(*this))));
+        cell->get_triangulation().signals.post_refinement.connect(
+          [this]() { this->invalidate_present_cell(); });
       tria_listener_mesh_transform =
-        cell->get_triangulation().signals.mesh_movement.connect(std::bind(
-          &FEValuesBase<dim, spacedim>::invalidate_present_cell,
-          std::ref(static_cast<FEValuesBase<dim, spacedim> &>(*this))));
+        cell->get_triangulation().signals.mesh_movement.connect(
+          [this]() { this->invalidate_present_cell(); });
     }
 }
 
@@ -4871,6 +4785,19 @@ FEFaceValues<dim, spacedim>::reinit(
 
 
 template <int dim, int spacedim>
+template <template <int, int> class DoFHandlerType, bool lda>
+void
+FEFaceValues<dim, spacedim>::reinit(
+  const TriaIterator<DoFCellAccessor<DoFHandlerType<dim, spacedim>, lda>> &cell,
+  const typename Triangulation<dim, spacedim>::face_iterator &             face)
+{
+  const auto face_n = cell->face_iterator_to_index(face);
+  reinit(cell, face_n);
+}
+
+
+
+template <int dim, int spacedim>
 void
 FEFaceValues<dim, spacedim>::reinit(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell,
@@ -4888,6 +4815,18 @@ FEFaceValues<dim, spacedim>::reinit(
   // data type of the iterator. now pass on to the function doing
   // the real work.
   do_reinit(face_no);
+}
+
+
+
+template <int dim, int spacedim>
+void
+FEFaceValues<dim, spacedim>::reinit(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+  const typename Triangulation<dim, spacedim>::face_iterator &face)
+{
+  const auto face_n = cell->face_iterator_to_index(face);
+  reinit(cell, face_n);
 }
 
 
@@ -5067,6 +5006,21 @@ FESubfaceValues<dim, spacedim>::reinit(
 
 
 template <int dim, int spacedim>
+template <template <int, int> class DoFHandlerType, bool lda>
+void
+FESubfaceValues<dim, spacedim>::reinit(
+  const TriaIterator<DoFCellAccessor<DoFHandlerType<dim, spacedim>, lda>> &cell,
+  const typename Triangulation<dim, spacedim>::face_iterator &             face,
+  const typename Triangulation<dim, spacedim>::face_iterator &subface)
+{
+  reinit(cell,
+         cell->face_iterator_to_index(face),
+         face->child_iterator_to_index(subface));
+}
+
+
+
+template <int dim, int spacedim>
 void
 FESubfaceValues<dim, spacedim>::reinit(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell,
@@ -5075,8 +5029,23 @@ FESubfaceValues<dim, spacedim>::reinit(
 {
   Assert(face_no < GeometryInfo<dim>::faces_per_cell,
          ExcIndexRange(face_no, 0, GeometryInfo<dim>::faces_per_cell));
-  Assert(subface_no < cell->face(face_no)->n_children(),
-         ExcIndexRange(subface_no, 0, cell->face(face_no)->n_children()));
+  // We would like to check for subface_no < cell->face(face_no)->n_children(),
+  // but unfortunately the current function is also called for
+  // faces without children for periodic faces, which have hanging nodes on
+  // the other side (see
+  // include/deal.II/matrix_free/mapping_info.templates.h).
+  Assert(subface_no < cell->face(face_no)->n_children() ||
+           (cell->has_periodic_neighbor(face_no) &&
+            subface_no < cell->periodic_neighbor(face_no)
+                           ->face(cell->periodic_neighbor_face_no(face_no))
+                           ->n_children()),
+         ExcIndexRange(subface_no,
+                       0,
+                       (cell->has_periodic_neighbor(face_no) ?
+                          cell->periodic_neighbor(face_no)
+                            ->face(cell->periodic_neighbor_face_no(face_no))
+                            ->n_children() :
+                          cell->face(face_no)->n_children())));
 
   this->maybe_invalidate_previous_present_cell(cell);
   reset_pointer_in_place_if_possible<
@@ -5087,6 +5056,20 @@ FESubfaceValues<dim, spacedim>::reinit(
   // data type of the iterator. now pass on to the function doing
   // the real work.
   do_reinit(face_no, subface_no);
+}
+
+
+
+template <int dim, int spacedim>
+void
+FESubfaceValues<dim, spacedim>::reinit(
+  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+  const typename Triangulation<dim, spacedim>::face_iterator &face,
+  const typename Triangulation<dim, spacedim>::face_iterator &subface)
+{
+  reinit(cell,
+         cell->face_iterator_to_index(face),
+         face->child_iterator_to_index(subface));
 }
 
 

@@ -76,8 +76,34 @@ can solve right away with the techniques of the first few tutorial programs
 similar). However, we have not said anything yet about the saturation, which
 of course is going to change as the fluids move around.
 
-The second part of the equations is a therefore description of the
-dynamics of the saturation. We model this as an advected quantity:
+The second part of the equations is the description of the
+dynamics of the saturation, i.e., how the relative concentration of the
+two fluids changes with time. The saturation equation for the displacing 
+fluid (water) is given by the following conservation law:
+@f{eqnarray*}
+  S_{t} + \nabla \cdot (F(S) \mathbf{u}) = q_{w},
+@f}
+which can be rewritten by using the product rule of the divergence operator
+in the previous equation:
+@f{eqnarray*}
+  S_{t} + F(S) \left[\nabla \cdot \mathbf{u}\right] 
+        + \mathbf{u} \cdot \left[ \nabla F(S)\right]
+  = S_{t} + F(S) q + \mathbf{u} \cdot \nabla F(S) = q_{w}.
+@f}
+Here, $q=\nabla\cdot \mathbf{u}$ is the total influx introduced
+above, and $q_{w}$ is the flow rate of the displacing fluid (water).
+These two are related to the fractional flow $F(S)$ in the following way:
+@f[
+  q_{w} = F(S) q,
+@f]
+where the fractional flow is often parameterized via the (heuristic) expression
+@f[
+  F(S)
+  =
+  \frac{k_{rw}(S)/\mu_{w}}{k_{rw}(S)/\mu_{w} + k_{ro}(S)/\mu_{o}}.
+@f]
+Putting it all together yields the saturation equation in the following,
+advected form:
 @f{eqnarray*}
   S_{t} + \mathbf{u} \cdot \nabla F(S) = 0,
 @f}
@@ -85,12 +111,6 @@ where $\mathbf u$ is the total velocity
 @f[
   \mathbf{u} =
   \mathbf{u}_{o} + \mathbf{u}_{w} = -\lambda(S) \mathbf{K}\cdot\nabla p.
-@f]
-In addition,
-@f[
-  F(S)
-  =
-  \frac{k_{rw}(S)/\mu_{w}}{k_{rw}(S)/\mu_{w} + k_{ro}(S)/\mu_{o}}
 @f]
 Note that the advection equation contains the term $\mathbf{u} \cdot \nabla
 F(S)$ rather than $\mathbf{u} \cdot \nabla S$ to indicate that the saturation
@@ -238,7 +258,7 @@ cell term to get an equation as follows:
 In each time step, we then apply the mixed finite method of @ref step_20
 "step-20" to the velocity and pressure. To be well-posed, we choose
 Raviart-Thomas spaces $RT_{k}$ for $\mathbf{u}$ and discontinuous elements of
-class $DQ_{k}$ for $p$. For the saturation, we will also choose $DQ_{k}$
+class $DGQ_{k}$ for $p$. For the saturation, we will also choose $DGQ_{k}$
 spaces.
 
 Since we have discontinuous spaces, we have to think about how to evaluate
@@ -261,14 +281,14 @@ The quantities $S_+,\mathbf{u}_+$ then correspond to the values of these
 variables on the present cell, whereas $S_-,\mathbf{u}_-$ (needed on the
 inflow part of the boundary of $K$) are quantities taken from the neighboring
 cell. Some more context on discontinuous element techniques and evaluation of
-fluxes can also be found in step-12.
+fluxes can also be found in step-12 and step-12b.
 
 
 <h3>Linear solvers</h3>
 
 The linear solvers used in this program are a straightforward extension of the
-ones used in step-20. Essentially, we simply have to extend
-everything from
+ones used in step-20 (but without LinearOperator). Essentially, we simply have
+to extend everything from
 two to three solution components. If we use the discrete spaces
 mentioned above and put shape functions into the bilinear forms, we
 arrive at the following linear system to be solved for time step $n+1$:
@@ -294,7 +314,7 @@ B &    0 & 0\\
 @f]
 where the individual matrices and vectors are defined as follows using
 shape functions $\mathbf v_i$ (of type Raviart Thomas $RT_k$) for
-velocities and $\phi_i$ (of type $DG_k$) for both pressures and saturations:
+velocities and $\phi_i$ (of type $DGQ_k$) for both pressures and saturations:
 @f{eqnarray*}
 M^u(S^n)_{ij} &=&
 \left((\mathbf{K}\lambda(S^n))^{-1} \mathbf{v}_i,\mathbf

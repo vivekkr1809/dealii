@@ -16,6 +16,8 @@
 #ifndef dealii_pointer_matrix_h
 #define dealii_pointer_matrix_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/smartpointer.h>
 #include <deal.II/base/subscriptor.h>
 
@@ -24,6 +26,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename VectorType>
 class VectorMemory;
 
@@ -44,6 +48,7 @@ template <typename number>
 class TridiagonalMatrix;
 template <typename number, typename BlockVectorType>
 class BlockMatrixArray;
+#endif
 
 /*! @addtogroup Matrix2
  *@{

@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -39,45 +39,25 @@ MACRO(FEATURE_MPI_FIND_EXTERNAL var)
       SET(${var} FALSE)
     ENDIF()
 
-    CHECK_COMPILER_SETUP(
-      "${DEAL_II_CXX_FLAGS} ${DEAL_II_CXX_FLAGS_SAVED} ${MPI_CXX_FLAGS}"
-      "${DEAL_II_LINKER_FLAGS} ${DEAL_II_LINKER_FLAGS_SAVED} ${MPI_LINKER_FLAGS}"
-      MPI_WORKING_COMPILER
-      ${DEAL_II_LIBRARIES} ${MPI_LIBRARIES}
-      )
-
-    IF(NOT MPI_WORKING_COMPILER)
-      #
-      # Try a workaround and drop "-fuse-ld=gold" (if present) from the
-      # linker invocation
-      #
-      MESSAGE(STATUS "Unable to compile a simple test program. "
-        "Try to drop \"-fuse-ld=gold\" from the linker flags."
-        )
-      STRING(REPLACE "-fuse-ld=gold" "" _filtered_flags "${DEAL_II_LINKER_FLAGS}")
-
-      CHECK_COMPILER_SETUP(
-        "${DEAL_II_CXX_FLAGS} ${DEAL_II_CXX_FLAGS_SAVED} ${MPI_CXX_FLAGS}"
-        "${_filtered_flags} ${DEAL_II_LINKER_FLAGS_SAVED} ${MPI_LINKER_FLAGS}"
-        MPI_WORKING_COMPILER
-        ${DEAL_II_LIBRARIES} ${MPI_LIBRARIES}
-        )
-
-      IF(MPI_WORKING_COMPILER)
-        SET(DEAL_II_LINKER_FLAGS "${_filtered_flags}")
-      ELSE()
-        MESSAGE(STATUS "Could not find a sufficient MPI installation: "
-          "Unable to compile a simple test program."
-          )
-        SET(MPI_ADDITIONAL_ERROR_STRING
-          ${MPI_ADDITIONAL_ERROR_STRING}
-          "Unable to compile and link a simple test program with your MPI installation. \n"
-          )
-        SET(${var} FALSE)
-      ENDIF()
-    ENDIF()
-
   ENDIF()
+ENDMACRO()
+
+MACRO(FEATURE_MPI_CONFIGURE_EXTERNAL)
+
+  #
+  # We must convert the MPIEXEC_(PRE|POST)FLAGS strings to lists in order
+  # to use them in command lines:
+  #
+  SEPARATE_ARGUMENTS(MPIEXEC_PREFLAGS)
+  SEPARATE_ARGUMENTS(MPIEXEC_POSTFLAGS)
+
+  #
+  # TODO: We might consider refactoring this option into an automatic check
+  # (in Modules/FindMPI.cmake) at some point. For the time being this is an
+  # advanced configuration option.
+  #
+  OPTION(DEAL_II_MPI_WITH_CUDA_SUPPORT "Enable MPI Cuda support" OFF)
+  MARK_AS_ADVANCED(DEAL_II_MPI_WITH_CUDA_SUPPORT)
 ENDMACRO()
 
 MACRO(FEATURE_MPI_ERROR_MESSAGE)
@@ -99,3 +79,12 @@ ENDMACRO()
 
 
 CONFIGURE_FEATURE(MPI)
+
+
+IF(NOT DEAL_II_WITH_MPI)
+  #
+  # Disable and hide the DEAL_II_MPI_WITH_CUDA_SUPPORT option
+  #
+  SET(DEAL_II_MPI_WITH_CUDA_SUPPORT)
+  UNSET(DEAL_II_MPI_WITH_CUDA_SUPPORT CACHE)
+ENDIF()

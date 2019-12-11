@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2000 - 2018 by the deal.II authors
+ * Copyright (C) 2000 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -178,10 +178,6 @@ namespace Step7
   class Solution : public Function<dim>, protected SolutionBase<dim>
   {
   public:
-    Solution()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> & p,
                          const unsigned int component = 0) const override;
 
@@ -278,10 +274,6 @@ namespace Step7
   class RightHandSide : public Function<dim>, protected SolutionBase<dim>
   {
   public:
-    RightHandSide()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> & p,
                          const unsigned int component = 0) const override;
   };
@@ -378,7 +370,7 @@ namespace Step7
     //
     // We will show here how the library managed to find out that there are
     // still active references to an object and the object is still alive
-    // frome the point of view of a using object. Basically, the method is along
+    // from the point of view of a using object. Basically, the method is along
     // the following line: all objects that are subject to such potentially
     // dangerous pointers are derived from a class called Subscriptor. For
     // example, the Triangulation, DoFHandler, and a base class of the
@@ -541,8 +533,8 @@ namespace Step7
   template <int dim>
   void HelmholtzProblem<dim>::assemble_system()
   {
-    QGauss<dim>     quadrature_formula(3);
-    QGauss<dim - 1> face_quadrature_formula(3);
+    QGauss<dim>     quadrature_formula(fe->degree + 1);
+    QGauss<dim - 1> face_quadrature_formula(fe->degree + 1);
 
     const unsigned int n_q_points      = quadrature_formula.size();
     const unsigned int n_face_q_points = face_quadrature_formula.size();
@@ -595,8 +587,8 @@ namespace Step7
     // Note that the operations we will do with the right hand side object are
     // only querying data, never changing the object. We can therefore declare
     // it <code>const</code>:
-    const RightHandSide<dim> right_hand_side;
-    std::vector<double>      rhs_values(n_q_points);
+    RightHandSide<dim>  right_hand_side;
+    std::vector<double> rhs_values(n_q_points);
 
     // Finally we define an object denoting the exact solution function. We
     // will use it to compute the Neumann values at the boundary from
@@ -605,7 +597,7 @@ namespace Step7
     // Neumann values are prescribed. We will, however, be a little bit lazy
     // and use what we already have in information. Real-life programs would
     // to go other ways here, of course.
-    const Solution<dim> exact_solution;
+    Solution<dim> exact_solution;
 
     // Now for the main loop over all cells. This is mostly unchanged from
     // previous examples, so we only comment on the things that have changed.
@@ -649,11 +641,8 @@ namespace Step7
         // <code>run()</code> function further below. (The default value of
         // boundary indicators is <code>0</code>, so faces can only have an
         // indicator equal to <code>1</code> if we have explicitly set it.)
-        for (unsigned int face_number = 0;
-             face_number < GeometryInfo<dim>::faces_per_cell;
-             ++face_number)
-          if (cell->face(face_number)->at_boundary() &&
-              (cell->face(face_number)->boundary_id() == 1))
+        for (const auto &face : cell->face_iterators())
+          if (face->at_boundary() && (face->boundary_id() == 1))
             {
               // If we came into here, then we have found an external face
               // belonging to Gamma2. Next, we have to compute the values of
@@ -661,7 +650,7 @@ namespace Step7
               // need for the computation of the contour integral. This is
               // done using the <code>reinit</code> function which we already
               // know from the FEValue class:
-              fe_face_values.reinit(cell, face_number);
+              fe_face_values.reinit(cell, face);
 
               // And we can then perform the integration by using a loop over
               // all quadrature points.
@@ -797,7 +786,7 @@ namespace Step7
 
             KellyErrorEstimator<dim>::estimate(
               dof_handler,
-              QGauss<dim - 1>(3),
+              QGauss<dim - 1>(fe->degree + 1),
               std::map<types::boundary_id, const Function<dim> *>(),
               solution,
               estimated_error_per_cell);
@@ -853,7 +842,7 @@ namespace Step7
                                       solution,
                                       Solution<dim>(),
                                       difference_per_cell,
-                                      QGauss<dim>(3),
+                                      QGauss<dim>(fe->degree + 1),
                                       VectorTools::L2_norm);
     const double L2_error =
       VectorTools::compute_global_error(triangulation,
@@ -871,7 +860,7 @@ namespace Step7
                                       solution,
                                       Solution<dim>(),
                                       difference_per_cell,
-                                      QGauss<dim>(3),
+                                      QGauss<dim>(fe->degree + 1),
                                       VectorTools::H1_seminorm);
     const double H1_error =
       VectorTools::compute_global_error(triangulation,
@@ -883,8 +872,9 @@ namespace Step7
     // points. Since this depends quite sensitively on the quadrature rule
     // being used, and since we would like to avoid false results due to
     // super-convergence effects at some points, we use a special quadrature
-    // rule that is obtained by iterating the trapezoidal rule five times in
-    // each space direction. Note that the constructor of the QIterated class
+    // rule that is obtained by iterating the trapezoidal rule by the degree of
+    // the finite element times two plus one in each space direction.
+    // Note that the constructor of the QIterated class
     // takes a one-dimensional quadrature rule and a number that tells it how
     // often it shall use this rule in each space direction.
     //
@@ -893,7 +883,7 @@ namespace Step7
     // from the L infinity errors on each cell with a call to
     // VectorTools::compute_global_error.
     const QTrapez<1>     q_trapez;
-    const QIterated<dim> q_iterated(q_trapez, 5);
+    const QIterated<dim> q_iterated(q_trapez, fe->degree * 2 + 1);
     VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       Solution<dim>(),
@@ -978,14 +968,12 @@ namespace Step7
             triangulation.refine_global(3);
 
             for (const auto &cell : triangulation.cell_iterators())
-              for (unsigned int face_number = 0;
-                   face_number < GeometryInfo<dim>::faces_per_cell;
-                   ++face_number)
+              for (const auto &face : cell->face_iterators())
                 {
-                  const auto center = cell->face(face_number)->center();
+                  const auto center = face->center();
                   if ((std::fabs(center(0) - (-1)) < 1e-12) ||
                       (std::fabs(center(1) - (-1)) < 1e-12))
-                    cell->face(face_number)->set_boundary_id(1);
+                    face->set_boundary_id(1);
                 }
           }
         else

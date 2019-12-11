@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -81,6 +81,20 @@ namespace PETScWrappers
       ghost_set.subtract_set(local);
 
       Vector::create_vector(local.size(), local.n_elements(), ghost_set);
+    }
+
+
+
+    Vector::Vector(const Vector &v)
+      : VectorBase()
+      , communicator(v.communicator)
+    {
+      if (v.has_ghost_elements())
+        Vector::create_vector(v.size(), v.local_size(), v.ghost_indices);
+      else
+        Vector::create_vector(v.size(), v.local_size());
+
+      this->operator=(v);
     }
 
 
@@ -266,8 +280,9 @@ namespace PETScWrappers
       ghostnodes.fill_index_vector(ghostindices);
 
       const PetscInt *ptr =
-        (ghostindices.size() > 0 ? (const PetscInt *)(&(ghostindices[0])) :
-                                   nullptr);
+        (ghostindices.size() > 0 ?
+           reinterpret_cast<const PetscInt *>(ghostindices.data()) :
+           nullptr);
 
       PetscErrorCode ierr = VecCreateGhost(communicator,
                                            local_size,
@@ -287,7 +302,7 @@ namespace PETScWrappers
         ierr = VecGetOwnershipRange(vector, &begin, &end);
         AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        Assert(local_size == (size_type)(end - begin), ExcInternalError());
+        AssertDimension(local_size, static_cast<size_type>(end - begin));
 
         Vec l;
         ierr = VecGhostGetLocalForm(vector, &l);
@@ -300,8 +315,9 @@ namespace PETScWrappers
         ierr = VecGhostRestoreLocalForm(vector, &l);
         AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        Assert(lsize == end - begin + (PetscInt)ghost_indices.n_elements(),
-               ExcInternalError());
+        AssertDimension(lsize,
+                        end - begin +
+                          static_cast<PetscInt>(ghost_indices.n_elements()));
       }
 #  endif
 

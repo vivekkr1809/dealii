@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -58,11 +58,13 @@ SET(_unity_include_src
   mapping.cc
   mapping_q1.cc
   mapping_q.cc
+  mapping_q_cache.cc
   mapping_manifold.cc
   )
 
 SET(_separate_src
   fe_values.cc
+  fe_values_extractors.cc
   fe_values_inst2.cc
   fe_values_inst3.cc
   fe_values_inst4.cc
@@ -132,6 +134,7 @@ SET(_inst
   mapping_q_generic.inst.in
   mapping_q1_eulerian.inst.in
   mapping_q1.inst.in
+  mapping_q_cache.inst.in
   mapping_q_eulerian.inst.in
   mapping_q.inst.in
   mapping_manifold.inst.in

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2017 by the deal.II authors
+// Copyright (C) 2015 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -60,7 +60,7 @@ test()
   tril_vector_ghosted.print(deallog.get_file_stream());
 
 
-  IndexSet readwrite_is(tril_vector_ghosted.vector_partitioner());
+  IndexSet readwrite_is(tril_vector_ghosted.trilinos_partitioner());
   deallog << "ghosted IS: ";
   readwrite_is.print(deallog);
 

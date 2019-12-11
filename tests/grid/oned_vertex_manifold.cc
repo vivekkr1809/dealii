@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,7 +38,7 @@ main()
 
   triangulation.begin_active()->set_all_manifold_ids(spherical_manifold_id);
 
-  for (const auto cell : triangulation.active_cell_iterators())
+  for (const auto &cell : triangulation.active_cell_iterators())
     {
       deallog << "current cell manifold id: " << cell->manifold_id()
               << std::endl;

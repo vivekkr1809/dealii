@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2018 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 
 #ifndef dealii_mesh_worker_simple_h
 #define dealii_mesh_worker_simple_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/algorithms/any_data.h>
 
@@ -86,7 +88,7 @@ namespace MeshWorker
        * In spite of using local block structure, all blocks will be entered
        * into the same global matrix, disregarding any global block structure.
        */
-
+      DEAL_II_DEPRECATED
       void
       initialize_local_blocks(const BlockIndices &);
 
@@ -999,7 +1001,7 @@ namespace MeshWorker
             // degree of freedom on the refinement edge, k does
             // not, and both are not on the boundary. This is part
             // the difference between the complete matrix with no
-            // boundary condition at the refinement edge and and
+            // boundary condition at the refinement edge and
             // the matrix assembled above by assemble().
 
             // Thus the logic is: enter the row if it is

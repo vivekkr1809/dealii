@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -25,7 +25,6 @@
 #include <deal.II/base/quadrature.h>
 #include <deal.II/base/subscriptor.h>
 #include <deal.II/base/symmetric_tensor.h>
-#include <deal.II/base/vector_slice.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -54,8 +53,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 template <int dim, int spacedim = dim>
 class FEValuesBase;
+#endif
 
 namespace internal
 {
@@ -261,10 +263,10 @@ namespace FEValuesViews
 
     /**
      * Copy operator. This is not a lightweight object so we don't allow
-     * copying and generate an exception if this function is called.
+     * copying and generate a compile-time error if this function is called.
      */
     Scalar &
-    operator=(const Scalar<dim, spacedim> &);
+    operator=(const Scalar<dim, spacedim> &) = delete;
 
     /**
      * Return the value of the vector component selected by this view, for the
@@ -767,10 +769,10 @@ namespace FEValuesViews
 
     /**
      * Copy operator. This is not a lightweight object so we don't allow
-     * copying and generate an exception if this function is called.
+     * copying and generate a compile-time error if this function is called.
      */
     Vector &
-    operator=(const Vector<dim, spacedim> &);
+    operator=(const Vector<dim, spacedim> &) = delete;
 
     /**
      * Return the value of the vector components selected by this view, for
@@ -1363,10 +1365,10 @@ namespace FEValuesViews
 
     /**
      * Copy operator. This is not a lightweight object so we don't allow
-     * copying and generate an exception if this function is called.
+     * copying and generate a compile-time error if this function is called.
      */
     SymmetricTensor &
-    operator=(const SymmetricTensor<2, dim, spacedim> &);
+    operator=(const SymmetricTensor<2, dim, spacedim> &) = delete;
 
     /**
      * Return the value of the vector components selected by this view, for
@@ -1659,10 +1661,10 @@ namespace FEValuesViews
 
     /**
      * Copy operator. This is not a lightweight object so we don't allow
-     * copying and generate an exception if this function is called.
+     * copying and generate a compile-time error if this function is called.
      */
     Tensor &
-    operator=(const Tensor<2, dim, spacedim> &);
+    operator=(const Tensor<2, dim, spacedim> &) = delete;
 
     /**
      * Return the value of the vector components selected by this view, for
@@ -1873,6 +1875,69 @@ namespace internal
   namespace FEValuesViews
   {
     /**
+     * A class whose specialization is used to define what FEValuesViews
+     * object corresponds to the given FEValuesExtractors object.
+     *
+     * @author Luca Heltai, 2019.
+     */
+    template <int dim, int spacedim, typename Extractor>
+    struct ViewType
+    {};
+
+    /**
+     * A class whose specialization is used to define what FEValuesViews
+     * object corresponds to the given FEValuesExtractors object.
+     *
+     * When using FEValuesExtractors::Scalar, the corresponding view is an
+     * FEValuesViews::Scalar<dim, spacedim>.
+     */
+    template <int dim, int spacedim>
+    struct ViewType<dim, spacedim, FEValuesExtractors::Scalar>
+    {
+      using type = typename dealii::FEValuesViews::Scalar<dim, spacedim>;
+    };
+
+    /**
+     * A class whose specialization is used to define what FEValuesViews
+     * object corresponds to the given FEValuesExtractors object.
+     *
+     * When using FEValuesExtractors::Vector, the corresponding view is an
+     * FEValuesViews::Vector<dim, spacedim>.
+     */
+    template <int dim, int spacedim>
+    struct ViewType<dim, spacedim, FEValuesExtractors::Vector>
+    {
+      using type = typename dealii::FEValuesViews::Vector<dim, spacedim>;
+    };
+
+    /**
+     * A class whose specialization is used to define what FEValuesViews
+     * object corresponds to the given FEValuesExtractors object.
+     *
+     * When using FEValuesExtractors::Tensor<rank>, the corresponding view is an
+     * FEValuesViews::Tensor<rank, dim, spacedim>.
+     */
+    template <int dim, int spacedim, int rank>
+    struct ViewType<dim, spacedim, FEValuesExtractors::Tensor<rank>>
+    {
+      using type = typename dealii::FEValuesViews::Tensor<rank, dim, spacedim>;
+    };
+
+    /**
+     * A class whose specialization is used to define what FEValuesViews
+     * object corresponds to the given FEValuesExtractors object.
+     *
+     * When using FEValuesExtractors::SymmetricTensor<rank>, the corresponding
+     * view is an FEValuesViews::SymmetricTensor<rank, dim, spacedim>.
+     */
+    template <int dim, int spacedim, int rank>
+    struct ViewType<dim, spacedim, FEValuesExtractors::SymmetricTensor<rank>>
+    {
+      using type =
+        typename dealii::FEValuesViews::SymmetricTensor<rank, dim, spacedim>;
+    };
+
+    /**
      * A class objects of which store a collection of FEValuesViews::Scalar,
      * FEValuesViews::Vector, etc object. The FEValuesBase class uses it to
      * generate all possible Views classes upon construction time; we do this
@@ -1901,6 +1966,18 @@ namespace internal
   } // namespace FEValuesViews
 } // namespace internal
 
+namespace FEValuesViews
+{
+  /**
+   * A templated alias that associates to a given Extractor class
+   * the corresponding view in FEValuesViews.
+   *
+   * @author Luca Heltai, 2019.
+   */
+  template <int dim, int spacedim, typename Extractor>
+  using View = typename dealii::internal::FEValuesViews::
+    ViewType<dim, spacedim, Extractor>::type;
+} // namespace FEValuesViews
 
 
 /**
@@ -2045,6 +2122,18 @@ public:
                const Mapping<dim, spacedim> &      mapping,
                const FiniteElement<dim, spacedim> &fe);
 
+  /**
+   * The copy assignment is deleted since objects of this class are not
+   * copyable.
+   */
+  FEValuesBase &
+  operator=(const FEValuesBase &) = delete;
+
+  /**
+   * The copy constructor is deleted since objects of this class are not
+   * copyable.
+   */
+  FEValuesBase(const FEValuesBase &) = delete;
 
   /**
    * Destructor.
@@ -2052,8 +2141,9 @@ public:
   virtual ~FEValuesBase() override;
 
 
-  /// @name ShapeAccess Access to shape function values. These fields are filled
-  /// by the finite element.
+  /// @name Access to shape function values
+  ///
+  /// These fields are filled by the finite element.
   //@{
 
   /**
@@ -2279,9 +2369,7 @@ public:
    * Vector&lt;T&gt;, BlockVector&lt;T&gt;, or one of the PETSc or Trilinos
    * vector wrapper classes. It represents a global vector of DoF values
    * associated with the DoFHandler object with which this FEValues object was
-   * last initialized. Alternatively, if the vector argument is of type
-   * IndexSet, then the function is represented as one that is either zero or
-   * one, depending on whether a DoF index is in the set or not.
+   * last initialized.
    *
    * @dealiiRequiresUpdateFlags{update_values}
    */
@@ -2331,9 +2419,9 @@ public:
   template <class InputVector>
   void
   get_function_values(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    std::vector<typename InputVector::value_type> &values) const;
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
+    std::vector<typename InputVector::value_type> & values) const;
 
   /**
    * Generate vector function values from an arbitrary vector.
@@ -2359,8 +2447,8 @@ public:
   template <class InputVector>
   void
   get_function_values(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+    const InputVector &                                    fe_function,
+    const ArrayView<const types::global_dof_index> &       indices,
     std::vector<Vector<typename InputVector::value_type>> &values) const;
 
 
@@ -2397,10 +2485,9 @@ public:
   template <class InputVector>
   void
   get_function_values(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    VectorSlice<std::vector<std::vector<typename InputVector::value_type>>>
-               values,
+    const InputVector &                                      fe_function,
+    const ArrayView<const types::global_dof_index> &         indices,
+    ArrayView<std::vector<typename InputVector::value_type>> values,
     const bool quadrature_points_fastest) const;
 
   //@}
@@ -2439,9 +2526,7 @@ public:
    * Vector&lt;T&gt;, BlockVector&lt;T&gt;, or one of the PETSc or Trilinos
    * vector wrapper classes. It represents a global vector of DoF values
    * associated with the DoFHandler object with which this FEValues object was
-   * last initialized. Alternatively, if the vector argument is of type
-   * IndexSet, then the function is represented as one that is either zero or
-   * one, depending on whether a DoF index is in the set or not.
+   * last initialized.
    *
    * @dealiiRequiresUpdateFlags{update_gradients}
    */
@@ -2485,8 +2570,8 @@ public:
   template <class InputVector>
   void
   get_function_gradients(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
     std::vector<Tensor<1, spacedim, typename InputVector::value_type>>
       &gradients) const;
 
@@ -2499,16 +2584,17 @@ public:
   template <class InputVector>
   void
   get_function_gradients(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    VectorSlice<std::vector<
-      std::vector<Tensor<1, spacedim, typename InputVector::value_type>>>>
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
+    ArrayView<
+      std::vector<Tensor<1, spacedim, typename InputVector::value_type>>>
          gradients,
     bool quadrature_points_fastest = false) const;
 
   //@}
-  /// @name Access to second derivatives (Hessian matrices and Laplacians) of
-  /// global finite element fields
+  /// @name Access to second derivatives
+  ///
+  /// Hessian matrices and Laplacians of global finite element fields
   //@{
 
   /**
@@ -2544,9 +2630,7 @@ public:
    * Vector&lt;T&gt;, BlockVector&lt;T&gt;, or one of the PETSc or Trilinos
    * vector wrapper classes. It represents a global vector of DoF values
    * associated with the DoFHandler object with which this FEValues object was
-   * last initialized. Alternatively, if the vector argument is of type
-   * IndexSet, then the function is represented as one that is either zero or
-   * one, depending on whether a DoF index is in the set or not.
+   * last initialized.
    *
    * @dealiiRequiresUpdateFlags{update_hessians}
    */
@@ -2590,8 +2674,8 @@ public:
   template <class InputVector>
   void
   get_function_hessians(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
     std::vector<Tensor<2, spacedim, typename InputVector::value_type>>
       &hessians) const;
 
@@ -2604,10 +2688,10 @@ public:
   template <class InputVector>
   void
   get_function_hessians(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    VectorSlice<std::vector<
-      std::vector<Tensor<2, spacedim, typename InputVector::value_type>>>>
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
+    ArrayView<
+      std::vector<Tensor<2, spacedim, typename InputVector::value_type>>>
          hessians,
     bool quadrature_points_fastest = false) const;
 
@@ -2647,9 +2731,7 @@ public:
    * Vector&lt;T&gt;, BlockVector&lt;T&gt;, or one of the PETSc or Trilinos
    * vector wrapper classes. It represents a global vector of DoF values
    * associated with the DoFHandler object with which this FEValues object was
-   * last initialized. Alternatively, if the vector argument is of type
-   * IndexSet, then the function is represented as one that is either zero or
-   * one, depending on whether a DoF index is in the set or not.
+   * last initialized.
    *
    * @dealiiRequiresUpdateFlags{update_hessians}
    */
@@ -2693,9 +2775,9 @@ public:
   template <class InputVector>
   void
   get_function_laplacians(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    std::vector<typename InputVector::value_type> &laplacians) const;
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
+    std::vector<typename InputVector::value_type> & laplacians) const;
 
   /**
    * Access to the second derivatives of a function with more flexibility. See
@@ -2706,8 +2788,8 @@ public:
   template <class InputVector>
   void
   get_function_laplacians(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+    const InputVector &                                    fe_function,
+    const ArrayView<const types::global_dof_index> &       indices,
     std::vector<Vector<typename InputVector::value_type>> &laplacians) const;
 
   /**
@@ -2719,9 +2801,9 @@ public:
   template <class InputVector>
   void
   get_function_laplacians(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    std::vector<std::vector<typename InputVector::value_type>> &   laplacians,
+    const InputVector &                                         fe_function,
+    const ArrayView<const types::global_dof_index> &            indices,
+    std::vector<std::vector<typename InputVector::value_type>> &laplacians,
     bool quadrature_points_fastest = false) const;
 
   //@}
@@ -2762,9 +2844,7 @@ public:
    * Vector&lt;T&gt;, BlockVector&lt;T&gt;, or one of the PETSc or Trilinos
    * vector wrapper classes. It represents a global vector of DoF values
    * associated with the DoFHandler object with which this FEValues object was
-   * last initialized. Alternatively, if the vector argument is of type
-   * IndexSet, then the function is represented as one that is either zero or
-   * one, depending on whether a DoF index is in the set or not.
+   * last initialized.
    *
    * @dealiiRequiresUpdateFlags{update_3rd_derivatives}
    */
@@ -2809,8 +2889,8 @@ public:
   template <class InputVector>
   void
   get_function_third_derivatives(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
     std::vector<Tensor<3, spacedim, typename InputVector::value_type>>
       &third_derivatives) const;
 
@@ -2823,10 +2903,10 @@ public:
   template <class InputVector>
   void
   get_function_third_derivatives(
-    const InputVector &                                            fe_function,
-    const VectorSlice<const std::vector<types::global_dof_index>> &indices,
-    VectorSlice<std::vector<
-      std::vector<Tensor<3, spacedim, typename InputVector::value_type>>>>
+    const InputVector &                             fe_function,
+    const ArrayView<const types::global_dof_index> &indices,
+    ArrayView<
+      std::vector<Tensor<3, spacedim, typename InputVector::value_type>>>
          third_derivatives,
     bool quadrature_points_fastest = false) const;
   //@}
@@ -3033,10 +3113,16 @@ public:
   get_inverse_jacobians() const;
 
   /**
-   * For a face, return the outward normal vector to the cell at the
-   * <tt>i</tt>th quadrature point.
+   * Return the normal vector at a quadrature point. If you call this
+   * function for a face (i.e., when using a FEFaceValues or FESubfaceValues
+   * object), then this function returns the outward normal vector to
+   * the cell at the <tt>i</tt>th quadrature point of the face.
    *
-   * For a cell of codimension one, return the normal vector. There are of
+   * In contrast, if you call this function for a cell of codimension one
+   * (i.e., when using a `FEValues<dim,spacedim>` object with
+   * `spacedim>dim`), then this function returns the normal vector to the
+   * cell -- in other words, an approximation to the normal vector to the
+   * manifold in which the triangulation is embedded. There are of
    * course two normal directions to a manifold in that case, and this
    * function returns the "up" direction as induced by the numbering of the
    * vertices.
@@ -3049,9 +3135,9 @@ public:
   normal_vector(const unsigned int i) const;
 
   /**
-   * Return the normal vectors at the quadrature points. For a face, these are
-   * the outward normal vectors to the cell. For a cell of codimension one,
-   * the orientation is given by the numbering of vertices.
+   * Return the normal vectors at all quadrature points represented by
+   * this object. See the normal_vector() function for what the normal
+   * vectors represent.
    *
    * @dealiiRequiresUpdateFlags{update_normal_vectors}
    *
@@ -3063,9 +3149,9 @@ public:
   get_all_normal_vectors() const;
 
   /**
-   * Return the normal vectors at the quadrature points. For a face, these are
-   * the outward normal vectors to the cell. For a cell of codimension one,
-   * the orientation is given by the numbering of vertices.
+   * Return the normal vectors at all quadrature points represented by
+   * this object. See the normal_vector() function for what the normal
+   * vectors represent.
    *
    * @dealiiRequiresUpdateFlags{update_normal_vectors}
    */
@@ -3387,27 +3473,12 @@ protected:
 
 private:
   /**
-   * Copy constructor. Since objects of this class are not copyable, we make
-   * it private, and also do not implement it.
-   */
-  FEValuesBase(const FEValuesBase &);
-
-  /**
-   * Copy operator. Since objects of this class are not copyable, we make it
-   * private, and also do not implement it.
-   */
-  FEValuesBase &
-  operator=(const FEValuesBase &);
-
-  /**
    * A cache for all possible FEValuesViews objects.
    */
   dealii::internal::FEValuesViews::Cache<dim, spacedim> fe_values_views_cache;
 
-  /**
-   * Make the view classes friends of this class, since they access internal
-   * data.
-   */
+  // Make the view classes friends of this class, since they access internal
+  // data.
   template <int, int>
   friend class FEValuesViews::Scalar;
   template <int, int>
@@ -3693,9 +3764,21 @@ public:
          const unsigned int                                     face_no);
 
   /**
+   * Reinitialize the gradients, Jacobi determinants, etc for face @p face
+   * and cell @p cell.
+   *
+   * @note @p face must be one of @p cell's face iterators.
+   */
+  template <template <int, int> class DoFHandlerType, bool level_dof_access>
+  void
+  reinit(const TriaIterator<DoFCellAccessor<DoFHandlerType<dim, spacedim>,
+                                            level_dof_access>> &     cell,
+         const typename Triangulation<dim, spacedim>::face_iterator &face);
+
+  /**
    * Reinitialize the gradients, Jacobi determinants, etc for the given face
-   * on given cell of type "iterator into a Triangulation object", and the
-   * given finite element. Since iterators into triangulation alone only
+   * on a given cell of type "iterator into a Triangulation object", and the
+   * given finite element. Since iterators into a triangulation alone only
    * convey information about the geometry of a cell, but not about degrees of
    * freedom possibly associated with this cell, you will not be able to call
    * some functions of this class if they need information about degrees of
@@ -3708,6 +3791,25 @@ public:
   void
   reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
          const unsigned int                                          face_no);
+
+  /*
+   * Reinitialize the gradients, Jacobi determinants, etc for the given face
+   * on a given cell of type "iterator into a Triangulation object", and the
+   * given finite element. Since iterators into a triangulation alone only
+   * convey information about the geometry of a cell, but not about degrees of
+   * freedom possibly associated with this cell, you will not be able to call
+   * some functions of this class if they need information about degrees of
+   * freedom. These functions are, above all, the
+   * <tt>get_function_value/gradients/hessians/third_derivatives</tt>
+   * functions. If you want to call these functions, you have to call the @p
+   * reinit variants that take iterators into DoFHandler or other DoF handler
+   * type objects.
+   *
+   * @note @p face must be one of @p cell's face iterators.
+   */
+  void
+  reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+         const typename Triangulation<dim, spacedim>::face_iterator &face);
 
   /**
    * Return a reference to this very object.
@@ -3813,9 +3915,20 @@ public:
          const unsigned int                                     subface_no);
 
   /**
+   * Alternative reinitialization function that takes, as arguments, iterators
+   * to the face and subface instead of their numbers.
+   */
+  template <template <int, int> class DoFHandlerType, bool level_dof_access>
+  void
+  reinit(const TriaIterator<DoFCellAccessor<DoFHandlerType<dim, spacedim>,
+                                            level_dof_access>> &     cell,
+         const typename Triangulation<dim, spacedim>::face_iterator &face,
+         const typename Triangulation<dim, spacedim>::face_iterator &subface);
+
+  /**
    * Reinitialize the gradients, Jacobi determinants, etc for the given
-   * subface on given cell of type "iterator into a Triangulation object", and
-   * the given finite element. Since iterators into triangulation alone only
+   * subface on a given cell of type "iterator into a Triangulation object", and
+   * the given finite element. Since iterators into a triangulation alone only
    * convey information about the geometry of a cell, but not about degrees of
    * freedom possibly associated with this cell, you will not be able to call
    * some functions of this class if they need information about degrees of
@@ -3829,6 +3942,30 @@ public:
   reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
          const unsigned int                                          face_no,
          const unsigned int subface_no);
+
+  /**
+   * Reinitialize the gradients, Jacobi determinants, etc for the given
+   * subface on a given cell of type "iterator into a Triangulation object", and
+   * the given finite element. Since iterators into a triangulation alone only
+   * convey information about the geometry of a cell, but not about degrees of
+   * freedom possibly associated with this cell, you will not be able to call
+   * some functions of this class if they need information about degrees of
+   * freedom. These functions are, above all, the
+   * <tt>get_function_value/gradients/hessians/third_derivatives</tt>
+   * functions. If you want to call these functions, you have to call the @p
+   * reinit variants that take iterators into DoFHandler or other DoF handler
+   * type objects.
+   *
+   * This does the same thing as the previous function but takes iterators
+   * instead of numbers as arguments.
+   *
+   * @note @p face and @p subface must correspond to a face (and a subface of
+   * that face) of @p cell.
+   */
+  void
+  reinit(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
+         const typename Triangulation<dim, spacedim>::face_iterator &face,
+         const typename Triangulation<dim, spacedim>::face_iterator &subface);
 
   /**
    * Return a reference to this very object.
@@ -4365,8 +4502,7 @@ namespace FEValuesViews
       Assert(n < 1, ExcIndexRange(n, 0, 1));
       (void)n;
 
-      const double array[1] = {t[0]};
-      return dealii::SymmetricTensor<2, 1>(array);
+      return {{t[0]}};
     }
 
 
@@ -4378,18 +4514,16 @@ namespace FEValuesViews
         {
           case 0:
             {
-              const double array[3] = {t[0], 0, t[1] / 2};
-              return dealii::SymmetricTensor<2, 2>(array);
+              return {{t[0], 0, t[1] / 2}};
             }
           case 1:
             {
-              const double array[3] = {0, t[1], t[0] / 2};
-              return dealii::SymmetricTensor<2, 2>(array);
+              return {{0, t[1], t[0] / 2}};
             }
           default:
             {
               Assert(false, ExcIndexRange(n, 0, 2));
-              return dealii::SymmetricTensor<2, 2>();
+              return {};
             }
         }
     }
@@ -4403,23 +4537,20 @@ namespace FEValuesViews
         {
           case 0:
             {
-              const double array[6] = {t[0], 0, 0, t[1] / 2, t[2] / 2, 0};
-              return dealii::SymmetricTensor<2, 3>(array);
+              return {{t[0], 0, 0, t[1] / 2, t[2] / 2, 0}};
             }
           case 1:
             {
-              const double array[6] = {0, t[1], 0, t[0] / 2, 0, t[2] / 2};
-              return dealii::SymmetricTensor<2, 3>(array);
+              return {{0, t[1], 0, t[0] / 2, 0, t[2] / 2}};
             }
           case 2:
             {
-              const double array[6] = {0, 0, t[2], 0, t[0] / 2, t[1] / 2};
-              return dealii::SymmetricTensor<2, 3>(array);
+              return {{0, 0, t[2], 0, t[0] / 2, t[1] / 2}};
             }
           default:
             {
               Assert(false, ExcIndexRange(n, 0, 3));
-              return dealii::SymmetricTensor<2, 3>();
+              return {};
             }
         }
     }

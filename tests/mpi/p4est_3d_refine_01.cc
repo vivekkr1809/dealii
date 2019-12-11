@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -79,7 +79,7 @@ test()
                 cell->set_refine_flag();
               }
 
-          // and atleast one cell:
+          // and at least one cell:
           if (!locals)
             {
               for (typename Triangulation<dim>::active_cell_iterator cell =

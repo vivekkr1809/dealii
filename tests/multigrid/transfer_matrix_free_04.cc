@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,7 +66,7 @@ check(const unsigned int fe_degree)
 
       DoFHandler<dim> mgdof(tr);
       mgdof.distribute_dofs(fe);
-      mgdof.distribute_mg_dofs(fe);
+      mgdof.distribute_mg_dofs();
 
       // build reference
       MGTransferPrebuilt<LinearAlgebra::distributed::Vector<double>>

@@ -19,6 +19,7 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/mg_level_object.h>
 #include <deal.II/base/thread_management.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -119,6 +120,30 @@ public:
                  const ComponentMask & mask = ComponentMask());
 
   /**
+   * Constructor taking vectors on the multigrid levels rather than the active
+   * cells only. The vector of vectors is expected to have as many entries as
+   * there are global levels in the triangulation and provide valid data on
+   * each level, i.e., be of compatible length DoFHandler::n_dofs(level). A
+   * prerequisite of this constructor is that DoFHandler::distribute_mg_dofs()
+   * has been called. Apart from the level vectors, the same arguments as in
+   * the other constructor need to be provided.
+   */
+  MappingFEField(const DoFHandlerType &         euler_dof_handler,
+                 const std::vector<VectorType> &euler_vector,
+                 const ComponentMask &          mask = ComponentMask());
+
+  /**
+   * Constructor with MGLevelObject instead of std::vector, otherwise the same
+   * as above. It is required that `euler_vector.max_level()+1` equals the
+   * global number of levels in the triangulation. The minimum level may be
+   * zero or more &mdash; it only needs to be consistent between what is set
+   * here and later used for evaluation of the mapping.
+   */
+  MappingFEField(const DoFHandlerType &           euler_dof_handler,
+                 const MGLevelObject<VectorType> &euler_vector,
+                 const ComponentMask &            mask = ComponentMask());
+
+  /**
    * Copy constructor.
    */
   MappingFEField(
@@ -179,35 +204,35 @@ public:
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<1, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<1, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const DerivativeForm<1, dim, spacedim>> &input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<2, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<2, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<2, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const DerivativeForm<2, dim, spacedim>> &input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<3, spacedim>> &output) const override;
 
   // for documentation, see the Mapping base class
   virtual void
   transform(const ArrayView<const Tensor<3, dim>> &                  input,
-            const MappingType                                        type,
+            const MappingKind                                        kind,
             const typename Mapping<dim, spacedim>::InternalDataBase &internal,
             const ArrayView<Tensor<3, spacedim>> &output) const override;
 
@@ -504,12 +529,18 @@ private:
    * @}
    */
 
+  /**
+   * Specifies whether we access unknowns on the active dofs (with a single
+   * Euler vector) or on the level dofs (via a vector of Euler vectors).
+   */
+  const bool uses_level_dofs;
 
   /**
    * Reference to the vector of shifts.
    */
-  SmartPointer<const VectorType,
-               MappingFEField<dim, spacedim, VectorType, DoFHandlerType>>
+  std::vector<
+    SmartPointer<const VectorType,
+                 MappingFEField<dim, spacedim, VectorType, DoFHandlerType>>>
     euler_vector;
 
   /**
@@ -618,9 +649,7 @@ private:
                     InternalData &         data) const;
 
 
-  /**
-   * Declare other MappingFEField classes friends.
-   */
+  // Declare other MappingFEField classes friends.
   template <int, int, class, class>
   friend class MappingFEField;
 };

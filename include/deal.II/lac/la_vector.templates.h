@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,9 +16,13 @@
 #ifndef dealii_la_vector_templates_h
 #define dealii_la_vector_templates_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/vector_operation.h>
 #include <deal.II/lac/vector_operations_internal.h>
+
+#include <boost/io/ios_state.hpp>
 
 #include <iomanip>
 #include <iostream>
@@ -92,7 +96,7 @@ namespace LinearAlgebra
     dealii::internal::VectorOperations::Vector_copy<Number, Number> copier(
       in_vector.values.get(), this->values.get());
     internal::VectorOperations::parallel_for(copier,
-                                             0,
+                                             static_cast<size_type>(0),
                                              this->size(),
                                              this->thread_loop_partitioner);
 
@@ -113,7 +117,7 @@ namespace LinearAlgebra
     dealii::internal::VectorOperations::Vector_copy<Number, Number2> copier(
       in_vector.values.get(), this->values.get());
     internal::VectorOperations::parallel_for(copier,
-                                             0,
+                                             static_cast<size_type>(0),
                                              this->size(),
                                              this->thread_loop_partitioner);
 
@@ -151,7 +155,7 @@ namespace LinearAlgebra
     internal::VectorOperations::Vectorization_multiply_factor<Number>
       vector_multiply(this->values.get(), factor);
     internal::VectorOperations::parallel_for(vector_multiply,
-                                             0,
+                                             static_cast<size_type>(0),
                                              this->size(),
                                              this->thread_loop_partitioner);
 
@@ -556,6 +560,26 @@ namespace LinearAlgebra
     AssertIsFinite(sum);
 
     return sum;
+  }
+
+
+
+  template <typename Number>
+  void
+  Vector<Number>::print_as_numpy_array(std::ostream &     out,
+                                       const unsigned int precision) const
+  {
+    AssertThrow(out, ExcIO());
+    boost::io::ios_flags_saver restore_flags(out);
+
+    out.precision(precision);
+
+    const unsigned int n_elements = this->n_elements();
+    for (unsigned int i = 0; i < n_elements; ++i)
+      out << this->values[i] << ' ';
+    out << '\n' << std::flush;
+
+    AssertThrow(out, ExcIO());
   }
 
 

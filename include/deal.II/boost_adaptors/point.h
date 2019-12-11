@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 
 #ifndef dealii_boost_adaptor_point_h
 #define dealii_boost_adaptor_point_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/point.h>
 
@@ -65,7 +67,7 @@ namespace boost
       /**
        * Getter function for D-th coordinate of a dealii Point.
        */
-      template <size_t D, int dim, class Number>
+      template <std::size_t D, int dim, class Number>
       struct access<dealii::Point<dim, Number>, D>
       {
         static inline double

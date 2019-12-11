@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2012 - 2017 by the deal.II authors
+// Copyright (C) 2012 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 // a problem uncovered by Baerbel Janssen in that
 // DoFTools::make_flux_sparsity_pattern aborted in 1d with adaptively refined
 // meshes and hp DoFHandlers. this actually uncovered all sorts of other
-// problems that led to a long sequence of assertions triggered everytime one
+// problems that led to a long sequence of assertions triggered every time one
 // of them was fixed. this test cumulatively makes sure everything is ok
 
 // while there, also test the same code in 2d (3d appears to take too long)

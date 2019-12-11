@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,8 +13,14 @@
 //
 // ---------------------------------------------------------------------
 
+#include <deal.II/base/bounding_box.h>
+#include <deal.II/base/mpi.h>
+
+#include <deal.II/grid/filtered_iterator.h>
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/grid_tools_cache.h>
+
+#include <boost/geometry.hpp>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -95,6 +101,49 @@ namespace GridTools
 
 
 
+  template <int dim, int spacedim>
+  const RTree<std::pair<Point<spacedim>, unsigned int>> &
+  Cache<dim, spacedim>::get_used_vertices_rtree() const
+  {
+    if (update_flags & update_used_vertices_rtree)
+      {
+        const auto &used_vertices = get_used_vertices();
+        std::vector<std::pair<Point<spacedim>, unsigned int>> vertices(
+          used_vertices.size());
+        unsigned int i = 0;
+        for (const auto &it : used_vertices)
+          vertices[i++] = std::make_pair(it.second, it.first);
+        used_vertices_rtree = pack_rtree(vertices);
+        update_flags        = update_flags & ~update_used_vertices_rtree;
+      }
+    return used_vertices_rtree;
+  }
+
+
+
+  template <int dim, int spacedim>
+  const RTree<
+    std::pair<BoundingBox<spacedim>,
+              typename Triangulation<dim, spacedim>::active_cell_iterator>> &
+  Cache<dim, spacedim>::get_cell_bounding_boxes_rtree() const
+  {
+    if (update_flags & update_cell_bounding_boxes_rtree)
+      {
+        std::vector<std::pair<
+          BoundingBox<spacedim>,
+          typename Triangulation<dim, spacedim>::active_cell_iterator>>
+                     boxes(tria->n_active_cells());
+        unsigned int i = 0;
+        for (const auto &cell : tria->active_cell_iterators())
+          boxes[i++] = std::make_pair(mapping->get_bounding_box(cell), cell);
+
+        cell_bounding_boxes_rtree = pack_rtree(boxes);
+        update_flags = update_flags & ~update_cell_bounding_boxes_rtree;
+      }
+    return cell_bounding_boxes_rtree;
+  }
+
+
 #ifdef DEAL_II_WITH_NANOFLANN
   template <int dim, int spacedim>
   const KDTree<spacedim> &
@@ -108,6 +157,48 @@ namespace GridTools
     return vertex_kdtree;
   }
 #endif
+
+
+
+  template <int dim, int spacedim>
+  const RTree<std::pair<BoundingBox<spacedim>, unsigned int>> &
+  Cache<dim, spacedim>::get_covering_rtree() const
+  {
+    if (update_flags & update_covering_rtree)
+      {
+        // TO DO: the locally owned portion of the domain
+        // might consists of more separate pieces: a single
+        // bounding box might not always be the best choice.
+
+        // Note: we create the local variable ptr here, because gcc 4.8.5
+        // fails to compile if we pass the variable directly.
+        IteratorFilters::LocallyOwnedCell locally_owned_cell_predicate;
+        std::function<bool(
+          const typename Triangulation<dim, spacedim>::active_cell_iterator &)>
+          ptr(locally_owned_cell_predicate);
+
+        const BoundingBox<spacedim> bbox =
+          GridTools::compute_bounding_box(get_triangulation(), ptr);
+
+
+        std::vector<BoundingBox<spacedim>> bbox_v(1, bbox);
+        if (const auto tria_mpi =
+              dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+                &(*tria)))
+          {
+            covering_rtree = GridTools::build_global_description_tree(
+              bbox_v, tria_mpi->get_communicator());
+          }
+        else
+          {
+            covering_rtree =
+              GridTools::build_global_description_tree(bbox_v, MPI_COMM_SELF);
+          }
+        update_flags = update_flags & ~update_covering_rtree;
+      }
+
+    return covering_rtree;
+  }
 
 #include "grid_tools_cache.inst"
 

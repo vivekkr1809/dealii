@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -87,7 +87,7 @@ check()
                         Vector<double>,
                         DiagonalMatrixManual>::AdditionalData data;
   data.smoothing_range = 2 * size;
-  data.degree          = 3;
+  data.degree          = 4;
   data.preconditioner.reset(new DiagonalMatrixManual());
   data.preconditioner->set_vector_one(size);
   prec.initialize(m, data);

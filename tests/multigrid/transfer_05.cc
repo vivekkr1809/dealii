@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2006 - 2018 by the deal.II authors
+// Copyright (C) 2006 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -103,7 +103,7 @@ check(const unsigned int fe_degree)
 
       DoFHandler<dim> mgdof(tr);
       mgdof.distribute_dofs(fe);
-      mgdof.distribute_mg_dofs(fe);
+      mgdof.distribute_mg_dofs();
 
       MGConstrainedDoFs                                   mg_constrained_dofs;
       ZeroFunction<dim>                                   zero_function;
@@ -148,7 +148,7 @@ check(const unsigned int fe_degree)
           // set values:
           for (unsigned int b = 0; b < nb; ++b)
             for (unsigned int i = 0; i < lbv[l].block(b).local_size(); ++i)
-              lbv[l].block(b).local_element(i) = random_value<double>();
+              lbv[l].block(b).local_element(i) = random_value<Number>();
 
           lbv[l].compress(VectorOperation::insert);
         }
@@ -173,7 +173,7 @@ check(const unsigned int fe_degree)
         0, tr.n_global_levels() - 1);
       for (unsigned int b = 0; b < nb; ++b)
         for (unsigned int i = 0; i < bv.block(b).local_size(); ++i)
-          bv.block(b).local_element(i) = random_value<double>();
+          bv.block(b).local_element(i) = random_value<Number>();
 
       transfer.copy_to_mg(mgdof, lbv2, bv);
       // Also check that the block vector has its (global) size set on each

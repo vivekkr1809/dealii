@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,9 +59,12 @@ test()
   static const FE_Q<dim> fe(2);
   dofh.distribute_dofs(fe);
 
+  const std::vector<types::global_dof_index>
+    n_locally_owned_dofs_per_processor =
+      dofh.compute_n_locally_owned_dofs_per_processor();
   if (myid == 1)
     {
-      deallog << "dofh.n_dofs() " << dofh.n_locally_owned_dofs_per_processor()
+      deallog << "dofh.n_dofs() " << n_locally_owned_dofs_per_processor
               << std::endl;
       deallog << "dofh.n_locally_owned_dofs() " << dofh.n_locally_owned_dofs()
               << std::endl;

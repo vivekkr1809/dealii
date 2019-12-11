@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2018 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,7 +22,6 @@
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/template_constraints.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/types.h>
 #include <deal.II/base/utilities.h>
 
@@ -35,6 +34,7 @@
 #ifdef DEAL_II_WITH_TRILINOS
 #  include <deal.II/lac/trilinos_epetra_communication_pattern.h>
 #  include <deal.II/lac/trilinos_epetra_vector.h>
+#  include <deal.II/lac/trilinos_tpetra_vector.h>
 
 #  include <Epetra_MultiVector.h>
 
@@ -42,6 +42,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 namespace LinearAlgebra
 {
   class CommunicationPatternBase;
@@ -52,7 +54,7 @@ namespace LinearAlgebra
   } // namespace distributed
 } // namespace LinearAlgebra
 
-#ifdef DEAL_II_WITH_PETSC
+#  ifdef DEAL_II_WITH_PETSC
 namespace PETScWrappers
 {
   namespace MPI
@@ -60,9 +62,9 @@ namespace PETScWrappers
     class Vector;
   }
 } // namespace PETScWrappers
-#endif
+#  endif
 
-#ifdef DEAL_II_WITH_TRILINOS
+#  ifdef DEAL_II_WITH_TRILINOS
 namespace TrilinosWrappers
 {
   namespace MPI
@@ -70,9 +72,9 @@ namespace TrilinosWrappers
     class Vector;
   }
 } // namespace TrilinosWrappers
-#endif
+#  endif
 
-#ifdef DEAL_II_WITH_CUDA
+#  ifdef DEAL_II_WITH_CUDA
 namespace LinearAlgebra
 {
   namespace CUDAWrappers
@@ -81,6 +83,7 @@ namespace LinearAlgebra
     class Vector;
   }
 } // namespace LinearAlgebra
+#  endif
 #endif
 
 namespace LinearAlgebra
@@ -106,7 +109,7 @@ namespace LinearAlgebra
    *
    * <h3>Storing elements</h3> Most of the time, one will simply read from or
    * write into a vector of the current class using the global numbers of
-   * these degrees of freedom. This is done using operator() or operator[]
+   * these degrees of freedom. This is done using operator()() or operator[]()
    * which call global_to_local() to transform the <i>global</i> index into a
    * <i>local</i> one. In such cases, it is clear that one can only access
    * elements of the vector that the current object indeed stores.
@@ -119,7 +122,7 @@ namespace LinearAlgebra
    * function. To this end, it is necessary to know <i>in which order</i> the
    * current class stores its element. The elements of all the consecutive
    * ranges are stored in ascending order of the first index of each range.
-   * The function largest_range_starting_index() of IndexSet can be used to
+   * The function IndexSet::largest_range_starting_index() can be used to
    * get the first index of the largest range.
    *
    * @author Bruno Turcksin, 2015.
@@ -324,7 +327,7 @@ namespace LinearAlgebra
      * communication pattern is used multiple times. This can be used to improve
      * performance.
      *
-     * @note: The @p trilinos_vec is not allowed to have ghost entries.
+     * @note The @p trilinos_vec is not allowed to have ghost entries.
      */
     void
     import(const TrilinosWrappers::MPI::Vector &trilinos_vec,
@@ -334,6 +337,23 @@ namespace LinearAlgebra
                std::shared_ptr<const CommunicationPatternBase>());
 
 #  ifdef DEAL_II_WITH_MPI
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA
+    /**
+     * Imports all the elements present in the vector's IndexSet from the input
+     * vector @p tpetra_vec. VectorOperation::values @p operation is used to
+     * decide if the elements in @p V should be added to the current vector or
+     * replace the current elements. The last parameter can be used if the same
+     * communication pattern is used multiple times. This can be used to improve
+     * performance.
+     */
+    void
+    import(const TpetraWrappers::Vector<Number> &tpetra_vec,
+           VectorOperation::values               operation,
+           const std::shared_ptr<const CommunicationPatternBase>
+             &communication_pattern =
+               std::shared_ptr<const CommunicationPatternBase>());
+#    endif
+
     /**
      * Imports all the elements present in the vector's IndexSet from the input
      * vector @p epetra_vec. VectorOperation::values @p operation is used to
@@ -593,6 +613,22 @@ namespace LinearAlgebra
 
   protected:
 #ifdef DEAL_II_WITH_TRILINOS
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+    /**
+     * Import all the elements present in the vector's IndexSet from the input
+     * vector @p tpetra_vector. This is an helper function and it should not be
+     * used directly.
+     */
+    void
+    import(
+      const Tpetra::Vector<Number, int, types::global_dof_index> &tpetra_vector,
+      const IndexSet &        locally_owned_elements,
+      VectorOperation::values operation,
+      const MPI_Comm &        mpi_comm,
+      const std::shared_ptr<const CommunicationPatternBase>
+        &communication_pattern);
+#  endif
+
     /**
      * Import all the elements present in the vector's IndexSet from the input
      * vector @p multivector. This is an helper function and it should not be
@@ -626,8 +662,18 @@ namespace LinearAlgebra
     resize_val(const size_type new_allocated_size);
 
 #if defined(DEAL_II_WITH_TRILINOS) && defined(DEAL_II_WITH_MPI)
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
     /**
-     * Return a EpetraWrappers::Communication pattern and store it for future
+     * Return a TpetraWrappers::CommunicationPattern and store it for future
+     * use.
+     */
+    TpetraWrappers::CommunicationPattern
+    create_tpetra_comm_pattern(const IndexSet &source_index_set,
+                               const MPI_Comm &mpi_comm);
+#  endif
+
+    /**
+     * Return a EpetraWrappers::CommunicationPattern and store it for future
      * use.
      */
     EpetraWrappers::CommunicationPattern
@@ -654,7 +700,7 @@ namespace LinearAlgebra
     /**
      * Pointer to the array of local elements of this vector.
      */
-    std::unique_ptr<Number[], decltype(free) *> values;
+    std::unique_ptr<Number[], decltype(std::free) *> values;
 
     /**
      * For parallel loops with TBB, this member variable stores the affinity
@@ -663,9 +709,7 @@ namespace LinearAlgebra
     mutable std::shared_ptr<::dealii::parallel::internal::TBBPartitioner>
       thread_loop_partitioner;
 
-    /**
-     * Make all other ReadWriteVector types friends.
-     */
+    // Make all other ReadWriteVector types friends.
     template <typename Number2>
     friend class ReadWriteVector;
 

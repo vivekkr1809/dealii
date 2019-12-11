@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2018 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -94,7 +94,7 @@ build_matrix_vector(TrilinosWrappers::BlockSparseMatrix &matrix,
   matrix.reinit(dsp);
   vector.reinit(partitioning);
 
-  // Assemble system: Mass matrix and constrant RHS vector
+  // Assemble system: Mass matrix and constraint RHS vector
   FEValues<dim>      fe_values(fe,
                           quadrature_formula,
                           update_values | update_JxW_values);

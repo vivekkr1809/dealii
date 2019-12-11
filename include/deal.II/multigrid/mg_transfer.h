@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -82,11 +82,11 @@ namespace internal
            const SparsityPatternType &sp,
            DoFHandlerType &           dh)
     {
-      const parallel::Triangulation<DoFHandlerType::dimension,
-                                    DoFHandlerType::space_dimension>
+      const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                        DoFHandlerType::space_dimension>
         *dist_tria = dynamic_cast<
-          const parallel::Triangulation<DoFHandlerType::dimension,
-                                        DoFHandlerType::space_dimension> *>(
+          const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                            DoFHandlerType::space_dimension> *>(
           &(dh.get_triangulation()));
       MPI_Comm communicator =
         dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
@@ -115,11 +115,11 @@ namespace internal
            const SparsityPatternType &sp,
            DoFHandlerType &           dh)
     {
-      const parallel::Triangulation<DoFHandlerType::dimension,
-                                    DoFHandlerType::space_dimension>
+      const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                        DoFHandlerType::space_dimension>
         *dist_tria = dynamic_cast<
-          const parallel::Triangulation<DoFHandlerType::dimension,
-                                        DoFHandlerType::space_dimension> *>(
+          const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                            DoFHandlerType::space_dimension> *>(
           &(dh.get_triangulation()));
       MPI_Comm communicator =
         dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
@@ -132,6 +132,40 @@ namespace internal
   };
 
 #  ifdef DEAL_II_WITH_MPI
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA
+  template <typename Number>
+  struct MatrixSelector<dealii::LinearAlgebra::TpetraWrappers::Vector<Number>>
+  {
+    using Sparsity = ::dealii::TrilinosWrappers::SparsityPattern;
+    using Matrix   = ::dealii::TrilinosWrappers::SparseMatrix;
+
+    static const bool requires_distributed_sparsity_pattern = false;
+
+    template <typename SparsityPatternType, typename DoFHandlerType>
+    static void
+    reinit(Matrix &matrix,
+           Sparsity &,
+           int                        level,
+           const SparsityPatternType &sp,
+           DoFHandlerType &           dh)
+    {
+      const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                        DoFHandlerType::space_dimension>
+        *dist_tria = dynamic_cast<
+          const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                            DoFHandlerType::space_dimension> *>(
+          &(dh.get_triangulation()));
+      MPI_Comm communicator =
+        dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
+      matrix.reinit(dh.locally_owned_mg_dofs(level + 1),
+                    dh.locally_owned_mg_dofs(level),
+                    sp,
+                    communicator,
+                    true);
+    }
+  };
+#    endif
+
   template <>
   struct MatrixSelector<dealii::LinearAlgebra::EpetraWrappers::Vector>
   {
@@ -148,11 +182,11 @@ namespace internal
            const SparsityPatternType &sp,
            DoFHandlerType &           dh)
     {
-      const parallel::Triangulation<DoFHandlerType::dimension,
-                                    DoFHandlerType::space_dimension>
+      const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                        DoFHandlerType::space_dimension>
         *dist_tria = dynamic_cast<
-          const parallel::Triangulation<DoFHandlerType::dimension,
-                                        DoFHandlerType::space_dimension> *>(
+          const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                            DoFHandlerType::space_dimension> *>(
           &(dh.get_triangulation()));
       MPI_Comm communicator =
         dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
@@ -210,11 +244,11 @@ namespace internal
            const SparsityPatternType &sp,
            const DoFHandlerType &     dh)
     {
-      const parallel::Triangulation<DoFHandlerType::dimension,
-                                    DoFHandlerType::space_dimension>
+      const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                        DoFHandlerType::space_dimension>
         *dist_tria = dynamic_cast<
-          const parallel::Triangulation<DoFHandlerType::dimension,
-                                        DoFHandlerType::space_dimension> *>(
+          const parallel::TriangulationBase<DoFHandlerType::dimension,
+                                            DoFHandlerType::space_dimension> *>(
           &(dh.get_triangulation()));
       MPI_Comm communicator =
         dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
@@ -507,49 +541,44 @@ protected:
    * Mapping for the copy_to_mg() and copy_from_mg() functions. Here only
    * index pairs locally owned is stored.
    *
-   * The data is organized as follows: one vector per level. Each element of
-   * these vectors contains first the global index, then the level index.
+   * The data is organized as follows: one table per level. This table has two
+   * rows. The first row contains the global index, the second one the level
+   * index.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>> copy_indices;
-
+  std::vector<Table<2, unsigned int>> copy_indices;
 
   /**
    * Same as above, but used to transfer solution vectors.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    solution_copy_indices;
+  std::vector<Table<2, unsigned int>> solution_copy_indices;
 
   /**
    * Additional degrees of freedom for the copy_to_mg() function. These are
    * the ones where the global degree of freedom is locally owned and the
    * level degree of freedom is not.
    *
-   * Organization of the data is like for @p copy_indices_mine.
+   * Organization of the data is like for @p copy_indices.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    copy_indices_global_mine;
+  std::vector<Table<2, unsigned int>> copy_indices_global_mine;
 
   /**
    * Same as above, but used to transfer solution vectors.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    solution_copy_indices_global_mine;
+  std::vector<Table<2, unsigned int>> solution_copy_indices_global_mine;
 
   /**
    * Additional degrees of freedom for the copy_from_mg() function. These are
    * the ones where the level degree of freedom is locally owned and the
    * global degree of freedom is not.
    *
-   * Organization of the data is like for @p copy_indices_mine.
+   * Organization of the data is like for @p copy_indices.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    copy_indices_level_mine;
+  std::vector<Table<2, unsigned int>> copy_indices_level_mine;
 
   /**
    * Same as above, but used to transfer solution vectors.
    */
-  std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    solution_copy_indices_level_mine;
+  std::vector<Table<2, unsigned int>> solution_copy_indices_level_mine;
 
   /**
    * This variable stores whether the copy operation from the global to the

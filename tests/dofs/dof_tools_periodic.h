@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -44,9 +44,9 @@
 
 // forward declaration of the function that must be provided in the
 // .cc files
-template <int dim>
+template <typename DoFHandlerType>
 void
-check_this(const DoFHandler<dim> &dof_handler);
+check_this(const DoFHandlerType &dof_handler);
 
 
 

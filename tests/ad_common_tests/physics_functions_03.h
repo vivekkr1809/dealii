@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -48,12 +48,12 @@ test_physics()
   Tensor<2, dim, ADNumberType>       grad_u;
   const Tensor<2, dim, ADNumberType> F =
     Physics::Elasticity::Kinematics::F(grad_u);
-  const Tensor<1, dim, ADNumberType>          N;
-  const Tensor<1, dim, ADNumberType>          V;
-  const Tensor<2, dim, ADNumberType>          T1;
-  const SymmetricTensor<2, dim, ADNumberType> T2;
-  const Tensor<4, dim, ADNumberType>          TT1;
-  const SymmetricTensor<4, dim, ADNumberType> TT2;
+  const Tensor<1, dim, ADNumberType>          N{};
+  const Tensor<1, dim, ADNumberType>          V{};
+  const Tensor<2, dim, ADNumberType>          T1{};
+  const SymmetricTensor<2, dim, ADNumberType> T2{};
+  const Tensor<4, dim, ADNumberType>          TT1{};
+  const SymmetricTensor<4, dim, ADNumberType> TT2{};
 
   const Tensor<1, dim, ADNumberType> ddet_F_dC =
     Physics::Transformations::nansons_formula(N, F);

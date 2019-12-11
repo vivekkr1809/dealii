@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -63,7 +63,7 @@ check()
 
       DoFHandler<dim> mgdof(tr);
       mgdof.distribute_dofs(fe);
-      mgdof.distribute_mg_dofs(fe);
+      mgdof.distribute_mg_dofs();
 
       MGConstrainedDoFs                                   mg_constrained_dofs;
       Functions::ZeroFunction<dim>                        zero_function;

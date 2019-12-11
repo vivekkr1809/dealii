@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -143,16 +143,16 @@ MappingC1<2>::MappingC1Generic::add_line_support_points(
                                                Point<2>(t2, s_t2)};
           // then transform these points to real coordinates by rotating,
           // scaling and shifting
-          for (unsigned int i = 0; i < 2; ++i)
+          for (const auto &new_unit_point : new_unit_points)
             {
-              Point<2> real_point(std::cos(alpha) * new_unit_points[i][0] -
-                                    std::sin(alpha) * new_unit_points[i][1],
-                                  std::sin(alpha) * new_unit_points[i][0] +
-                                    std::cos(alpha) * new_unit_points[i][1]);
+              Point<2> real_point(std::cos(alpha) * new_unit_point[0] -
+                                    std::sin(alpha) * new_unit_point[1],
+                                  std::sin(alpha) * new_unit_point[0] +
+                                    std::cos(alpha) * new_unit_point[1]);
               real_point *= h;
               real_point += line->vertex(0);
               a.push_back(real_point);
-            };
+            }
         }
       else
         // not at boundary, so just use scaled Gauss-Lobatto points (i.e., use

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -34,27 +34,31 @@
 #      include <Epetra_SerialComm.h>
 #    endif
 #    include <Epetra_Map.h>
+#    include <Epetra_MultiVector.h>
 #    include <Epetra_RowMatrix.h>
 #    include <Epetra_Vector.h>
 #    include <Teuchos_ParameterList.hpp>
 
 // forward declarations
+#    ifndef DOXYGEN
 class Ifpack_Preconditioner;
 class Ifpack_Chebyshev;
 namespace ML_Epetra
 {
   class MultiLevelPreconditioner;
 }
-
+#    endif
 
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations
+#    ifndef DOXYGEN
 template <typename number>
 class SparseMatrix;
 template <typename number>
 class Vector;
 class SparsityPattern;
+#    endif
 
 /*! @addtogroup TrilinosWrappers
  *@{
@@ -232,7 +236,7 @@ namespace TrilinosWrappers
      * This is a pointer to the preconditioner object that is used when
      * applying the preconditioner.
      */
-    std::shared_ptr<Epetra_Operator> preconditioner;
+    Teuchos::RCP<Epetra_Operator> preconditioner;
 
     /**
      * Internal communication pattern in case the matrix needs to be copied
@@ -1368,6 +1372,25 @@ namespace TrilinosWrappers
       /**
        * Constructor. By default, we pretend to work on elliptic problems with
        * linear finite elements on a scalar equation.
+       *
+       * Making use of the DoFTools::extract_constant_modes() function, the
+       * @p constant_modes vector can be initialized for a given field in the
+       * following manner:
+       *
+       * @code
+       *   #include <deal.II/dofs/dof_tools.h>
+       *   ...
+       *
+       *   DoFHandlerType<...> dof_handler;
+       *   FEValuesExtractors::Type... field_extractor;
+       *   ...
+       *
+       *   TrilinosWrappers::PreconditionAMG::AdditionalData data;
+       *   DoFTools::extract_constant_modes(
+       *     dof_handler,
+       *     dof_handler.get_fe_collection().component_mask(field_extractor),
+       *     data.constant_modes );
+       * @endcode
        */
       AdditionalData(const bool         elliptic              = true,
                      const bool         higher_order_elements = false,
@@ -1381,6 +1404,77 @@ namespace TrilinosWrappers
                      const bool         output_details   = false,
                      const char *       smoother_type    = "Chebyshev",
                      const char *       coarse_type      = "Amesos-KLU");
+
+      /**
+       * Fill in a @p parameter_list that can be used to initialize the
+       * AMG preconditioner.
+       *
+       * The @p matrix is used in conjunction with the @p constant_modes to
+       * configure the null space settings for the preconditioner.
+       * The @p distributed_constant_modes are initialized by this function, and
+       * must remain in scope until PreconditionAMG::initialize() has been
+       * called.
+       *
+       * @note The set parameters reflect the current settings in this
+       * object, with various options being set both directly though the state
+       * of the member variables (e.g. the "smoother: type") as well as
+       * indirectly (e.g. the "aggregation: type"). If you wish to have
+       * fine-grained control over the configuration of the AMG preconditioner,
+       * then you can create the parameter list using this function (which
+       * conveniently sets the null space of the operator), change the relevant
+       * settings, and use the amended parameters list as an argument to
+       * PreconditionAMG::initialize(), instead of the AdditionalData object
+       * itself.
+       *
+       * See the documentation for the
+       * <a
+       * href="https://trilinos.org/docs/dev/packages/ml/doc/html/index.html">
+       * Trilinos ML package</a> for details on what options are available for
+       * modification.
+       *
+       * @note Any user-defined parameters that are not in conflict with those
+       * set by this data structure will be retained.
+       */
+      void
+      set_parameters(
+        Teuchos::ParameterList &             parameter_list,
+        std::unique_ptr<Epetra_MultiVector> &distributed_constant_modes,
+        const Epetra_RowMatrix &             matrix) const;
+
+      /**
+       * Fill in a parameter list that can be used to initialize the
+       * AMG preconditioner.
+       *
+       * @note Any user-defined parameters that are not in conflict with those
+       * set by this data structure will be retained.
+       */
+      void
+      set_parameters(
+        Teuchos::ParameterList &             parameter_list,
+        std::unique_ptr<Epetra_MultiVector> &distributed_constant_modes,
+        const SparseMatrix &                 matrix) const;
+
+      /**
+       * Configure the null space setting in the @p parameter_list for
+       * the input @p matrix based on the state of the @p constant_modes
+       * variable.
+       */
+      void
+      set_operator_null_space(
+        Teuchos::ParameterList &             parameter_list,
+        std::unique_ptr<Epetra_MultiVector> &distributed_constant_modes,
+        const Epetra_RowMatrix &             matrix) const;
+
+      /**
+       * Configure the null space setting in the @p parameter_list for
+       * the input @p matrix based on the state of the @p constant_modes
+       * variable.
+       */
+      void
+      set_operator_null_space(
+        Teuchos::ParameterList &             parameter_list,
+        std::unique_ptr<Epetra_MultiVector> &distributed_constant_modes,
+        const SparseMatrix &                 matrix) const;
 
       /**
        * Determines whether the AMG preconditioner should be optimized for
@@ -1783,7 +1877,7 @@ namespace TrilinosWrappers
     /**
      * Destructor.
      */
-    ~PreconditionAMGMueLu() override;
+    virtual ~PreconditionAMGMueLu() override = default;
 
     /**
      * Let Trilinos compute a multilevel hierarchy for the solution of a
@@ -1976,9 +2070,11 @@ namespace TrilinosWrappers
   inline void
   PreconditionBase::vmult(MPI::Vector &dst, const MPI::Vector &src) const
   {
-    Assert(dst.vector_partitioner().SameAs(preconditioner->OperatorRangeMap()),
+    Assert(dst.trilinos_partitioner().SameAs(
+             preconditioner->OperatorRangeMap()),
            ExcNonMatchingMaps("dst"));
-    Assert(src.vector_partitioner().SameAs(preconditioner->OperatorDomainMap()),
+    Assert(src.trilinos_partitioner().SameAs(
+             preconditioner->OperatorDomainMap()),
            ExcNonMatchingMaps("src"));
 
     const int ierr = preconditioner->ApplyInverse(src.trilinos_vector(),
@@ -1989,9 +2085,11 @@ namespace TrilinosWrappers
   inline void
   PreconditionBase::Tvmult(MPI::Vector &dst, const MPI::Vector &src) const
   {
-    Assert(dst.vector_partitioner().SameAs(preconditioner->OperatorRangeMap()),
+    Assert(dst.trilinos_partitioner().SameAs(
+             preconditioner->OperatorRangeMap()),
            ExcNonMatchingMaps("dst"));
-    Assert(src.vector_partitioner().SameAs(preconditioner->OperatorDomainMap()),
+    Assert(src.trilinos_partitioner().SameAs(
+             preconditioner->OperatorDomainMap()),
            ExcNonMatchingMaps("src"));
 
     preconditioner->SetUseTranspose(true);
@@ -2015,9 +2113,9 @@ namespace TrilinosWrappers
   PreconditionBase::vmult(dealii::Vector<double> &      dst,
                           const dealii::Vector<double> &src) const
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(dst.size()),
+    AssertDimension(dst.size(),
                     preconditioner->OperatorDomainMap().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(src.size()),
+    AssertDimension(src.size(),
                     preconditioner->OperatorRangeMap().NumMyElements());
     Epetra_Vector tril_dst(View,
                            preconditioner->OperatorDomainMap(),
@@ -2035,9 +2133,9 @@ namespace TrilinosWrappers
   PreconditionBase::Tvmult(dealii::Vector<double> &      dst,
                            const dealii::Vector<double> &src) const
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(dst.size()),
+    AssertDimension(dst.size(),
                     preconditioner->OperatorDomainMap().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(src.size()),
+    AssertDimension(src.size(),
                     preconditioner->OperatorRangeMap().NumMyElements());
     Epetra_Vector tril_dst(View,
                            preconditioner->OperatorDomainMap(),
@@ -2059,11 +2157,9 @@ namespace TrilinosWrappers
     LinearAlgebra::distributed::Vector<double> &      dst,
     const LinearAlgebra::distributed::Vector<double> &src) const
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      dst.local_size()),
+    AssertDimension(dst.local_size(),
                     preconditioner->OperatorDomainMap().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      src.local_size()),
+    AssertDimension(src.local_size(),
                     preconditioner->OperatorRangeMap().NumMyElements());
     Epetra_Vector tril_dst(View,
                            preconditioner->OperatorDomainMap(),
@@ -2081,11 +2177,9 @@ namespace TrilinosWrappers
     LinearAlgebra::distributed::Vector<double> &      dst,
     const LinearAlgebra::distributed::Vector<double> &src) const
   {
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      dst.local_size()),
+    AssertDimension(dst.local_size(),
                     preconditioner->OperatorDomainMap().NumMyElements());
-    AssertDimension(static_cast<TrilinosWrappers::types::int_type>(
-                      src.local_size()),
+    AssertDimension(src.local_size(),
                     preconditioner->OperatorRangeMap().NumMyElements());
     Epetra_Vector tril_dst(View,
                            preconditioner->OperatorDomainMap(),

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,6 +33,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class Triangulation;
 template <typename Accessor>
@@ -44,7 +46,7 @@ class TriaActiveIterator;
 
 template <int dim, int spacedim>
 class Manifold;
-
+#endif
 
 namespace internal
 {
@@ -310,6 +312,18 @@ public:
    */
   static const unsigned int structure_dimension = structdim;
 
+  /**
+   * Copy operator. These operators are usually used in a context like
+   * <tt>iterator a,b; *a=*b;</tt>. Presumably, the intent here is to copy the
+   * object pointed to
+   * by @p b to the object pointed to by @p a. However, the result of
+   * dereferencing an iterator is not an object but an accessor; consequently,
+   * this operation is not useful for iterators on triangulations.
+   * Consequently, this operator is declared as deleted and can not be used.
+   */
+  void
+  operator=(const TriaAccessorBase *) = delete;
+
 protected:
   /**
    * Declare the data type that this accessor class expects to get passed from
@@ -332,18 +346,6 @@ protected:
   TriaAccessorBase(const TriaAccessorBase &);
 
   /**
-   * Copy operator. These operators are usually used in a context like
-   * <tt>iterator a,b; *a=*b;</tt>. Presumably, the intent here is to copy the
-   * object pointed to
-   * by @p b to the object pointed to by @p a. However, the result of
-   * dereferencing an iterator is not an object but an accessor; consequently,
-   * this operation is not useful for iterators on triangulations.
-   * Consequently, this operator is declared as deleted and can not be used.
-   */
-  void
-  operator=(const TriaAccessorBase *) = delete;
-
-  /**
    * Copy operator. Since this is only called from iterators, do not return
    * anything, since the iterator will return itself.
    *
@@ -360,10 +362,14 @@ protected:
   operator=(const TriaAccessorBase &);
 
   /**
-   * Ordering of accessors. If #structure_dimension is less than #dimension,
-   * we simply compare the index of such an object. If #structure_dimension
-   * equals #dimension, we compare the level() first, and the index() only if
-   * levels are equal.
+   * Comparison operator for accessors. This operator is used when comparing
+   * iterators into objects of a triangulation, for example when putting
+   * them into a `std::map`.
+   *
+   * If #structure_dimension is less than #dimension, we simply compare the
+   * index of such an object because faces and edges do not have levels. If
+   * #structure_dimension equals #dimension, we compare the level first, and
+   * the index only if levels are equal.
    */
   bool
   operator<(const TriaAccessorBase &other) const;
@@ -488,7 +494,7 @@ public:
   state() const;
 
   /**
-   * Return a pointer to the triangulation which the object pointed to by this
+   * Return a reference to the triangulation which the object pointed to by this
    * class belongs to.
    */
   const Triangulation<dim, spacedim> &
@@ -627,6 +633,24 @@ public:
    */
   types::manifold_id
   manifold_id() const;
+
+  /**
+   * Dummy function that always returns numbers::invalid_unsigned_int.
+   */
+  unsigned int
+  user_index() const;
+
+  /**
+   * Dummy function that always throws.
+   */
+  void
+  set_user_index(const unsigned int p) const;
+
+  /**
+   * Dummy function that always throws.
+   */
+  void
+  set_manifold_id(const types::manifold_id) const;
 
   /**
    * Dummy function to extract vertices. Returns the origin.
@@ -957,6 +981,14 @@ public:
    */
   TriaIterator<TriaAccessor<structdim, dim, spacedim>>
   child(const unsigned int i) const;
+
+  /**
+   * Return the child number of @p child on the current cell. This is the
+   * inverse function of TriaAccessor::child().
+   */
+  unsigned int
+  child_iterator_to_index(
+    const TriaIterator<TriaAccessor<structdim, dim, spacedim>> &child) const;
 
   /**
    * Return an iterator to that object that is identical to the ith child for
@@ -1408,6 +1440,11 @@ public:
 
   /**
    * Return the smallest bounding box that encloses the object.
+   *
+   * Notice that this method is not aware of any mapping you may be using to
+   * do your computations. If you are using a mapping object that modifies the
+   * position of the vertices, like MappingQEulerian, or MappingFEField, then
+   * you should call the function Mapping::get_bounding_box() instead.
    */
   BoundingBox<spacedim>
   bounding_box() const;
@@ -1795,6 +1832,13 @@ public:
   index() const;
 
   /**
+   * Return a reference to the triangulation which the object pointed to by this
+   * class belongs to.
+   */
+  const Triangulation<dim, spacedim> &
+  get_triangulation() const;
+
+  /**
    * @name Advancement of iterators
    */
   /**
@@ -2009,6 +2053,12 @@ public:
   max_refinement_depth();
 
   /**
+   * @brief Return an invalid unsigned integer.
+   */
+  static unsigned int
+  child_iterator_to_index(const TriaIterator<TriaAccessor<0, dim, spacedim>> &);
+
+  /**
    * @brief Return an invalid object.
    */
   static TriaIterator<TriaAccessor<0, dim, spacedim>>
@@ -2057,6 +2107,17 @@ protected:
    */
   void
   copy_from(const TriaAccessor &);
+
+  /**
+   * Comparison operator for accessors. This operator is used when comparing
+   * iterators into objects of a triangulation, for example when putting
+   * them into a `std::map`.
+   *
+   * This operator simply compares the global index of the vertex the
+   * current object points to.
+   */
+  bool
+  operator<(const TriaAccessor &other) const;
 
   /**
    * Pointer to the triangulation we operate on.
@@ -2213,6 +2274,13 @@ public:
   index() const;
 
   /**
+   * Return a reference to the triangulation which the object pointed to by this
+   * class belongs to.
+   */
+  const Triangulation<1, spacedim> &
+  get_triangulation() const;
+
+  /**
    * @name Advancement of iterators
    */
   /**
@@ -2242,6 +2310,17 @@ public:
    */
   bool
   operator!=(const TriaAccessor &) const;
+
+  /**
+   * Comparison operator for accessors. This operator is used when comparing
+   * iterators into objects of a triangulation, for example when putting
+   * them into a `std::map`.
+   *
+   * This operator simply compares the global index of the vertex the
+   * current object points to.
+   */
+  bool
+  operator<(const TriaAccessor &other) const;
 
   /**
    * @}
@@ -2431,6 +2510,12 @@ public:
    */
   static unsigned int
   max_refinement_depth();
+
+  /**
+   * @brief Return an invalid unsigned integer.
+   */
+  static unsigned int
+  child_iterator_to_index(const TriaIterator<TriaAccessor<0, 1, spacedim>> &);
 
   /**
    * @brief Return an invalid object
@@ -2669,6 +2754,21 @@ public:
    */
   TriaIterator<TriaAccessor<dim - 1, dim, spacedim>>
   face(const unsigned int i) const;
+
+  /**
+   * Return the face number of @p face on the current cell. This is the
+   * inverse function of TriaAccessor::face().
+   */
+  unsigned int
+  face_iterator_to_index(
+    const TriaIterator<TriaAccessor<dim - 1, dim, spacedim>> &face) const;
+
+  /**
+   * Return an array of iterators to all faces of this cell.
+   */
+  std::array<TriaIterator<TriaAccessor<dim - 1, dim, spacedim>>,
+             GeometryInfo<dim>::faces_per_cell>
+  face_iterators() const;
 
   /**
    * Return the (global) index of the @p ith face of this cell.
@@ -3197,7 +3297,11 @@ public:
 
   /**
    * Get the level subdomain id of this cell. This is used for parallel
-   * multigrid.
+   * multigrid where not only the global mesh (consisting of the active cells)
+   * is partitioned among processors, but also the individual levels of the
+   * hierarchy of recursively refined cells that make up the mesh. In
+   * other words, the level subdomain id is a property that is also defined
+   * for non-active cells if a multigrid hierarchy is used.
    */
   types::subdomain_id
   level_subdomain_id() const;

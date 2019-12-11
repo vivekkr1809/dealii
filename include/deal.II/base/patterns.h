@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -30,11 +30,13 @@
 
 #include <deal.II/fe/component_mask.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #include <boost/archive/basic_archive.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
 #include <boost/property_tree/ptree_serialization.hpp>
 #include <boost/serialization/split_member.hpp>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #include <array>
 #include <deque>
@@ -52,10 +54,12 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations for interfaces and friendship
+#ifndef DOXYGEN
 class LogStream;
 class MultipleParameterLoop;
 template <int dim>
 class FunctionParser;
+#endif
 
 /**
  * Namespace for a few classes that act as patterns for the ParameterHandler
@@ -1435,8 +1439,8 @@ namespace Patterns
                   "are derived from PatternBase");
     static_assert(sizeof...(ps) > 0,
                   "The number of PatternTypes must be greater than zero!");
-    auto pattern_pointers = {(static_cast<const PatternBase *>(&ps))...};
-    for (auto p : pattern_pointers)
+    const auto pattern_pointers = {(static_cast<const PatternBase *>(&ps))...};
+    for (const auto p : pattern_pointers)
       patterns.push_back(p->clone());
   }
 
@@ -1493,21 +1497,38 @@ namespace Patterns
     struct Convert<T,
                    typename std::enable_if<std::is_arithmetic<T>::value>::type>
     {
-      static std::unique_ptr<Patterns::PatternBase>
-      to_pattern()
+      template <typename Dummy = T>
+      static
+        typename std::enable_if<std::is_same<Dummy, T>::value &&
+                                  std::is_same<T, bool>::value,
+                                std::unique_ptr<Patterns::PatternBase>>::type
+        to_pattern()
       {
-        if (std::is_same<T, bool>::value)
-          return std_cxx14::make_unique<Patterns::Bool>();
-        else if (std::is_integral<T>::value)
-          return std_cxx14::make_unique<Patterns::Integer>(
-            std::numeric_limits<T>::min(), std::numeric_limits<T>::max());
-        else if (std::is_floating_point<T>::value)
-          return std_cxx14::make_unique<Patterns::Double>(
-            -std::numeric_limits<T>::max(), std::numeric_limits<T>::max());
+        return std_cxx14::make_unique<Patterns::Bool>();
+      }
 
-        Assert(false, ExcNotImplemented());
-        // the following line should never be invoked
-        return nullptr;
+      template <typename Dummy = T>
+      static
+        typename std::enable_if<std::is_same<Dummy, T>::value &&
+                                  !std::is_same<T, bool>::value &&
+                                  std::is_integral<T>::value,
+                                std::unique_ptr<Patterns::PatternBase>>::type
+        to_pattern()
+      {
+        return std_cxx14::make_unique<Patterns::Integer>(
+          std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
+      }
+
+      template <typename Dummy = T>
+      static
+        typename std::enable_if<std::is_same<Dummy, T>::value &&
+                                  !std::is_same<T, bool>::value &&
+                                  std::is_floating_point<T>::value,
+                                std::unique_ptr<Patterns::PatternBase>>::type
+        to_pattern()
+      {
+        return std_cxx14::make_unique<Patterns::Double>(
+          std::numeric_limits<T>::lowest(), std::numeric_limits<T>::max());
       }
 
       static std::string
@@ -1518,9 +1539,9 @@ namespace Patterns
         std::stringstream str;
         if (std::is_same<T, unsigned char>::value ||
             std::is_same<T, signed char>::value || std::is_same<T, char>::value)
-          str << (int)value;
+          str << static_cast<int>(value);
         else if (std::is_same<T, bool>::value)
-          str << (value ? "true" : "false");
+          str << (static_cast<bool>(value) ? "true" : "false");
         else
           str << value;
         AssertThrow(p->match(str.str()), ExcNoMatch(str.str(), p.get()));
@@ -1568,9 +1589,9 @@ namespace Patterns
 
     namespace internal
     {
-      const std::array<std::string, 4> default_list_separator{
+      constexpr std::array<const char *, 4> default_list_separator{
         {",", ";", "|", "%"}};
-      const std::array<std::string, 4> default_map_separator{
+      constexpr std::array<const char *, 4> default_map_separator{
         {":", "=", "@", "#"}};
 
       // specialize a type for all of the STL containers and maps
@@ -1786,8 +1807,8 @@ namespace Patterns
         std::vector<std::string> vec(t.size());
 
         unsigned int i = 0;
-        for (const auto &ti : t)
-          vec[i++] = Convert<typename T::value_type>::to_string(ti, base_p);
+        for (const auto &entry : t)
+          vec[i++] = Convert<typename T::value_type>::to_string(entry, base_p);
 
         std::string s;
         if (vec.size() > 0)
@@ -2295,15 +2316,15 @@ namespace Patterns
       }
 
     private:
-      template <std::size_t... I>
+      template <std::size_t... U>
       static std::array<std::string, std::tuple_size<T>::value>
       to_string_internal_1(const T &              t,
                            const Patterns::Tuple &pattern,
-                           std_cxx14::index_sequence<I...>)
+                           std_cxx14::index_sequence<U...>)
       {
         std::array<std::string, std::tuple_size<T>::value> a = {
-          {Convert<typename std::tuple_element<I, T>::type>::to_string(
-            std::get<I>(t), pattern.get_pattern(I).clone())...}};
+          {Convert<typename std::tuple_element<U, T>::type>::to_string(
+            std::get<U>(t), pattern.get_pattern(U).clone())...}};
         return a;
       }
 
@@ -2316,15 +2337,15 @@ namespace Patterns
           std_cxx14::make_index_sequence<std::tuple_size<T>::value>{});
       }
 
-      template <std::size_t... I>
+      template <std::size_t... U>
       static T
       to_value_internal_1(const std::vector<std::string> &s,
                           const Patterns::Tuple &         pattern,
-                          std_cxx14::index_sequence<I...>)
+                          std_cxx14::index_sequence<U...>)
       {
         return std::make_tuple(
-          Convert<typename std::tuple_element<I, T>::type>::to_value(
-            s[I], pattern.get_pattern(I).clone())...);
+          Convert<typename std::tuple_element<U, T>::type>::to_value(
+            s[U], pattern.get_pattern(U).clone())...);
       }
 
       static T

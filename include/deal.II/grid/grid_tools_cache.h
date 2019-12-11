@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,6 +31,7 @@
 #include <deal.II/grid/tria_iterator.h>
 
 #include <deal.II/numerics/kdtree.h>
+#include <deal.II/numerics/rtree.h>
 
 #include <boost/signals2.hpp>
 
@@ -122,6 +123,22 @@ namespace GridTools
     get_used_vertices() const;
 
     /**
+     * Return the cached RTree object for the vertices, constructed using the
+     * used vertices of the triangulation.
+     */
+    const RTree<std::pair<Point<spacedim>, unsigned int>> &
+    get_used_vertices_rtree() const;
+
+    /**
+     * Return the cached RTree object of the cell bounging boxes, constructed
+     * using the active cell iterators of the stored triangulation.
+     */
+    const RTree<
+      std::pair<BoundingBox<spacedim>,
+                typename Triangulation<dim, spacedim>::active_cell_iterator>> &
+    get_cell_bounding_boxes_rtree() const;
+
+    /**
      * Return a reference to the stored triangulation.
      */
     const Triangulation<dim, spacedim> &
@@ -132,6 +149,33 @@ namespace GridTools
      */
     const Mapping<dim, spacedim> &
     get_mapping() const;
+
+
+    /**
+     * This function returns an object that allows identifying
+     * which process(es) in a parallel computation may own the
+     * cell that surrounds a given point. The elements of this
+     * object -- an Rtree -- are pairs of bounding boxes denoting
+     * areas that cover all or parts of the local portion of a
+     * parallel triangulation, and an unsigned int representing
+     * the process or subdomain that owns these cells.
+     * Given a point on a parallel::TriangulationBase, this tree
+     * allows to identify one, or few candidate processes, for
+     * which the point lies on a locally owned cell.
+     *
+     * Constructing or updating the rtree requires a call to
+     * GridTools::build_global_description_tree(), which exchanges
+     * bounding boxes between all processes using
+     * Utilities::MPI::all_gather(), a collective operation.
+     * Therefore this function must be called by all processes
+     * at the same time.
+     *
+     * While each box may only cover part of a process's locally
+     * owned part of the triangulation, the boxes associated with
+     * each process jointly cover the entire local portion.
+     */
+    const RTree<std::pair<BoundingBox<spacedim>, unsigned int>> &
+    get_covering_rtree() const;
 
 #ifdef DEAL_II_WITH_NANOFLANN
     /**
@@ -174,6 +218,12 @@ namespace GridTools
     mutable std::vector<std::vector<Tensor<1, spacedim>>>
       vertex_to_cell_centers;
 
+    /**
+     * An rtree object covering the whole mesh.
+     */
+    mutable RTree<std::pair<BoundingBox<spacedim>, unsigned int>>
+      covering_rtree;
+
 #ifdef DEAL_II_WITH_NANOFLANN
     /**
      * A KDTree object constructed with the vertices of the triangulation.
@@ -186,6 +236,20 @@ namespace GridTools
      * GridTools::extract_used_vertices().
      */
     mutable std::map<unsigned int, Point<spacedim>> used_vertices;
+
+    /**
+     * Store an RTree object, containing the used vertices of the triangulation.
+     */
+    mutable RTree<std::pair<Point<spacedim>, unsigned int>> used_vertices_rtree;
+
+    /**
+     * Store an RTree object, containing the bounding boxes of the cells of the
+     * triangulation.
+     */
+    mutable RTree<
+      std::pair<BoundingBox<spacedim>,
+                typename Triangulation<dim, spacedim>::active_cell_iterator>>
+      cell_bounding_boxes_rtree;
 
     /**
      * Storage for the status of the triangulation signal.

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,7 +38,9 @@
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 
@@ -273,7 +275,7 @@ namespace DerivativeApproximation
                 fe_values.get_fe().n_components()));
           fe_values.get_function_gradients(solution, values);
           return ProjectedDerivative(values[0][component]);
-        };
+        }
     }
 
 
@@ -476,8 +478,8 @@ namespace DerivativeApproximation
               EE[0]              = am + R * std::cos(theta);
               EE[1] = am + R * std::cos(theta + 2. / 3. * numbers::PI);
               EE[2] = am + R * std::cos(theta + 4. / 3. * numbers::PI);
-            };
-        };
+            }
+        }
 
       return std::max(std::fabs(EE[0]),
                       std::max(std::fabs(EE[1]), std::fabs(EE[2])));
@@ -518,7 +520,7 @@ namespace DerivativeApproximation
           {
             const double s = (d[i][j] + d[j][i]) / 2;
             d[i][j] = d[j][i] = s;
-          };
+          }
     }
 
 
@@ -610,7 +612,7 @@ namespace DerivativeApproximation
                 fe_values.get_fe().n_components()));
           fe_values.get_function_hessians(solution, values);
           return ProjectedDerivative(values[0][component]);
-        };
+        }
     }
 
 
@@ -884,7 +886,7 @@ namespace DerivativeApproximation
           projected_finite_difference /= distance;
 
           projected_derivative += outer_product(y, projected_finite_difference);
-        };
+        }
 
       // can we determine an
       // approximation of the
@@ -1000,19 +1002,17 @@ namespace DerivativeApproximation
       WorkStream::run(
         begin,
         end,
-        static_cast<std::function<void(SynchronousIterators<Iterators> const &,
-                                       Assembler::Scratch const &,
-                                       Assembler::CopyData &)>>(
-          std::bind(&approximate<DerivativeDescription,
-                                 dim,
-                                 DoFHandlerType,
-                                 InputVector,
-                                 spacedim>,
-                    std::placeholders::_1,
-                    std::cref(mapping),
-                    std::cref(dof_handler),
-                    std::cref(solution),
-                    component)),
+        [&mapping, &dof_handler, &solution, component](
+          SynchronousIterators<Iterators> const &cell,
+          Assembler::Scratch const &,
+          Assembler::CopyData &) {
+          approximate<DerivativeDescription,
+                      dim,
+                      DoFHandlerType,
+                      InputVector,
+                      spacedim>(
+            cell, mapping, dof_handler, solution, component);
+        },
         std::function<void(internal::Assembler::CopyData const &)>(),
         internal::Assembler::Scratch(),
         internal::Assembler::CopyData());

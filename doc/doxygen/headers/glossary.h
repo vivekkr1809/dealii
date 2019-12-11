@@ -26,8 +26,9 @@
  * <dl>
  *
  * <dt class="glossary">@anchor GlossActive <b>Active cells</b></dt>
- * <dd>A cell, face or edge is defined as <i>active</i> if it is not
- * refined any further, i.e., if it does not have children. Unless
+ * <dd>A cell, face, or edge is defined as <i>active</i> if it is not
+ * refined any further, i.e., if it does not have children. Once a cell,
+ * face, or edge becomes a parent it is no longer active. Unless
  * working with a multigrid algorithm, active cells are the only
  * ones carrying degrees of freedom.
  * </dd>
@@ -412,6 +413,67 @@
  *   consists of exactly the level-zero cells of a triangulation. (Whether
  *   they are active (i.e., have no children) or have been refined is not
  *   important for this definition.)
+ *
+ *   Most of the triangulation classes in deal.II store the entire coarse
+ *   mesh along with at least some of the refined cells. (Both the
+ *   dealii::Triangulation and parallel::shared::Triangulation classes
+ *   actually store <i>all</i> cells of the entire mesh, whereas some
+ *   other classes such as parallel::distributed::Triangulation only
+ *   store <i>some</i> of the @ref GlossActive "active cells" on
+ *   each process in a parallel computation.) In those cases,
+ *   one can query the triangulation for all coarse mesh
+ *   cells. Other triangulation classes (e.g.,
+ *   parallel::fullydistributed::Triangulation) only store a part
+ *   of the coarse mesh. See also
+ *   @ref GlossCoarseCellId "the concept of coarse cell ids"
+ *   for that case.
+ * </dd>
+ *
+ *
+ * <dt class="glossary">@anchor GlossCoarseCellId <b>Coarse cell ID</b></dt>
+ * <dd>
+ *   Most of the triangulation classes in deal.II, notably
+ *   dealii::Triangulation, parallel::shared::Triangulation, and
+ *   parallel::distributed::Triangulation, store the entire
+ *   @ref GlossCoarseMesh "coarse mesh"
+ *   of a triangulation on each process of a parallel computation. On the
+ *   other hand, this is not the case for other classes, notably for
+ *   parallel::fullydistributed::Triangulation, which is designed for cases
+ *   where even the coarse mesh is too large to be stored on each process
+ *   and needs to be partitioned.
+ *
+ *   In those cases, it is often necessary in algorithms to reference a coarse
+ *   mesh cell uniquely. Because the triangulation object on the current
+ *   process does not actually store the entire coarse mesh, one needs to have
+ *   a globally unique identifier for each coarse mesh cell that is independent
+ *   of the index within level zero of the triangulation stored locally. This
+ *   globally unique ID is called the "coarse cell ID". It can be accessed via
+ *   the function call
+ *   @code
+ *     triangulation.coarse_cell_index_to_coarse_cell_id (coarse_cell->index());
+ *   @endcode
+ *   where `triangulation` is the triangulation to which the iterator
+ *   `coarse_cell` pointing to a cell at level zero belongs. Here,
+ *   `coarse_cell->index()` returns the index of that cell within its
+ *   refinement level (see TriaAccessor::index()). This is a number
+ *   between zero and the number of coarse mesh cells stored on the
+ *   current process in a parallel computation; it uniquely identifies
+ *   a cell on that parallel process, but different parallel processes may
+ *   use that index for different cells located at different coordinates.
+ *
+ *   For those classes that store all coarse mesh cells on each process,
+ *   the Triangulation::coarse_cell_index_to_coarse_cell_id() simply
+ *   returns a permutation of the possible argument values. In the
+ *   simplest cases, such as for a sequential or a parallel shared
+ *   triangulation, the function will in fact simply return the
+ *   value of the argument. For others, such as
+ *   parallel::distributed::Triangulation, the ordering of
+ *   coarse cell IDs is not the same as the ordering of coarse
+ *   cell indices. Finally, for classes such as
+ *   parallel::fullydistributed::Triangulation, the function returns
+ *   the globally unique ID, which is from a larger set of possible
+ *   indices than the indices of the coarse cells actually stored on
+ *   the current process.
  * </dd>
  *
  *
@@ -428,9 +490,10 @@
  *   <li> Most of the functions in the GridGenerator namespace take an optional
  *   argument <code>colorize</code>. This argument controls whether or not the
  *   different parts of the boundary will be assigned different
- *   @ref GlossBoundaryIndicator "boundary indicators". Some functions also assign
- *   different
- *   @ref GlossMaterialId "material indicators" as well.</li>
+ *   @ref GlossBoundaryIndicator "boundary indicators".
+ *   Some functions also assign different
+ *   @ref GlossMaterialId "material indicators"
+ *   as well.</li>
  *   <li> The function GraphColoring::make_graph_coloring() computes a
  *   decomposition of a Triangulation (more exactly, a range of iterators). No
  *   two adjacent cells are given the same color.</li>
@@ -650,8 +713,7 @@
  *
  * <dt class="glossary">@anchor GlossDimension <b>Dimensions @p dim and @p spacedim</b></dt>
  *
- * <dd>
- * Many classes and functions in deal.II have two template parameters,
+ * <dd> Many classes and functions in deal.II have two template parameters,
  * @p dim and @p spacedim. An example is the basic Triangulation class:
  * @code
  *   template <int dim, int spacedim=dim>
@@ -659,19 +721,24 @@
  * @endcode
  * In all of these contexts where you see @p dim and @p spacedim referenced,
  * these arguments have the following meaning:
- * - @p dim denotes the dimensionality of the mesh. For example, a mesh that
- *   consists of line segments is one-dimensional and consequently corresponds
- *   to `dim==1`. A mesh consisting of quadrilaterals then has `dim==2` and a
- *   mesh of hexahedra has `dim==3`.
- * - @p spacedim denotes the dimensionality of the space in which such a mesh
- *   lives. Generally, one-dimensional meshes live in a one-dimensional space,
- *   and similarly for two-dimensional and three-dimensional meshes that
- *   subdivide two- and three-dimensional domains. Consequently, the
- *   @p spacedim template argument has a default equal to @p dim. But this need
+ *
+ * <ul>
+ *   <li> @p dim denotes the dimensionality of the mesh. For example, a mesh
+ *   that consists of line segments is one-dimensional and consequently
+ *   corresponds to `dim==1`. A mesh consisting of quadrilaterals then has
+ *   `dim==2` and a mesh of hexahedra has `dim==3`.</li>
+ *
+ *   <li> @p spacedim denotes the dimensionality of the space in which such a
+ *   mesh lives. Generally, one-dimensional meshes live in a one-dimensional
+ *   space, and similarly for two-dimensional and three-dimensional meshes
+ *   that subdivide two- and three-dimensional domains. Consequently, the @p
+ *   spacedim template argument has a default equal to @p dim. But this need
  *   not be the case: For example, we may want to solve an equation for
  *   sediment transport on the surface of the Earth. In this case, the domain
  *   is the two-dimensional surface of the Earth (`dim==2`) that lives in a
- *   three-dimensional coordinate system (`spacedim==3`).
+ *   three-dimensional coordinate system (`spacedim==3`).</li>
+ * </ul>
+ *
  * More generally, deal.II can be used to solve partial differential
  * equations on <a href="https://en.wikipedia.org/wiki/Manifold">manifolds</a>
  * that are embedded in higher dimensional space. In other words,
@@ -966,6 +1033,31 @@
  * </dd>
  *
  *
+ * <dt class="glossary">@anchor geometry_paper <b>geometry paper</b></dt>
+ * <dd>The "geometry paper" is a paper by L. Heltai, W. Bangerth, M. Kronbichler,
+ * and A. Mola, titled
+ * "Using exact geometry information in finite element computations", that
+ * describes how deal.II describes the geometry of domains. In particular,
+ * it discusses the algorithmic foundations on which the Manifold class
+ * is based, and what kind of information it needs to provide for mesh
+ * refinement, the computation of normal vectors, and the many other places
+ * where geometry enters into finite element computations.
+ *
+ * The paper is currently available on arXiv at https://arxiv.org/abs/1910.09824 .
+ * The full reference for this paper is as follows:
+ * @code{.bib}
+@misc{heltai2019using,
+    title={Using exact geometry information in finite element computations},
+    author={Luca Heltai and Wolfgang Bangerth and Martin Kronbichler and Andrea Mola},
+    year={2019},
+    eprint={1910.09824},
+    archivePrefix={arXiv},
+    primaryClass={math.NA}
+}
+ * @endcode
+ * </dd>
+ *
+ *
  * <dt class="glossary">@anchor GlossGhostCell <b>Ghost cells</b></dt>
  * <dd>
  * If a mesh is distributed across multiple MPI processes using the
@@ -1065,6 +1157,7 @@
  * overview of where the different kinds of vectors are typically
  * used.
  * </dd>
+ *
  *
  * <dt class="glossary">@anchor hp_paper <b>%hp paper</b></dt>
  * <dd>The "hp paper" is a paper by W. Bangerth and O. Kayser-Herold, titled

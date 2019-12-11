@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -26,8 +26,6 @@ SET(_unity_include_src
   chunk_sparsity_pattern.cc
   dynamic_sparsity_pattern.cc
   exceptions.cc
-  full_matrix.cc
-  lapack_full_matrix.cc
   scalapack.cc
   la_vector.cc
   la_parallel_vector.cc
@@ -50,16 +48,27 @@ SET(_unity_include_src
   sparsity_pattern.cc
   sparsity_tools.cc
   swappable_vector.cc
-  tridiagonal_matrix.cc
   vector.cc
   vector_memory.cc
-  vector_view.cc
   )
 
+# make sure that files requiring the LAPACK wrappers are compiled separately.
 SET(_separate_src
+  full_matrix.cc
+  lapack_full_matrix.cc
   sparse_matrix.cc
   sparse_matrix_inst2.cc
+  tridiagonal_matrix.cc
   )
+
+# Add CUDA wrapper files
+IF(DEAL_II_WITH_CUDA)
+  SET(_separate_src
+    ${_separate_src}
+    vector_memory.cu
+    affine_constraints.cu
+    )
+ENDIF()
 
 SET(_inst
   affine_constraints.inst.in
@@ -81,7 +90,6 @@ SET(_inst
   vector.inst.in
   vector_memory.inst.in
   vector_memory_release.inst.in
-  vector_view.inst.in
   )
 
 
@@ -114,6 +122,13 @@ IF(DEAL_II_WITH_SLEPC)
   )
 ENDIF()
 
+IF(DEAL_II_WITH_GINKGO)
+  SET(_unity_include_src
+    ${_unity_include_src}
+    ginkgo_solver.cc
+  )
+ENDIF()
+
 # Also add Trilinos wrapper files
 IF(DEAL_II_WITH_TRILINOS)
   SET(_unity_include_src
@@ -127,6 +142,8 @@ IF(DEAL_II_WITH_TRILINOS)
     trilinos_solver.cc
     trilinos_sparse_matrix.cc
     trilinos_sparsity_pattern.cc
+    trilinos_tpetra_communication_pattern.cc
+    trilinos_tpetra_vector.cc
     trilinos_vector.cc
   )
 

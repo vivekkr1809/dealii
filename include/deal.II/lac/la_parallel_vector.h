@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,6 +33,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 namespace LinearAlgebra
 {
   /**
@@ -43,15 +45,12 @@ namespace LinearAlgebra
     template <typename>
     class BlockVector;
   }
-} // namespace LinearAlgebra
 
-namespace LinearAlgebra
-{
   template <typename>
   class ReadWriteVector;
-}
+} // namespace LinearAlgebra
 
-#ifdef DEAL_II_WITH_PETSC
+#  ifdef DEAL_II_WITH_PETSC
 namespace PETScWrappers
 {
   namespace MPI
@@ -59,9 +58,9 @@ namespace PETScWrappers
     class Vector;
   }
 } // namespace PETScWrappers
-#endif
+#  endif
 
-#ifdef DEAL_II_WITH_TRILINOS
+#  ifdef DEAL_II_WITH_TRILINOS
 namespace TrilinosWrappers
 {
   namespace MPI
@@ -69,6 +68,7 @@ namespace TrilinosWrappers
     class Vector;
   }
 } // namespace TrilinosWrappers
+#  endif
 #endif
 
 namespace LinearAlgebra
@@ -186,22 +186,23 @@ namespace LinearAlgebra
      * CPU. When the memory space is CUDA, all the data is allocated on the GPU.
      * The operations on the vector are performed on the chosen memory space. *
      * From the host, there are two methods to access the elements of the Vector
-     * when using the CUDA memory space: <ul>
-     * <li> use get_values()
-     * <code>
+     * when using the CUDA memory space:
+     * <ul>
+     * <li> use get_values():
+     * @code
      * Vector<double, MemorySpace::CUDA> vector(local_range, comm);
      * double* vector_dev = vector.get_values();
      * std::vector<double> vector_host(local_range.n_elements(), 1.);
      * Utilities::CUDA::copy_to_dev(vector_host, vector_dev);
-     * </code>
-     * <li> use import()
-     * <code>
+     * @endcode
+     * <li> use import():
+     * @code
      * Vector<double, MemorySpace::CUDA> vector(local_range, comm);
      * ReadWriteVector<double> rw_vector(local_range);
      * for (auto & val : rw_vector)
      *   val = 1.;
      * vector.import(rw_vector, VectorOperations::insert);
-     * </code>
+     * @endcode
      * </ul>
      * The import method is a lot safer and will perform an MPI communication if
      * necessary. Since an MPI communication may be performed, import needs to
@@ -253,6 +254,9 @@ namespace LinearAlgebra
 
       /**
        * Copy constructor. Uses the parallel partitioning of @p in_vector.
+       * It should be noted that this constructor automatically sets ghost
+       * values to zero. Call @p update_ghost_values() directly following
+       * construction if a ghosted vector is required.
        */
       Vector(const Vector<Number, MemorySpace> &in_vector);
 
@@ -519,7 +523,8 @@ namespace LinearAlgebra
        * In case this function is called for more than one vector before @p
        * compress_finish() is invoked, it is mandatory to specify a unique
        * communication channel to each such call, in order to avoid several
-       * messages with the same ID that will corrupt this operation.
+       * messages with the same ID that will corrupt this operation. Any
+       * communication channel less than 100 is a valid value.
        */
       void
       compress_start(
@@ -557,6 +562,7 @@ namespace LinearAlgebra
        * update_ghost_values_finish() is invoked, it is mandatory to specify a
        * unique communication channel to each such call, in order to avoid
        * several messages with the same ID that will corrupt this operation.
+       * Any communication channel less than 100 is a valid value.
        */
       void
       update_ghost_values_start(
@@ -615,6 +621,21 @@ namespace LinearAlgebra
       template <typename Number2>
       void
       copy_locally_owned_data_from(const Vector<Number2, MemorySpace> &src);
+
+      /**
+       * Import all the elements present in the distributed vector @p src.
+       * VectorOperation::values @p operation is used to decide if the elements
+       * in @p V should be added to the current vector or replace the current
+       * elements. The main purpose of this function is to get data from one
+       * memory space, e.g. CUDA, to the other, e.g. the Host.
+       *
+       * @note The partitioners of the two distributed vectors need to be the
+       * same as no MPI communication is performed.
+       */
+      template <typename MemorySpace2>
+      void
+      import(const Vector<Number, MemorySpace2> &src,
+             VectorOperation::values             operation);
 
       //@}
 
@@ -1192,6 +1213,13 @@ namespace LinearAlgebra
       bool
       partitioners_are_globally_compatible(
         const Utilities::MPI::Partitioner &part) const;
+
+      /**
+       * Change the ghost state of this vector to @p ghosted.
+       */
+      void
+      set_ghost_state(const bool ghosted) const;
+
       //@}
 
       /**
@@ -1330,7 +1358,8 @@ namespace LinearAlgebra
        * in @p compress() or sent from this processor in
        * @p update_ghost_values.
        */
-      mutable std::unique_ptr<Number[]> import_data;
+      mutable ::dealii::MemorySpace::MemorySpaceData<Number, MemorySpace>
+        import_data;
 
       /**
        * Stores whether the vector currently allows for reading ghost elements
@@ -1379,15 +1408,11 @@ namespace LinearAlgebra
       void
       resize_val(const size_type new_allocated_size);
 
-      /*
-       * Make all other vector types friends.
-       */
+      // Make all other vector types friends.
       template <typename Number2, typename MemorySpace2>
       friend class Vector;
 
-      /**
-       * Make BlockVector type friends.
-       */
+      // Make BlockVector type friends.
       template <typename Number2>
       friend class BlockVector;
     };
@@ -1809,6 +1834,15 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace>::get_partitioner() const
     {
       return partitioner;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    inline void
+    Vector<Number, MemorySpace>::set_ghost_state(const bool ghosted) const
+    {
+      vector_is_ghosted = ghosted;
     }
 
 #endif

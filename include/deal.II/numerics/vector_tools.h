@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,6 +21,7 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/function.h>
+#include <deal.II/base/patterns.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/quadrature_lib.h>
 
@@ -37,13 +38,15 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <int dim, typename RangeNumberType>
 class Function;
 template <int dim>
 class Quadrature;
 template <int dim>
 class QGauss;
-template <int dim, typename number>
+template <int dim, typename number, typename VectorizedArrayType>
 class MatrixFree;
 
 template <typename number>
@@ -61,7 +64,7 @@ namespace hp
 }
 template <typename number>
 class AffineConstraints;
-
+#endif
 
 // TODO: Move documentation of functions to the functions!
 
@@ -636,10 +639,11 @@ namespace VectorTools
 
   /**
    * Interpolate different finite element spaces. The interpolation of vector
-   * @p data_1 is executed from the FE space represented by @p dof_1 to the
-   * vector @p data_2 on FE space @p dof_2. The interpolation on each cell is
-   * represented by the matrix @p transfer. Curved boundaries are neglected so
-   * far.
+   * @p data_1 (which is assumed to be ghosted, see @ref GlossGhostedVector)
+   * is executed from the FE space represented by @p dof_1
+   * to the vector @p data_2 on FE space @p dof_2.
+   * The interpolation on each cell is represented by the matrix @p transfer.
+   * Curved boundaries are neglected so far.
    *
    * Note that you may have to call <tt>hanging_nodes.distribute(data_2)</tt>
    * with the hanging nodes from space @p dof_2 afterwards, to make the result
@@ -660,35 +664,37 @@ namespace VectorTools
 
   /**
    * This function is a kind of generalization or modification of the very
-   * first interpolate() function in the series. It interpolations a set of
-   * functions onto the finite element space given by the DoFHandler argument
-   * where the determination which function to use is made based on the
-   * material id (see
+   * first interpolate() function in the series. It interpolates a set of
+   * functions onto the finite element space defined by the DoFHandler argument,
+   * where the determination which function to use on each cell is made
+   * based on the material id (see
    * @ref GlossMaterialId)
    * of each cell.
    *
-   * @param mapping        - The mapping to use to determine the location of
-   * support points at which the functions are to be evaluated.
-   * @param dof_handler    - DoFHandler initialized with Triangulation and
-   * FiniteElement objects,
-   * @param function_map   - std::map reflecting the correspondence between
-   * material ids and functions,
-   * @param dst            - global FE vector at the support points,
-   * @param component_mask - mask of components that shall be interpolated
+   * @param[in] mapping        The mapping to use to determine the location of
+   *   support points at which the functions are to be evaluated.
+   * @param[in] dof_handler    DoFHandler initialized with Triangulation and
+   *   FiniteElement objects and that defines the finite element space.
+   * @param[in] function_map   A std::map reflecting the correspondence between
+   *   material ids on those cells on which something should be interpolated,
+   *   and the functions to be interpolated onto the finite element space.
+   * @param[out] dst           The global finie element vector holding the
+   *   output of the interpolated values.
+   * @param[in] component_mask A mask of components that shall be interpolated.
    *
-   * @note If a material id of some group of cells is missed in @p
-   * function_map, then @p dst will not be updated in the respective degrees
-   * of freedom of the output vector For example, if @p dst was successfully
-   * initialized to capture the degrees of freedom of the @p dof_handler of
-   * the problem with all zeros in it, then those zeros which correspond to
-   * the missed material ids will still remain in @p dst even after calling
+   * @note If the algorithm encounters a cell whose material id is not listed
+   * in the given @p function_map, then @p dst will not be updated in the
+   * respective degrees of freedom of the output vector. For example, if
+   * @p dst was initialized to zero, then those zeros which correspond to
+   * the missed material ids will still remain in @p dst after calling
    * this function.
    *
    * @note Degrees of freedom located on faces between cells of different
    * material ids will get their value by that cell which was called last in
-   * the respective loop over cells implemented in this function. Since this
-   * process is kind of arbitrary, you cannot control it. However, if you want
-   * to have control over the order in which cells are visited, let us take a
+   * the respective loop over cells implemented in this function. Since the
+   * order of cells is somewhat arbitrary, you cannot control it. However, if
+   * you want to have control over the order in which cells are visited, let us
+   * take a
    * look at the following example: Let @p u be a variable of interest which
    * is approximated by some CG finite element. Let @p 0, @p 1 and @p 2 be
    * material ids of cells on the triangulation. Let 0: 0.0, 1: 1.0, 2: 2.0 be
@@ -737,7 +743,7 @@ namespace VectorTools
    * yourself by calling the @p AffineConstraints::distribute function of your
    * hanging node constraints object.
    *
-   * @note: This function works with parallel::distributed::Triangulation, but
+   * @note This function works with parallel::distributed::Triangulation, but
    * only if the parallel partitioning is the same for both meshes (see the
    * parallel::distributed::Triangulation<dim>::no_automatic_repartitioning
    * flag).
@@ -796,12 +802,35 @@ namespace VectorTools
     VectorType &                                              u2);
 
   /**
-   * Compute the projection of @p function to the finite element space.
+   * Compute the projection of @p function to the finite element space. In other
+   * words, given a function $f(\mathbf x)$, the current function computes a
+   * finite element function $f_h(\mathbf x)=\sum_j F_j \varphi_j(\mathbf x)$
+   * characterized by the (output) vector of nodal values $F$ that satisfies
+   * the equation
+   * @f{align*}{
+   *   (\varphi_i, f_h)_\Omega = (\varphi_i,f)_\Omega
+   * @f}
+   * for all test functions $\varphi_i$. This requires solving a linear system
+   * involving the mass matrix since the equation above is equivalent to
+   * the linear system
+   * @f{align*}{
+   *   \sum_j (\varphi_i, \varphi_j)_\Omega F_j = (\varphi_i,f)_\Omega
+   * @f}
+   * which can also be written as $MF = \Phi$ with
+   * $M_{ij} = (\varphi_i, \varphi_j)_\Omega$ and
+   * $\Phi_i = (\varphi_i,f)_\Omega$.
    *
-   * By default, projection to the boundary and enforcement of zero boundary
-   * values are disabled. The ordering of arguments to this function is such
-   * that you need not give a second quadrature formula if you don't want to
-   * project to the boundary first, but that you must if you want to do so.
+   * By default, no boundary values for $f_h$ are needed nor
+   * imposed, but there are optional parameters to this function that allow
+   * imposing either zero boundary values or, in a first step, to project
+   * the boundary values of $f$ onto the finite element space on the boundary
+   * of the mesh in a similar way to above, and then using these values as the
+   * imposed boundary values for $f_h$. The ordering of arguments to this
+   * function is such that you need not give a second quadrature formula (of
+   * type `Quadrature<dim-1>` and used for the computation of the matrix and
+   * right hand side for the projection of boundary values) if you
+   * don't want to project to the boundary first, but that you must if you want
+   * to do so.
    *
    * A MatrixFree implementation is used if the following conditions are met:
    * - @p enforce_zero_boundary is false,
@@ -812,16 +841,22 @@ namespace VectorTools
    * - dim==spacedim
    *
    * In this case, this function performs numerical quadrature using the given
-   * quadrature formula for integration of the provided function while a
+   * quadrature formula for integration of the right hand side $\Phi_i$ while a
    * QGauss(fe_degree+2) object is used for the mass operator. You should
-   * therefore make sure that the given quadrature formula is sufficient for
-   * creating the right-hand side.
+   * therefore make sure that the given quadrature formula is sufficiently
+   * accurate for creating the right-hand side.
    *
    * Otherwise, only serial Triangulations are supported and the mass matrix
-   * is assembled exactly using MatrixTools::create_mass_matrix and the same
-   * quadrature rule as for the right-hand side.
+   * is assembled using MatrixTools::create_mass_matrix. The given
+   * quadrature rule is then used for both the matrix and the right-hand side.
    * You should therefore make sure that the given quadrature formula is also
-   * sufficient for creating the mass matrix.
+   * sufficient for creating the mass matrix. In particular, the degree of the
+   * quadrature formula must be sufficiently high to ensure that the mass
+   * matrix is invertible. For example, if you are using a FE_Q(k) element,
+   * then the integrand of the matrix entries $M_{ij}$ is of polynomial
+   * degree $2k$ in each variable, and you need a Gauss quadrature formula
+   * with $k+1$ points in each coordinate direction to ensure that $M$
+   * is invertible.
    *
    * See the general documentation of this namespace for further information.
    *
@@ -975,15 +1010,18 @@ namespace VectorTools
    */
   template <int dim, typename VectorType>
   void
-  project(std::shared_ptr<
-            const MatrixFree<dim, typename VectorType::value_type>> data,
-          const AffineConstraints<typename VectorType::value_type> &constraints,
-          const unsigned int      n_q_points_1d,
-          const std::function<VectorizedArray<typename VectorType::value_type>(
-            const unsigned int,
-            const unsigned int)> &func,
-          VectorType &            vec_result,
-          const unsigned int      fe_component = 0);
+  project(
+    std::shared_ptr<
+      const MatrixFree<dim,
+                       typename VectorType::value_type,
+                       VectorizedArray<typename VectorType::value_type>>> data,
+    const AffineConstraints<typename VectorType::value_type> &constraints,
+    const unsigned int                                        n_q_points_1d,
+    const std::function<VectorizedArray<typename VectorType::value_type>(
+      const unsigned int,
+      const unsigned int)> &                                  func,
+    VectorType &                                              vec_result,
+    const unsigned int                                        fe_component = 0);
 
   /**
    * Same as above but for <code>n_q_points_1d =
@@ -991,14 +1029,17 @@ namespace VectorTools
    */
   template <int dim, typename VectorType>
   void
-  project(std::shared_ptr<
-            const MatrixFree<dim, typename VectorType::value_type>> data,
-          const AffineConstraints<typename VectorType::value_type> &constraints,
-          const std::function<VectorizedArray<typename VectorType::value_type>(
-            const unsigned int,
-            const unsigned int)> &                                  func,
-          VectorType &                                              vec_result,
-          const unsigned int fe_component = 0);
+  project(
+    std::shared_ptr<
+      const MatrixFree<dim,
+                       typename VectorType::value_type,
+                       VectorizedArray<typename VectorType::value_type>>> data,
+    const AffineConstraints<typename VectorType::value_type> &constraints,
+    const std::function<VectorizedArray<typename VectorType::value_type>(
+      const unsigned int,
+      const unsigned int)> &                                  func,
+    VectorType &                                              vec_result,
+    const unsigned int                                        fe_component = 0);
 
   /**
    * Compute Dirichlet boundary conditions.  This function makes up a map of
@@ -1650,14 +1691,14 @@ namespace VectorTools
    * @see
    * @ref GlossBoundaryIndicator "Glossary entry on boundary indicators"
    */
-  template <int dim>
+  template <int dim, typename number>
   void
   project_boundary_values_curl_conforming_l2(
     const DoFHandler<dim> &      dof_handler,
     const unsigned int           first_vector_component,
-    const Function<dim, double> &boundary_function,
+    const Function<dim, number> &boundary_function,
     const types::boundary_id     boundary_component,
-    AffineConstraints<double> &  constraints,
+    AffineConstraints<number> &  constraints,
     const Mapping<dim> &         mapping = StaticMappingQ1<dim>::mapping);
 
 
@@ -1667,14 +1708,14 @@ namespace VectorTools
    *
    * @ingroup constraints
    */
-  template <int dim>
+  template <int dim, typename number>
   void
   project_boundary_values_curl_conforming_l2(
     const hp::DoFHandler<dim> &            dof_handler,
     const unsigned int                     first_vector_component,
-    const Function<dim, double> &          boundary_function,
+    const Function<dim, number> &          boundary_function,
     const types::boundary_id               boundary_component,
-    AffineConstraints<double> &            constraints,
+    AffineConstraints<number> &            constraints,
     const hp::MappingCollection<dim, dim> &mapping_collection =
       hp::StaticMappingQ1<dim>::mapping_collection);
 
@@ -2132,17 +2173,50 @@ namespace VectorTools
    * vector is deleted. This function is for the case of a scalar finite
    * element.
    *
-   * It is worth noting that delta functions do not exist in reality, and
-   * consequently, using this function does not model any real situation. This
-   * is, because no real object is able to focus an infinite force density
-   * at an infinitesimally small part of the domain. Rather, all real
-   * devices will spread out the force over a finite area. Only if this
-   * area is so small that it cannot be resolved by any mesh does it make
-   * sense to model the situation in a way that uses a delta function with
-   * the same overall force. On the other hand, a situation that is probably
-   * more fruitfully simulated with a delta function is the electric potential
-   * of a point source; in this case, the solution is known to have a
-   * logarithmic singularity (in 2d) or a $\frac{1}{r}$ singularity (in 3d),
+   * This function is typically used in one of these two contexts:
+   * - Let's say you want to solve the same kind of problems many times
+   *   over, with different values for right hand sides or coefficients,
+   *   and then evaluate the solution at the same point every time. You
+   *   could do this by calling VectorTools::point_value() after each
+   *   solve, or you could realize that to evaluate the solution $u_h$
+   *   at a point $p$, you could rearrange operations like this:
+   *   @f{align*}{
+   *     u_h(p) &= \sum_j U_j \varphi_j(p) = \sum_j U_j F_j
+   *       \\   &= U \cdot F
+   *   @f}
+   *   with the vector as defined above. In other words, point evaluation
+   *   can be achieved with just a single vector-vector product, and the
+   *   vector $F$ can be computed once and for all and reused
+   *   for each solve, without having to go through the mesh every time
+   *   to find out which cell (and where in the cell) the point $p$ is
+   *   located.
+   * - This function is also useful if you wanted to compute the Green's
+   *   function for the problem you are solving. This is because the
+   *   Green's function $G(x,p)$ is defined by
+   *   @f{align*}{
+   *     L G(x,p) &= \delta(x-p)
+   *   @f}
+   *   where $L$ is the differential operator of your problem. The discrete
+   *   version then requires computing the right hand side vector
+   *   $F_i = \int_\Omega \varphi_i(x) \delta(x-p)$, which is exactly
+   *   the vector computed by the current function.
+   *
+   * While maybe not relevant for documenting <i>what</i> this
+   * function does, it may be interesting to note that delta functions
+   * do not exist in reality, and consequently, using this function
+   * does not model any real situation. This is, because no real
+   * object is able to focus an infinite force density at an
+   * infinitesimally small part of the domain (rather, all real
+   * devices will spread out the force over a finite area); nor is it
+   * possible to measure values at individual points (but all
+   * measurements will somehow be averaged over small areas). Only if
+   * this area is so small that it cannot be resolved by any mesh does
+   * it make sense to model the situation in a way that uses a delta
+   * function with the same overall force or sensitivity. On the other
+   * hand, a situation that is probably more fruitfully simulated with
+   * a delta function is the electric potential of a point source; in
+   * this case, the solution is known to have a logarithmic
+   * singularity (in 2d) or a $\frac{1}{r}$ singularity (in 3d),
    * neither of which is bounded.
    *
    * Mathematically, the use of delta functions typically leads to exact
@@ -2443,6 +2517,82 @@ namespace VectorTools
    */
   template <int dim, class InVector, class OutVector, int spacedim>
   void
+  integrate_difference(
+    const Mapping<dim, spacedim> &                           mapping,
+    const DoFHandler<dim, spacedim> &                        dof,
+    const InVector &                                         fe_function,
+    const Function<spacedim, typename InVector::value_type> &exact_solution,
+    OutVector &                                              difference,
+    const Quadrature<dim> &                                  q,
+    const NormType &                                         norm,
+    const Function<spacedim, double> *                       weight   = nullptr,
+    const double                                             exponent = 2.);
+
+  /**
+   * Call the integrate_difference() function, see above, with
+   * <tt>mapping=MappingQGeneric@<dim@>(1)</tt>.
+   */
+  template <int dim, class InVector, class OutVector, int spacedim>
+  void
+  integrate_difference(
+    const DoFHandler<dim, spacedim> &                        dof,
+    const InVector &                                         fe_function,
+    const Function<spacedim, typename InVector::value_type> &exact_solution,
+    OutVector &                                              difference,
+    const Quadrature<dim> &                                  q,
+    const NormType &                                         norm,
+    const Function<spacedim, double> *                       weight   = nullptr,
+    const double                                             exponent = 2.);
+
+  /**
+   * Same as above for hp.
+   */
+  template <int dim, class InVector, class OutVector, int spacedim>
+  void
+  integrate_difference(
+    const hp::MappingCollection<dim, spacedim> &             mapping,
+    const hp::DoFHandler<dim, spacedim> &                    dof,
+    const InVector &                                         fe_function,
+    const Function<spacedim, typename InVector::value_type> &exact_solution,
+    OutVector &                                              difference,
+    const hp::QCollection<dim> &                             q,
+    const NormType &                                         norm,
+    const Function<spacedim, double> *                       weight   = nullptr,
+    const double                                             exponent = 2.);
+
+  /**
+   * Call the integrate_difference() function, see above, with
+   * <tt>mapping=MappingQGeneric@<dim@>(1)</tt>.
+   */
+  template <int dim, class InVector, class OutVector, int spacedim>
+  void
+  integrate_difference(
+    const hp::DoFHandler<dim, spacedim> &                    dof,
+    const InVector &                                         fe_function,
+    const Function<spacedim, typename InVector::value_type> &exact_solution,
+    OutVector &                                              difference,
+    const hp::QCollection<dim> &                             q,
+    const NormType &                                         norm,
+    const Function<spacedim, double> *                       weight   = nullptr,
+    const double                                             exponent = 2.);
+
+  /**
+   * Compute the cellwise error of the finite element solution.  Integrate the
+   * difference between a reference function which is given as a continuous
+   * function object, and a finite element function. The result of this
+   * function is the vector @p difference that contains one value per active
+   * cell $K$ of the triangulation. Each of the values of this vector $d$
+   * equals
+   * @f{align*}{
+   * d_K = \| u-u_h \|_X
+   * @f}
+   * where $X$ denotes the norm chosen and $u$ represents the exact solution.
+   *
+   * @deprecated Use integrate_difference(const Mapping<dim, spacedim> &, const DoFHandler<dim, spacedim> &, const InVector &, const Function<spacedim, typename InVector::value_type> &, OutVector &, const Quadrature<dim> &, const NormType &, const Function<spacedim, double> *, const double) instead.
+   */
+  template <int dim, class InVector, class OutVector, int spacedim>
+  DEAL_II_DEPRECATED typename std::enable_if<
+    !std::is_same<typename InVector::value_type, double>::value>::type
   integrate_difference(const Mapping<dim, spacedim> &    mapping,
                        const DoFHandler<dim, spacedim> & dof,
                        const InVector &                  fe_function,
@@ -2456,9 +2606,12 @@ namespace VectorTools
   /**
    * Call the integrate_difference() function, see above, with
    * <tt>mapping=MappingQGeneric@<dim@>(1)</tt>.
+   *
+   * @deprecated Use integrate_difference(const DoFHandler<dim, spacedim> &, const InVector &, const Function<spacedim, typename InVector::value_type> &exact_solution, OutVector &, const Quadrature<dim> &, const NormType &, const Function<spacedim, double> *, const double) instead.
    */
   template <int dim, class InVector, class OutVector, int spacedim>
-  void
+  DEAL_II_DEPRECATED typename std::enable_if<
+    !std::is_same<typename InVector::value_type, double>::value>::type
   integrate_difference(const DoFHandler<dim, spacedim> & dof,
                        const InVector &                  fe_function,
                        const Function<spacedim, double> &exact_solution,
@@ -2470,9 +2623,12 @@ namespace VectorTools
 
   /**
    * Same as above for hp.
+   *
+   * @deprecated Use integrate_difference(const hp::MappingCollection<dim, spacedim> &, const hp::DoFHandler<dim, spacedim> &, const InVector &, const Function<spacedim, typename InVector::value_type> &, OutVector &, const hp::QCollection<dim> &, const NormType &, const Function<spacedim, double> *, const double) instead.
    */
   template <int dim, class InVector, class OutVector, int spacedim>
-  void
+  DEAL_II_DEPRECATED typename std::enable_if<
+    !std::is_same<typename InVector::value_type, double>::value>::type
   integrate_difference(const hp::MappingCollection<dim, spacedim> &mapping,
                        const hp::DoFHandler<dim, spacedim> &       dof,
                        const InVector &                            fe_function,
@@ -2486,9 +2642,12 @@ namespace VectorTools
   /**
    * Call the integrate_difference() function, see above, with
    * <tt>mapping=MappingQGeneric@<dim@>(1)</tt>.
+   *
+   * @deprecated Use integrate_difference(const hp::DoFHandler<dim, spacedim> &, const InVector &, const Function<spacedim, typename InVector::value_type> &, OutVector &, const hp::QCollection<dim> &, const NormType &, const Function<spacedim, double> *, const double) instead.
    */
   template <int dim, class InVector, class OutVector, int spacedim>
-  void
+  DEAL_II_DEPRECATED typename std::enable_if<
+    !std::is_same<typename InVector::value_type, double>::value>::type
   integrate_difference(const hp::DoFHandler<dim, spacedim> &dof,
                        const InVector &                     fe_function,
                        const Function<spacedim, double> &   exact_solution,
@@ -2507,7 +2666,7 @@ namespace VectorTools
    * VectorTools::integrate_difference() and you normally want to supply the
    * same value for @p norm as you used in VectorTools::integrate_difference().
    *
-   * If the given Triangulation is a parallel::Triangulation, entries
+   * If the given Triangulation is a parallel::TriangulationBase, entries
    * in @p cellwise_error that do not correspond to locally owned cells are
    * assumed to be 0.0 and a parallel reduction using MPI is done to compute
    * the global error.
@@ -2579,13 +2738,24 @@ namespace VectorTools
    * point, and return the (vector) value of this function through the last
    * argument.
    *
-   * This function uses a Q1-mapping for the cell the point is evaluated
+   * This function uses a $Q_1$-mapping for the cell the point is evaluated
    * in. If you need to evaluate using a different mapping (for example when
    * using curved boundaries), use the point_difference() function that takes
    * a mapping.
    *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
+   *
    * @note If the cell in which the point is found is not locally owned, an
-   * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
+   *   exception of type VectorTools::ExcPointNotAvailableHere is thrown.
    *
    * @note This function needs to find the cell within which a point lies,
    *   and this can only be done up to a certain numerical tolerance of course.
@@ -2638,6 +2808,17 @@ namespace VectorTools
    * in. If you need to evaluate using a different mapping (for example when
    * using curved boundaries), use the point_difference() function that takes
    * a mapping.
+   *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
    *
    * This function is used in the "Possibilities for extensions" part of the
    * results section of
@@ -2695,6 +2876,17 @@ namespace VectorTools
    * Compared with the other function of the same name, this function uses an
    * arbitrary mapping to evaluate the point value.
    *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
+   *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
    *
@@ -2750,6 +2942,17 @@ namespace VectorTools
    * Compared with the other function of the same name, this function uses an
    * arbitrary mapping to evaluate the difference.
    *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
+   *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
    *
@@ -2802,6 +3005,17 @@ namespace VectorTools
    *
    * This is a wrapper function using a Q1-mapping for cell boundaries to call
    * the other point_gradient() function.
+   *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
    *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
@@ -2856,6 +3070,17 @@ namespace VectorTools
    * Compared with the other function of the same name, this is a wrapper
    * function using a Q1-mapping for cells.
    *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
+   *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
    *
@@ -2904,6 +3129,17 @@ namespace VectorTools
    *
    * Compared with the other function of the same name, this function uses an
    * arbitrary mapping for evaluation.
+   *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
    *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
@@ -2959,6 +3195,17 @@ namespace VectorTools
    *
    * Compared with the other function of the same name, this function uses an
    * arbitrary mapping for evaluation.
+   *
+   * This function is not particularly cheap. This is because it first
+   * needs to find which cell a given point is in, then find the point
+   * on the reference cell that matches the given evaluation point,
+   * and then evaluate the shape functions there. You probably do not
+   * want to use this function to evaluate the solution at <i>many</i>
+   * points. For this kind of application, the FEFieldFunction class
+   * offers at least some optimizations. On the other hand, if you
+   * want to evaluate <i>many solutions</i> at the same point, you may
+   * want to look at the VectorTools::create_point_source_vector()
+   * function.
    *
    * @note If the cell in which the point is found is not locally owned, an
    * exception of type VectorTools::ExcPointNotAvailableHere is thrown.
@@ -3155,6 +3402,119 @@ namespace VectorTools
                    "locally owned by this processor.");
 } // namespace VectorTools
 
+
+// Make sure we can use NormType with Patterns.
+namespace Patterns
+{
+  namespace Tools
+  {
+    template <>
+    struct Convert<VectorTools::NormType, void>
+    {
+      /**
+       * Return the Correct pattern for NormType.
+       */
+      static std::unique_ptr<Patterns::PatternBase>
+      to_pattern()
+      {
+        return std_cxx14::make_unique<Patterns::Selection>(
+          "mean|L1_norm|L2_norm|Lp_norm|"
+          "Linfty_norm|H1_seminorm|Hdiv_seminorm|"
+          "H1_norm|W1p_seminorm|W1p_norm|"
+          "W1infty_seminorm|W1infty_norm");
+      }
+
+
+
+      /**
+       * Convert a NormType to a string.
+       */
+      static std::string
+      to_string(const VectorTools::NormType &                 s,
+                const std::unique_ptr<Patterns::PatternBase> &p =
+                  Convert<VectorTools::NormType>::to_pattern())
+      {
+        std::string str;
+        if (s == VectorTools::mean)
+          str = "mean";
+        else if (s == VectorTools::L1_norm)
+          str = "L1_norm";
+        else if (s == VectorTools::L2_norm)
+          str = "L2_norm";
+        else if (s == VectorTools::Lp_norm)
+          str = "Lp_norm";
+        else if (s == VectorTools::Linfty_norm)
+          str = "Linfty_norm";
+        else if (s == VectorTools::H1_seminorm)
+          str = "H1_seminorm";
+        else if (s == VectorTools::Hdiv_seminorm)
+          str = "Hdiv_seminorm";
+        else if (s == VectorTools::H1_norm)
+          str = "H1_norm";
+        else if (s == VectorTools::W1p_seminorm)
+          str = "W1p_seminorm";
+        else if (s == VectorTools::W1infty_seminorm)
+          str = "W1infty_seminorm";
+        else if (s == VectorTools::W1infty_norm)
+          str = "W1infty_norm";
+        else if (s == VectorTools::W1p_norm)
+          str = "W1p_norm";
+        else
+          {
+            AssertThrow(false, ExcMessage("Didn't recognize a norm type."));
+          }
+        AssertThrow(p->match(str), ExcInternalError());
+        return str;
+      }
+
+
+      /**
+       * Convert a string to a NormType.
+       */
+      static VectorTools::NormType
+      to_value(const std::string &                           str,
+               const std::unique_ptr<Patterns::PatternBase> &p =
+                 Convert<VectorTools::NormType>::to_pattern())
+      {
+        VectorTools::NormType norm = VectorTools::mean;
+        AssertThrow(p->match(str),
+                    ExcMessage(
+                      "String " + str +
+                      " cannot be converted to VectorTools::NormType"));
+
+        if (str == "mean")
+          norm = VectorTools::mean;
+        else if (str == "L1_norm")
+          norm = VectorTools::L1_norm;
+        else if (str == "L2_norm")
+          norm = VectorTools::L2_norm;
+        else if (str == "Lp_norm")
+          norm = VectorTools::Lp_norm;
+        else if (str == "Linfty_norm")
+          norm = VectorTools::Linfty_norm;
+        else if (str == "H1_seminorm")
+          norm = VectorTools::H1_seminorm;
+        else if (str == "Hdiv_seminorm")
+          norm = VectorTools::Hdiv_seminorm;
+        else if (str == "H1_norm")
+          norm = VectorTools::H1_norm;
+        else if (str == "W1p_seminorm")
+          norm = VectorTools::W1p_seminorm;
+        else if (str == "W1infty_seminorm")
+          norm = VectorTools::W1infty_seminorm;
+        else if (str == "W1infty_norm")
+          norm = VectorTools::W1infty_norm;
+        else if (str == "W1p_norm")
+          norm = VectorTools::W1p_norm;
+        else
+          {
+            AssertThrow(false, ExcMessage("Didn't recognize a norm type."));
+          }
+        return norm;
+      }
+    };
+  } // namespace Tools
+} // namespace Patterns
 
 DEAL_II_NAMESPACE_CLOSE
 

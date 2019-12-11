@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2018 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -68,20 +68,17 @@ test_vertices_orientation(
     {
       face = surface_to_volume_mapping[cell];
 
-      for (unsigned int k = 0; k < GeometryInfo<s_dim>::vertices_per_cell; ++k)
+      Point<spacedim> diff(face->center());
+      diff -= cell->center();
+      if (verbosity > 1)
         {
-          Point<spacedim> diff(face->vertex(k));
-          diff -= cell->vertex(k);
-          if (verbosity > 1)
-            {
-              deallog << face->vertex(k) << "\t\t";
-              deallog << cell->vertex(k) << "\t\t\t" << diff.square() << endl;
-            }
-          if (diff.square() > 0)
-            {
-              success = false;
-              break;
-            }
+          deallog << face->center() << "\t\t";
+          deallog << cell->center() << "\t\t\t" << diff.square() << endl;
+        }
+      if (diff.square() > 0)
+        {
+          success = false;
+          break;
         }
       if (verbosity > 1)
         deallog << endl;

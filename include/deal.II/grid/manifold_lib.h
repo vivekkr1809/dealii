@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -213,7 +213,7 @@ private:
  * Manifold to the cell containing the center. It is advisable to combine this
  * class with TransfiniteInterpolationManifold to ensure a smooth transition
  * from a curved shape to the straight coordinate system in the center of the
- * ball.
+ * ball. (See also the extensive discussion in step-65.)
  *
  * @ingroup manifold
  *
@@ -406,17 +406,19 @@ public:
   clone() const override;
 
   /**
-   * Compute the Cartesian coordinates for a point given in cylindrical
-   * coordinates.
+   * Compute the cylindrical coordinates $(r, \phi, \lambda)$ for the given
+   * space point where $r$ denotes the distance from the axis,
+   * $\phi$ the angle between the given point and the computed normal
+   * direction, and $\lambda$ the axial position.
    */
   virtual Point<3>
   pull_back(const Point<spacedim> &space_point) const override;
 
   /**
-   * Compute the cylindrical coordinates $(r, \phi, \lambda)$ for the given
-   * point where $r$ denotes the distance from the axis,
-   * $\phi$ the angle between the given point and the computed normal
-   * direction and $\lambda$ the axial position.
+   * Compute the Cartesian coordinates for a chart point given in cylindrical
+   * coordinates $(r, \phi, \lambda)$, where $r$ denotes the distance from the
+   * axis, $\phi$ the angle between the given point and the computed normal
+   * direction, and $\lambda$ the axial position.
    */
   virtual Point<spacedim>
   push_forward(const Point<3> &chart_point) const override;
@@ -425,7 +427,7 @@ public:
    * Compute the derivatives of the mapping from cylindrical coordinates
    * $(r, \phi, \lambda)$ to cartesian coordinates where $r$ denotes the
    * distance from the axis, $\phi$ the angle between the given point and the
-   * computed normal direction and $\lambda$ the axial position.
+   * computed normal direction, and $\lambda$ the axial position.
    */
   virtual DerivativeForm<1, 3, spacedim>
   push_forward_gradient(const Point<3> &chart_point) const override;
@@ -461,6 +463,106 @@ private:
   double tolerance;
 };
 
+/**
+ * Elliptical manifold description derived from ChartManifold.
+ * More information on the elliptical coordinate system can be found
+ * at <a
+ * href="https://en.wikipedia.org/wiki/Elliptic_coordinate_system">Wikipedia
+ * </a>.
+ *
+ * This is based on the definition of elliptic coordinates $(u,v)$
+ * @f[
+ *  \left\lbrace\begin{aligned}
+ *  x &=  x_0 + c \cosh(u) \cos(v) \\
+ *  y &=  y_0 + c \sinh(u) \sin(v)
+ *  \end{aligned}\right.
+ * @f]
+ * in which $(x_0,y_0)$ are coordinates of the center of the cartesian system.
+ *
+ * The current implementation uses coordinates $(c,v)$, instead of $(u,v)$, and
+ * fixes $u$ according to a given eccentricity. Therefore, this choice
+ * of coordinates generates an elliptical manifold characterized by a constant
+ * eccentricity: $e=\frac{1}{\cosh(u)}$, with $e\in\left]0,1\right[$.
+ *
+ * The constructor of this class will throw an exception if both dim and
+ * spacedim are different from two.
+ *
+ * This manifold can be used to produce hyper_shells with elliptical curvature.
+ * As an example, the test <B>elliptical_manifold_01</B> produces the following
+ * triangulation:
+ * @image html elliptical_hyper_shell.png
+ *
+ * @ingroup manifold
+ *
+ * @author Stefano Dominici, 2018
+ */
+template <int dim, int spacedim = dim>
+class EllipticalManifold : public ChartManifold<dim, spacedim, spacedim>
+{
+public:
+  /**
+   * Constructor that takes the center of the manifold system, the direction of
+   * the major axis, and the manifold eccentricity.
+   * The default major axis is the <tt>x</tt>-axis. The manifold is rotated in
+   * order to align the major axis to the direction specified in input.
+   * @param center Center of the manifold.
+   * @param major_axis_direction Direction of the major axis of the
+   * manifold.
+   * @param eccentricity Eccentricity of the
+   * manifold $e\in\left]0,1\right[$.
+   *
+   */
+  EllipticalManifold(const Point<spacedim> &    center,
+                     const Tensor<1, spacedim> &major_axis_direction,
+                     const double               eccentricity);
+
+  virtual std::unique_ptr<Manifold<dim, spacedim>>
+  clone() const override;
+
+  /**
+   * @copydoc ChartManifold::pull_back()
+   */
+  virtual Point<spacedim>
+  pull_back(const Point<spacedim> &space_point) const override;
+
+  /**
+   * @copydoc ChartManifold::push_forward()
+   */
+  virtual Point<spacedim>
+  push_forward(const Point<spacedim> &chart_point) const override;
+
+  /**
+   * @copydoc ChartManifold::push_forward_gradient()
+   */
+  virtual DerivativeForm<1, spacedim, spacedim>
+  push_forward_gradient(const Point<spacedim> &chart_point) const override;
+
+
+protected:
+  /**
+   * The direction vector of the major axis.
+   */
+  Tensor<1, spacedim> direction;
+  /**
+   * The center of the manifold.
+   */
+  const Point<spacedim> center;
+  /**
+   * Parameters deriving from the eccentricity of the manifold.
+   */
+  const double cosh_u;
+  const double sinh_u;
+
+private:
+  /**
+   * @copydoc ChartManifold::get_periodicity()
+   *
+   * For $\text{dim}=2$ and $\text{spacedim}=2$, the first coordinate is
+   * non-periodic, while the second coordinate has a periodicity of $2\pi$.
+   */
+  static Tensor<1, spacedim>
+  get_periodicity();
+};
 
 
 /**
@@ -703,6 +805,7 @@ private:
  * assumed to be given by another manifold (e.g. a polar manifold on a circle).
  * The mechanism to extend the boundary information is a so-called transfinite
  * interpolation.
+ * The use of this class is discussed extensively in step-65.
  *
  * The formula for extending such a description in 2D is, for example,
  * described on

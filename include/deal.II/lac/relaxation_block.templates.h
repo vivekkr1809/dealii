@@ -16,6 +16,8 @@
 #ifndef dealii_relaxation_block_templates_h
 #define dealii_relaxation_block_templates_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/lac/full_matrix.h>
 #include <deal.II/lac/relaxation_block.h>
 #include <deal.II/lac/trilinos_vector.h>
@@ -100,15 +102,13 @@ RelaxationBlock<MatrixType, InverseNumberType, VectorType>::invert_diagblocks()
   else
     {
       // compute blocks in parallel
-      parallel::apply_to_subranges(
-        0,
-        this->additional_data->block_list.n_rows(),
-        std::bind(&RelaxationBlock<MatrixType, InverseNumberType, VectorType>::
-                    block_kernel,
-                  this,
-                  std::placeholders::_1,
-                  std::placeholders::_2),
-        16);
+      parallel::apply_to_subranges(0,
+                                   this->additional_data->block_list.n_rows(),
+                                   [this](const size_type block_begin,
+                                          const size_type block_end) {
+                                     this->block_kernel(block_begin, block_end);
+                                   },
+                                   16);
     }
   this->inverses_computed(true);
 }

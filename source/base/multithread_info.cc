@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,8 +28,6 @@
 #include <algorithm>
 
 #ifdef DEAL_II_WITH_THREADS
-#  include <deal.II/base/thread_management.h>
-
 #  include <tbb/task_scheduler_init.h>
 #endif
 
@@ -61,14 +59,14 @@ MultithreadInfo::get_n_cpus()
 unsigned int
 MultithreadInfo::get_n_cpus()
 {
-  int    mib[2];
-  int    n_cpus;
-  size_t len;
+  int         mib[2];
+  int         n_cpus;
+  std::size_t len;
 
   mib[0] = CTL_HW;
   mib[1] = HW_NCPU;
   len    = sizeof(n_cpus);
-  sysctl(mib, 2, &n_cpus, &len, NULL, 0);
+  sysctl(mib, 2, &n_cpus, &len, nullptr, 0);
 
   return n_cpus;
 }

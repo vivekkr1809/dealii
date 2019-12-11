@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2017 by the deal.II authors
+// Copyright (C) 2004 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -125,7 +125,7 @@ test()
 
   SparsityTools::distribute_sparsity_pattern(
     sp,
-    stokes_dof_handler.locally_owned_dofs_per_processor(),
+    stokes_dof_handler.compute_locally_owned_dofs_per_processor(),
     MPI_COMM_WORLD,
     stokes_relevant_set);
 

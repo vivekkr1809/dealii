@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2016 - 2018 by the deal.II authors
+ * Copyright (C) 2016 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -30,7 +30,7 @@
 
 namespace LA
 {
-#if defined(DEAL_II_WITH_PETSC) && \
+#if defined(DEAL_II_WITH_PETSC) && !defined(DEAL_II_PETSC_WITH_COMPLEX) && \
   !(defined(DEAL_II_WITH_TRILINOS) && defined(FORCE_USE_OF_TRILINOS))
   using namespace dealii::LinearAlgebraPETSc;
 #  define USE_PETSC_LA
@@ -95,10 +95,9 @@ namespace Step55
     // This class exposes the action of applying the inverse of a giving
     // matrix via the function InverseMatrix::vmult(). Internally, the
     // inverse is not formed explicitly. Instead, a linear solver with CG
-    // is performed. This class extends the InverseMatrix class in step-20
+    // is performed. This class extends the InverseMatrix class in step-22
     // with an option to specify a preconditioner, and to allow for different
-    // vector types
-    // in the vmult function.
+    // vector types in the vmult function.
     template <class Matrix, class Preconditioner>
     class InverseMatrix : public Subscriptor
     {
@@ -431,7 +430,7 @@ namespace Step55
 
       SparsityTools::distribute_sparsity_pattern(
         dsp,
-        dof_handler.locally_owned_dofs_per_processor(),
+        dof_handler.compute_locally_owned_dofs_per_processor(),
         mpi_communicator,
         locally_relevant_dofs);
 
@@ -458,7 +457,7 @@ namespace Step55
         dof_handler, coupling, dsp, constraints, false);
       SparsityTools::distribute_sparsity_pattern(
         dsp,
-        dof_handler.locally_owned_dofs_per_processor(),
+        dof_handler.compute_locally_owned_dofs_per_processor(),
         mpi_communicator,
         locally_relevant_dofs);
       preconditioner_matrix.reinit(owned_partitioning,
@@ -516,10 +515,7 @@ namespace Step55
     const FEValuesExtractors::Vector     velocities(0);
     const FEValuesExtractors::Scalar     pressure(dim);
 
-    typename DoFHandler<dim>::active_cell_iterator cell =
-                                                     dof_handler.begin_active(),
-                                                   endc = dof_handler.end();
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       if (cell->is_locally_owned())
         {
           cell_matrix  = 0;
@@ -596,19 +592,6 @@ namespace Step55
 
 #ifdef USE_PETSC_LA
       data.symmetric_operator = true;
-#else
-//      data.n_cycles = 1;
-//      data.higher_order_elements = true;
-//      data.elliptic = true;
-//      data.smoother_sweeps = 5;
-//      data.smoother_overlap = 1;
-
-//      std::vector<std::vector<bool> > constant_modes;
-//      FEValuesExtractors::Vector velocity_components(0);
-//      DoFTools::extract_constant_modes (dof_handler,
-//                                        fe.component_mask(velocity_components),
-//                                        constant_modes);
-//      data.constant_modes = constant_modes;
 #endif
       prec_A.initialize(system_matrix.block(0, 0), data);
     }
@@ -619,7 +602,6 @@ namespace Step55
 
 #ifdef USE_PETSC_LA
       data.symmetric_operator = true;
-#else
 #endif
       prec_S.initialize(preconditioner_matrix.block(1, 1), data);
     }
@@ -680,26 +662,7 @@ namespace Step55
   {
     TimerOutput::Scope t(computing_timer, "refine");
 
-    if (true)
-      {
-        triangulation.refine_global();
-      }
-    else
-      {
-        Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-
-        FEValuesExtractors::Vector velocities(0);
-        KellyErrorEstimator<dim>::estimate(
-          dof_handler,
-          QGauss<dim - 1>(3),
-          std::map<types::boundary_id, const Function<dim> *>(),
-          locally_relevant_solution,
-          estimated_error_per_cell,
-          fe.component_mask(velocities));
-        parallel::distributed::GridRefinement::refine_and_coarsen_fixed_number(
-          triangulation, estimated_error_per_cell, 0.3, 0.0);
-        triangulation.execute_coarsening_and_refinement();
-      }
+    triangulation.refine_global();
   }
 
 
@@ -786,25 +749,8 @@ namespace Step55
 
     data_out.build_patches();
 
-    const std::string filename =
-      ("solution-" + Utilities::int_to_string(cycle, 2) + "." +
-       Utilities::int_to_string(triangulation.locally_owned_subdomain(), 4));
-    std::ofstream output((filename + ".vtu"));
-    data_out.write_vtu(output);
-
-    if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
-      {
-        std::vector<std::string> filenames;
-        for (unsigned int i = 0;
-             i < Utilities::MPI::n_mpi_processes(mpi_communicator);
-             ++i)
-          filenames.push_back("solution-" + Utilities::int_to_string(cycle, 2) +
-                              "." + Utilities::int_to_string(i, 4) + ".vtu");
-
-        std::ofstream master_output(
-          "solution-" + Utilities::int_to_string(cycle, 2) + ".pvtu");
-        data_out.write_pvtu_record(master_output, filenames);
-      }
+    data_out.write_vtu_with_pvtu_record(
+      "./", "solution", cycle, 2, mpi_communicator);
   }
 
 

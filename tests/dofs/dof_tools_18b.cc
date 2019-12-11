@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,6 +18,7 @@
 
 #include "../tests.h"
 #include "dof_tools_common.h"
+#include "dof_tools_common_fake_hp.h"
 
 // check
 //   DoFTools::
@@ -43,9 +44,9 @@ make_masks(const unsigned int            n,
 
 
 
-template <int dim>
+template <typename DoFHandlerType>
 void
-check_this(const DoFHandler<dim> &dof_handler)
+check_this(const DoFHandlerType &dof_handler)
 {
   Table<2, DoFTools::Coupling> mask_int;
   Table<2, DoFTools::Coupling> mask_ext;

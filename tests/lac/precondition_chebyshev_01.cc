@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2017 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,7 +56,7 @@ check()
   PreconditionChebyshev<FullMatrixModified, Vector<double>>::AdditionalData
     data;
   data.smoothing_range = 2 * size;
-  data.degree          = 3;
+  data.degree          = 4;
   prec.initialize(m, data);
 
   deallog << "Exact inverse:     ";
@@ -77,8 +77,10 @@ check()
   deallog << std::endl;
 
   Vector<double> matrix_diagonal(size);
-  matrix_diagonal              = 1;
-  data.matrix_diagonal_inverse = matrix_diagonal;
+  matrix_diagonal     = 1;
+  auto preconditioner = std::make_shared<DiagonalMatrix<Vector<double>>>();
+  preconditioner->reinit(matrix_diagonal);
+  data.preconditioner = std::move(preconditioner);
   prec.initialize(m, data);
 
   deallog << "Check  vmult diag: ";

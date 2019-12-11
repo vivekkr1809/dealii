@@ -2,7 +2,7 @@
 
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2016 by the deal.II authors
+## Copyright (C) 2016 - 2018 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -60,7 +60,7 @@ def parse_revision(dirname):
         rev.number = number[1:]
     else:
         return None
-        
+
     print dirname, "BUILD: ", rev.name
 
     #now Test.xml:
@@ -70,44 +70,47 @@ def parse_revision(dirname):
 
     for test in testing.findall("Test"):
         fail=False
-        if test.attrib['Status']=="failed": fail=True
+        if test.attrib['Status']=="failed":
+            fail=True
         name = test.find('Name').text
         group = name.split('/')[0]
         status = 4
         if fail:
             text = test.find('Results').find('Measurement').find('Value').text
-            if text == None: text=""
+            if text == None:
+                text=""
             failtext = text.encode('utf-8')
             failtextlines = failtext.replace('"','').split('\n')
             failstatustxt = failtextlines[0].split(' ')[-1]
             for i in range(0,len(failtextlines)):
                 failtextlines[i] = failtextlines[i][0:80]
-                if failtextlines[i].startswith('FAILED: '): failtextlines[i]='FAILED: ...';
+                if failtextlines[i].startswith('FAILED: '):
+                    failtextlines[i]='FAILED: ...'
             failtext = '\n'.join(failtextlines[4:min(25,len(failtext))])
             statuslist=['CONFIGURE','BUILD','RUN','DIFF']
             if failstatustxt in statuslist:
                 status = statuslist.index(failstatustxt)
             else:
                 print "unknown status '%s' in test %s "% (failstatustxt,name)
-                status=0           
+                status=0
 
         if not group in rev.groups:
             rev.groups[group]= Group(group)
-            
+
         rev.groups[group].n_tests += 1
         rev.n_tests += 1
         rev.groups[group].n_status[status] += 1
-        if fail: 
+        if fail:
             rev.groups[group].n_fail += 1
             rev.n_fail += 1
             rev.groups[group].fail.append(name)
             rev.groups[group].fail_text[name]=failtext
             rev.groups[group].fail_status[name]=status
-        
+
     for g in sorted(rev.groups):
         g = rev.groups[g]
         #print g.name, g.n_tests, g.n_fail, g.fail
-        
+
     return rev
 
 
@@ -134,7 +137,7 @@ for f in n:
             allgroups.add(gr)
 
 revs.sort(key=lambda x: x.number, reverse=True)
-    
+
 allgroups = sorted(allgroups)
 
 f = open('tests.html', 'w')
@@ -200,7 +203,7 @@ else
 f.write('<table>')
 
 f.write('<colgroup span="1" class="colgroup""/>')
-for rev in revs:    
+for rev in revs:
     f.write('<colgroup span="5" class="colgroup"/>')
 f.write('\n')
 
@@ -226,7 +229,7 @@ f.write('<tbody><tr style="border-bottom: 2px solid">')
 f.write('<td></td>')
 for rev in revs:
     for c in range(0,5):
-        
+
         titles=['Configure','Build','Run','Diff','Pass']
         caption=['C','B','R','D','P']
         f.write('<td title="%s" class="test%d">%s</td>'%(titles[c],c,caption[c]))
@@ -265,7 +268,7 @@ for group in allgroups:
 
     f.write('</tr></tbody>\n')
 
-                
+
     #failing tests in group:
     if len(failing)>0:
         f.write('<tbody class="togglebody" style="display:none" id="group:%s">'%group)
@@ -288,7 +291,7 @@ for group in allgroups:
 
             f.write('</tr>\n')
         f.write('</tbody>\n')
-                
+
     f.write('\n\n')
 
 

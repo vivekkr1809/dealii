@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,15 +16,16 @@
 
 #include "../tests.h"
 #include "dof_tools_common.h"
+#include "dof_tools_common_fake_hp.h"
 
 // check
 //   DoFTools::extract_boundary_dofs
 
 
 
-template <int dim>
+template <typename DoFHandlerType>
 void
-check_this(const DoFHandler<dim> &dof_handler)
+check_this(const DoFHandlerType &dof_handler)
 {
   std::vector<bool> component_select(dof_handler.get_fe().n_components(), true);
   std::vector<bool> boundary_dofs(dof_handler.n_dofs());

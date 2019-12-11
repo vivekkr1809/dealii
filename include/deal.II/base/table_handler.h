@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,7 +36,10 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 class TableHandler;
+#endif
 
 namespace internal
 {
@@ -229,16 +232,23 @@ namespace internal
  * To support both scenarios, the TableHandler class has a property called <i
  * >auto-fill mode</i>. By default, auto-fill mode is off, but it can be
  * enabled by calling set_auto_fill_mode(). If auto-fill mode is enabled we
- * use the following algorithm: - When calling <code>add_value(key,
- * value)</code>, we count the number of elements in the column corresponding
- * to <code>key</code>. Let's call this number $m$. - We also determine the
- * maximal number of elements in the other columns; call it $n$. - If $m <
- * n-1$ then we add $n-m-1$ copies of the object <code>T()</code> to this
- * column. Here, <code>T</code> is the data type of the given
+ * use the following algorithm:
+ *
+ * - When calling <code>add_value(key, value)</code>, we count the number of
+ * elements in the column corresponding to <code>key</code>. Let's call this
+ * number $m$.
+ *
+ * - We also determine the maximal number of elements in the other columns;
+ * call it $n$.
+ *
+ * - If $m < n-1$ then we add $n-m-1$ copies of the object <code>T()</code> to
+ * this column. Here, <code>T</code> is the data type of the given
  * <code>value</code>. For example, if <code>T</code> is a numeric type, then
  * <code>T()</code> is the number zero; if <code>T</code> is
  * <code>std::string</code>, then <code>T()</code> is the empty string
- * <code>""</code>. - Add the given value to this column.
+ * <code>""</code>.
+ *
+ * - Add the given value to this column.
  *
  * Padding the column with default elements makes sure that after the addition
  * the column has as many entries as the longest other column. In other words,
@@ -509,7 +519,7 @@ public:
    * then the entry of the table is printed as <code>""</code>.
    *
    * The second argument indicates how column keys are to be displayed. See
-   * the description of TextOutputFormat for more information
+   * the description of TextOutputFormat for more information.
    */
   void
   write_text(std::ostream &         out,
@@ -720,7 +730,7 @@ protected:
    *
    * The field is declared mutable so that the write_text() and write_tex()
    * functions can be const, even though they may pad columns below if
-   * auto_fill_mode is on.
+   * 'auto_fill_mode' is on.
    */
   mutable std::map<std::string, Column> columns;
 
@@ -905,12 +915,10 @@ TableHandler::add_value(const std::string &key, const T value)
       // follow the algorithm given in the introduction to this class
       // of padding columns as necessary
       unsigned int max_col_length = 0;
-      for (std::map<std::string, Column>::iterator p = columns.begin();
-           p != columns.end();
-           ++p)
+      for (const auto &column : columns)
         max_col_length =
           std::max(max_col_length,
-                   static_cast<unsigned int>(p->second.entries.size()));
+                   static_cast<unsigned int>(column.second.entries.size()));
 
       while (columns[key].entries.size() + 1 < max_col_length)
         {

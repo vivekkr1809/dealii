@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2002 - 2017 by the deal.II authors
+// Copyright (C) 2002 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -34,8 +34,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declaration
+#ifndef DOXYGEN
 template <typename Number>
 class BlockVector;
+#endif
 
 /*! @addtogroup Matrix1
  *@{

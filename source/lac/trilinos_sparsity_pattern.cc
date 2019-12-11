@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,10 +56,11 @@ namespace TrilinosWrappers
           // get a representation of the present row
           int       ncols;
           const int ierr = sparsity_pattern->graph->ExtractGlobalRowCopy(
-            (TrilinosWrappers::types::int_type)this->a_row,
+            this->a_row,
             colnum_cache->size(),
             ncols,
-            (TrilinosWrappers::types::int_type *)&(*colnum_cache)[0]);
+            reinterpret_cast<TrilinosWrappers::types::int_type *>(
+              const_cast<size_type *>(colnum_cache->data())));
           AssertThrow(ierr == 0, ExcTrilinosError(ierr));
           AssertThrow(static_cast<std::vector<size_type>::size_type>(ncols) ==
                         colnum_cache->size(),
@@ -335,8 +336,7 @@ namespace TrilinosWrappers
       nonlocal_graph.reset();
       graph.reset();
       AssertDimension(n_entries_per_row.size(),
-                      static_cast<size_type>(
-                        TrilinosWrappers::n_global_elements(row_map)));
+                      TrilinosWrappers::n_global_elements(row_map));
 
       column_space_map = std_cxx14::make_unique<Epetra_Map>(col_map);
       std::vector<int> local_entries_per_row(
@@ -376,11 +376,9 @@ namespace TrilinosWrappers
       graph.reset();
 
       AssertDimension(sp.n_rows(),
-                      static_cast<size_type>(
-                        TrilinosWrappers::n_global_elements(row_map)));
+                      TrilinosWrappers::n_global_elements(row_map));
       AssertDimension(sp.n_cols(),
-                      static_cast<size_type>(
-                        TrilinosWrappers::n_global_elements(col_map)));
+                      TrilinosWrappers::n_global_elements(col_map));
 
       column_space_map = std_cxx14::make_unique<Epetra_Map>(col_map);
 
@@ -405,8 +403,7 @@ namespace TrilinosWrappers
         graph = std_cxx14::make_unique<Epetra_FECrsGraph>(
           Copy, row_map, col_map, n_entries_per_row.data(), false);
 
-      AssertDimension(sp.n_rows(),
-                      static_cast<size_type>(n_global_rows(*graph)));
+      AssertDimension(sp.n_rows(), n_global_rows(*graph));
 
       std::vector<TrilinosWrappers::types::int_type> row_indices;
 
@@ -456,17 +453,17 @@ namespace TrilinosWrappers
                     ++p;
                 }
             }
-            graph->InsertGlobalIndices(
-              1,
-              reinterpret_cast<TrilinosWrappers::types::int_type *>(&row),
-              row_length,
-              row_indices.data());
+            const TrilinosWrappers::types::int_type trilinos_row = row;
+            graph->InsertGlobalIndices(1,
+                                       &trilinos_row,
+                                       row_length,
+                                       row_indices.data());
           }
 
-      int ierr = graph->GlobalAssemble(*column_space_map,
-                                       static_cast<const Epetra_Map &>(
-                                         graph->RangeMap()),
-                                       true);
+      // TODO A dynamic_cast fails here, this is suspicious.
+      const auto &range_map =
+        static_cast<const Epetra_Map &>(graph->RangeMap()); // NOLINT
+      int ierr = graph->GlobalAssemble(*column_space_map, range_map, true);
       AssertThrow(ierr == 0, ExcTrilinosError(ierr));
 
       ierr = graph->OptimizeStorage();
@@ -790,39 +787,54 @@ namespace TrilinosWrappers
   SparsityPattern::compress()
   {
     int ierr;
-    Assert(column_space_map.get() != nullptr, ExcInternalError());
+    Assert(column_space_map.get(), ExcInternalError());
     if (nonlocal_graph.get() != nullptr)
       {
         if (nonlocal_graph->IndicesAreGlobal() == false &&
-            nonlocal_graph->RowMap().NumMyElements() > 0)
+            nonlocal_graph->RowMap().NumMyElements() > 0 &&
+            n_global_elements(*column_space_map) > 0)
           {
-            // insert dummy element
+            // Insert dummy element at (row, column) that corresponds to row 0
+            // in local index counting.
             TrilinosWrappers::types::int_type row =
-              nonlocal_graph->RowMap().MyGID(
-                static_cast<TrilinosWrappers::types::int_type>(0));
-            nonlocal_graph->InsertGlobalIndices(row, 1, &row);
+              TrilinosWrappers::global_index(nonlocal_graph->RowMap(), 0);
+            TrilinosWrappers::types::int_type column = 0;
+
+            // in case we have a square sparsity pattern, add the entry on the
+            // diagonal
+            if (TrilinosWrappers::n_global_elements(*column_space_map) ==
+                TrilinosWrappers::n_global_elements(graph->RangeMap()))
+              column = row;
+            // if not, take a column index that we have ourselves since we
+            // know for sure it is there (and it will not create spurious
+            // messages to many ranks like putting index 0 on many processors)
+            else if (column_space_map->NumMyElements() > 0)
+              column = TrilinosWrappers::global_index(*column_space_map, 0);
+            ierr = nonlocal_graph->InsertGlobalIndices(row, 1, &column);
+            AssertThrow(ierr == 0, ExcTrilinosError(ierr));
           }
         Assert(nonlocal_graph->RowMap().NumMyElements() == 0 ||
+                 n_global_elements(*column_space_map) == 0 ||
                  nonlocal_graph->IndicesAreGlobal() == true,
                ExcInternalError());
-        nonlocal_graph->FillComplete(*column_space_map,
-                                     static_cast<const Epetra_Map &>(
-                                       graph->RangeMap()));
-        nonlocal_graph->OptimizeStorage();
+
+        ierr =
+          nonlocal_graph->FillComplete(*column_space_map, graph->RangeMap());
+        AssertThrow(ierr >= 0, ExcTrilinosError(ierr));
+        ierr = nonlocal_graph->OptimizeStorage();
+        AssertThrow(ierr >= 0, ExcTrilinosError(ierr));
         Epetra_Export exporter(nonlocal_graph->RowMap(), graph->RowMap());
         ierr = graph->Export(*nonlocal_graph, exporter, Add);
         AssertThrow(ierr == 0, ExcTrilinosError(ierr));
-        ierr = graph->FillComplete(*column_space_map,
-                                   static_cast<const Epetra_Map &>(
-                                     graph->RangeMap()));
+        ierr = graph->FillComplete(*column_space_map, graph->RangeMap());
         AssertThrow(ierr == 0, ExcTrilinosError(ierr));
       }
     else
       {
-        ierr = graph->GlobalAssemble(*column_space_map,
-                                     static_cast<const Epetra_Map &>(
-                                       graph->RangeMap()),
-                                     true);
+        // TODO A dynamic_cast fails here, this is suspicious.
+        const auto &range_map =
+          static_cast<const Epetra_Map &>(graph->RangeMap()); // NOLINT
+        ierr = graph->GlobalAssemble(*column_space_map, range_map, true);
         AssertThrow(ierr == 0, ExcTrilinosError(ierr));
       }
 
@@ -872,21 +884,18 @@ namespace TrilinosWrappers
             // TODO: trilinos_i is the local row index -> it is an int but
             // ExtractGlobalRowView requires trilinos_i to be the global row
             // index and thus it should be a long long int
-            int ierr = graph->ExtractGlobalRowView(
-              static_cast<TrilinosWrappers::types::int_type>(trilinos_i),
-              nnz_extracted,
-              col_indices);
+            int ierr = graph->ExtractGlobalRowView(trilinos_i,
+                                                   nnz_extracted,
+                                                   col_indices);
             (void)ierr;
             Assert(ierr == 0, ExcTrilinosError(ierr));
             Assert(nnz_present == nnz_extracted,
                    ExcDimensionMismatch(nnz_present, nnz_extracted));
 
             // Search the index
-            TrilinosWrappers::types::int_type *el_find =
-              std::find(col_indices, col_indices + nnz_present, trilinos_j);
-
-            TrilinosWrappers::types::int_type local_col_index =
-              (TrilinosWrappers::types::int_type)(el_find - col_indices);
+            const std::ptrdiff_t local_col_index =
+              std::find(col_indices, col_indices + nnz_present, trilinos_j) -
+              col_indices;
 
             if (local_col_index == nnz_present)
               return false;
@@ -895,8 +904,7 @@ namespace TrilinosWrappers
           {
             // Prepare pointers for extraction
             // of a view of the row.
-            int nnz_present = graph->NumGlobalIndices(
-              static_cast<TrilinosWrappers::types::int_type>(i));
+            int  nnz_present = graph->NumGlobalIndices(i);
             int  nnz_extracted;
             int *col_indices;
 
@@ -912,11 +920,9 @@ namespace TrilinosWrappers
                    ExcDimensionMismatch(nnz_present, nnz_extracted));
 
             // Search the index
-            int *el_find = std::find(col_indices,
-                                     col_indices + nnz_present,
-                                     static_cast<int>(trilinos_j));
-
-            int local_col_index = (int)(el_find - col_indices);
+            const std::ptrdiff_t local_col_index =
+              std::find(col_indices, col_indices + nnz_present, trilinos_j) -
+              col_indices;
 
             if (local_col_index == nnz_present)
               return false;
@@ -933,21 +939,20 @@ namespace TrilinosWrappers
   {
     size_type                         local_b  = 0;
     TrilinosWrappers::types::int_type global_b = 0;
-    for (int i = 0; i < (int)local_size(); ++i)
+    for (int i = 0; i < static_cast<int>(local_size()); ++i)
       {
         int *indices;
         int  num_entries;
         graph->ExtractMyRowView(i, num_entries, indices);
-        for (unsigned int j = 0; j < (unsigned int)num_entries; ++j)
+        for (unsigned int j = 0; j < static_cast<unsigned int>(num_entries);
+             ++j)
           {
-            if (static_cast<size_type>(
-                  std::abs(static_cast<TrilinosWrappers::types::int_type>(
-                    i - indices[j]))) > local_b)
-              local_b = std::abs(
-                static_cast<TrilinosWrappers::types::int_type>(i - indices[j]));
+            if (static_cast<size_type>(std::abs(i - indices[j])) > local_b)
+              local_b = std::abs(i - indices[j]);
           }
       }
-    graph->Comm().MaxAll((TrilinosWrappers::types::int_type *)&local_b,
+    graph->Comm().MaxAll(reinterpret_cast<TrilinosWrappers::types::int_type *>(
+                           &local_b),
                          &global_b,
                          1);
     return static_cast<size_type>(global_b);
@@ -1043,7 +1048,10 @@ namespace TrilinosWrappers
   const Epetra_Map &
   SparsityPattern::domain_partitioner() const
   {
-    return static_cast<const Epetra_Map &>(graph->DomainMap());
+    // TODO A dynamic_cast fails here, this is suspicious.
+    const auto &domain_map =
+      static_cast<const Epetra_Map &>(graph->DomainMap()); // NOLINT
+    return domain_map;
   }
 
 
@@ -1051,7 +1059,10 @@ namespace TrilinosWrappers
   const Epetra_Map &
   SparsityPattern::range_partitioner() const
   {
-    return static_cast<const Epetra_Map &>(graph->RangeMap());
+    // TODO A dynamic_cast fails here, this is suspicious.
+    const auto &range_map =
+      static_cast<const Epetra_Map &>(graph->RangeMap()); // NOLINT
+    return range_map;
   }
 
 
@@ -1059,7 +1070,10 @@ namespace TrilinosWrappers
   const Epetra_Map &
   SparsityPattern::row_partitioner() const
   {
-    return static_cast<const Epetra_Map &>(graph->RowMap());
+    // TODO A dynamic_cast fails here, this is suspicious.
+    const auto &row_map =
+      static_cast<const Epetra_Map &>(graph->RowMap()); // NOLINT
+    return row_map;
   }
 
 
@@ -1067,7 +1081,10 @@ namespace TrilinosWrappers
   const Epetra_Map &
   SparsityPattern::col_partitioner() const
   {
-    return static_cast<const Epetra_Map &>(graph->ColMap());
+    // TODO A dynamic_cast fails here, this is suspicious.
+    const auto &col_map =
+      static_cast<const Epetra_Map &>(graph->ColMap()); // NOLINT
+    return col_map;
   }
 
 

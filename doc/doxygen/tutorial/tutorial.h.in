@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -86,6 +86,9 @@
  *   <tr valign="top">
  *       <td width="100px">step-1</td>
  *       <td> Creating a grid. A simple way to write it to a file.
+ *       <br/> Keywords: Triangulation, GridGenerator::hyper_cube,
+ *       GridGenerator::hyper_shell, GridOut,
+ *       Triangulation::execute_coarsening_and_refinement
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -95,6 +98,9 @@
  *       matrices. Show that renumbering reduces the bandwidth of
  *       matrices significantly, i.e. clusters nonzero entries around the
  *       diagonal.
+ *       <br/> Keywords: FE_Q, DynamicSparsityPattern,
+ *       DoFTools::make_sparsity_pattern, DoFHandler::distribute_dofs,
+ *       DoFRenumbering, SparsityPattern
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -102,6 +108,9 @@
  *       <td> Actually solve Laplace's
  *       problem. Object-orientation. Assembling matrices and
  *       vectors. Boundary values.
+ *       <br/> Keywords: FEValues, VectorTools::interpolate_boundary_values,
+ *       MatrixTools::apply_boundary_values, SolverCG, Vector<double>,
+ *       SparseMatrix<double>, DataOut
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -111,6 +120,8 @@
  *       solve Laplace's equation; we will solve the equation in 2D and
  *       3D, although the program is exactly the same. Non-constant right
  *       hand side function. Non-homogeneous boundary values.
+ *       <br/> Keywords: VectorTools::point_value,
+ *       VectorTools::compute_mean_value
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -121,6 +132,7 @@
  *       the elliptic operator (yielding the extended Poisson
  *       equation). Preconditioning the CG solver for the
  *       linear system of equations.
+ *       <br/> Keywords: PreconditionSSOR, GridIn, SphericalManifold
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -128,6 +140,9 @@
  *       <td> Adaptive local
  *       refinement. Handling of hanging nodes. Higher order elements.
  *       Catching exceptions in the <code>main</code>; function.
+ *       <br/> Keywords: DoFTools::make_hanging_node_constraints,
+ *       AffineConstraints::distribute_local_to_global, KellyErrorEstimator,
+ *       GridRefinement::refine_and_coarsen_fixed_number
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -137,6 +152,8 @@
  *       boundary integrals. Verification of correctness of computed
  *       solutions. Computing the error between exact and numerical
  *       solution and output of the data in tables. Using counted pointers.
+ *       <br/> Keywords: FEFaceValues, VectorTools::integrate_difference,
+ *       VectorTools::compute_global_error, TableHandler
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -145,6 +162,7 @@
  *       solved instead of Laplace's equation. The solution is
  *       vector-valued and the equations form a system with as many
  *       equations as the dimension of the space in which it is posed.
+ *       <br/> Keywords: FESystem
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -153,6 +171,8 @@
  *       the system of equations in parallel using multi-threading,
  *       implementing a refinement criterion based on a finite difference
  *       approximation of the gradient.
+ *       <br/> Keywords: TensorFunction, WorkStream::run, SolverGMRES
+ *       </td></tr>
  *
  *   <tr valign="top">
  *       <td>step-10</td>
@@ -270,12 +290,14 @@
  *
  *   <tr valign="top">
  *       <td>step-27</td>
- *       <td> hp finite element methods  </td></tr>
+ *       <td> The hp finite element method.
+ *       </td></tr>
  *
  *   <tr valign="top">
  *       <td>step-28</td>
  *       <td> Multiple grids for solving a multigroup diffusion equation
- *       in nuclear physics simulating a nuclear reactor core  </td></tr>
+ *       in nuclear physics simulating a nuclear reactor core.
+ *       </td></tr>
  *
  *   <tr valign="top">
  *       <td>step-29</td>
@@ -371,11 +393,18 @@
  *   <tr valign="top">
  *       <td>step-44</td>
  *       <td> Finite strain hyperelasticity based on a three-field formulation.
+ *       <br/> Keywords: CellDataStorage, FEValuesExtractors, WorkStream::run,
+ *       BlockSparseMatrix, BlockVector, ComponentSelectFunction,
+ *       Physics::Elasticity, FullMatrix::extract_submatrix_from,
+ *       FullMatrix::scatter_matrix_to, LinearOperator, SolverSelector,
+ *       PreconditionSelector, ReductionControl, MappingQEulerian
  *       </td></tr>
  *
  *   <tr valign="top">
  *       <td>step-45</td>
  *       <td> Periodic boundary conditions.
+ *       <br/> Keywords: GridTools::collect_periodic_faces,
+ *       GridTools::PeriodicFacePair, Triangulation::add_periodicity
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -415,6 +444,8 @@
  *   <tr valign="top">
  *       <td>step-54</td>
  *       <td> Using CAD files to describe the boundary of your domain.
+ *       <br/> Keywords: Manifold, OpenCASCADE::read_IGES,
+ *       OpenCASCADE::NormalProjectionBoundary
  *       </td></tr>
  *
  *   <tr valign="top">
@@ -437,12 +468,47 @@
  *       <td> Solving a Poisson problem discretized with an interior penalty DG
  *       method and a multilevel preconditioner in a matrix-free fashion using
  *       a massively parallel implementation.
+ *       </td></tr>
  *
  *   <tr valign="top">
  *       <td>step-60</td>
  *       <td> Distributed Lagrange multipliers for the solution of
  *       Poisson problems in complex domains with constraints defined
  *       on non-matching grids.
+ *       </td></tr>
+ *
+ *   <tr valign="top">
+ *       <td>step-61</td>
+ *       <td> Solving the Poisson problem with the "weak Galerkin" finite element
+ *       method.
+ *       </td></tr>
+ *
+ *   <tr valign="top">
+ *       <td>step-62</td>
+ *       <td> Resonance frequency and bandgap of a phononic crystal. Elastic
+ *       wave equation in the frequency domain with Perfectly Matched Layer
+ *       boundary conditions. Parallelization via MUMPS and MPI.
+ *       </td></tr>
+ *
+ *   <tr valign="top">
+ *       <td>step-63</td>
+ *       <td>Block smoothers for geometric multigrid. A scalar convection
+ *       diffusion equation is solved with different additive or
+ *       multiplicative multigrid smoothers.
+ *       <br/> Keywords: Multigrid, MeshWorker::mesh_loop,
+ *       MGSmootherPrecondition, RelaxationBlock, DoFRenumbering::downstream
+ *       </td></tr>
+ *
+ *   <tr valign="top">
+ *       <td>step-64</td>
+ *       <td> Solving a Helmholtz problem using matrix-free methods on the GPU
+ *       with MPI parallelization.
+ *       </td></tr>
+ *
+ *   <tr valign="top">
+ *       <td>step-65</td>
+ *        <td> The TransfiniteInterpolationManifold and MappingQCache classes for
+ *        advanced manifold operations.
  *       </td></tr>
  *
  * </table>
@@ -571,6 +637,22 @@
  *   </tr>
  *
  *   <tr valign="top">
+ *     <td> Parallelization via MUMPS and MPI
+ *     </td>
+ *     <td>
+ *       step-62
+ *     </td>
+ *   </tr>
+ *
+ *   <tr valign="top">
+ *     <td> Parallelization via CUDA and MPI
+ *     </td>
+ *     <td>
+ *       step-64
+ *     </td>
+ *   </tr>
+ *
+ *   <tr valign="top">
  *     <td> Parallelization on very large numbers of processors
  *     </td>
  *     <td>
@@ -597,7 +679,8 @@
  *       step-36,
  *       step-42,
  *       step-44,
- *       step-60
+ *       step-60,
+ *       step-62
  *     </td>
  *   </tr>
  *
@@ -608,7 +691,8 @@
  *       step-10,
  *       step-11,
  *       step-32,
- *       step-60
+ *       step-60,
+ *       step-65
  *     </td>
  *   </tr>
  *
@@ -647,7 +731,8 @@
  *       step-39,
  *       step-46,
  *       step-51,
- *       step-59
+ *       step-59,
+ *       step-61
  *     </td>
  *   </tr>
  *
@@ -680,7 +765,8 @@
  *       step-34,
  *       step-38,
  *       step-53,
- *       step-54
+ *       step-54,
+ *       step-65
  *     </td>
  *   </tr>
  *
@@ -699,7 +785,8 @@
  *     <td>
  *       step-37,
  *       step-48,
- *       step-59
+ *       step-59,
+ *       step-64
  *     </td>
  *   </tr>
  *
@@ -709,7 +796,8 @@
  *     <td>
  *       step-49,
  *       step-53,
- *       step-54
+ *       step-54,
+ *       step-65
  *     </td>
  *   </tr>
  *
@@ -718,6 +806,14 @@
  *     </td>
  *     <td>
  *       step-60
+ *     </td>
+ *   </tr>
+ *
+ *   <tr valign="top">
+ *     <td> HDF5 and Python
+ *     </td>
+ *     <td>
+ *       step-62
  *     </td>
  *   </tr>
  *
@@ -757,7 +853,8 @@
  *       step-42,
  *       step-43,
  *       step-56,
- *       step-59
+ *       step-59,
+ *       step-63
  *     </td>
  *   </tr>
  *
@@ -835,7 +932,9 @@
  *     </td>
  *     <td>
  *       step-7,
- *       step-29
+ *       step-29,
+ *       step-62,
+ *       step-64
  *     </td>
  *   </tr>
  *
@@ -845,7 +944,8 @@
  *     <td>
  *       step-8,
  *       step-42,
- *       step-46
+ *       step-46,
+ *       step-62
  *     </td>
  *   </tr>
  *

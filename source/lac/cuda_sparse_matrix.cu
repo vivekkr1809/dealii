@@ -298,7 +298,7 @@ namespace CUDAWrappers
     // Copy the elements to the gpu
     val_dev.reset(Utilities::CUDA::allocate_device_data<Number>(nnz));
     cudaError_t error_code = cudaMemcpy(val_dev.get(),
-                                        &val[0],
+                                        val.data(),
                                         nnz * sizeof(Number),
                                         cudaMemcpyHostToDevice);
     AssertCuda(error_code);
@@ -307,7 +307,7 @@ namespace CUDAWrappers
     column_index_dev.reset(Utilities::CUDA::allocate_device_data<int>(nnz));
     AssertCuda(error_code);
     error_code = cudaMemcpy(column_index_dev.get(),
-                            &column_index[0],
+                            column_index.data(),
                             nnz * sizeof(int),
                             cudaMemcpyHostToDevice);
     AssertCuda(error_code);
@@ -316,7 +316,7 @@ namespace CUDAWrappers
     row_ptr_dev.reset(Utilities::CUDA::allocate_device_data<int>(row_ptr_size));
     AssertCuda(error_code);
     error_code = cudaMemcpy(row_ptr_dev.get(),
-                            &row_ptr[0],
+                            row_ptr.data(),
                             row_ptr_size * sizeof(int),
                             cudaMemcpyHostToDevice);
     AssertCuda(error_code);
@@ -343,10 +343,12 @@ namespace CUDAWrappers
     internal::scale<Number>
       <<<n_blocks, block_size>>>(val_dev.get(), factor, nnz);
 
+#  ifdef DEBUG
     // Check that the kernel was launched correctly
     AssertCuda(cudaGetLastError());
     // Check that there was no problem during the execution of the kernel
     AssertCuda(cudaDeviceSynchronize());
+#  endif
 
     return *this;
   }
@@ -363,10 +365,12 @@ namespace CUDAWrappers
     internal::scale<Number>
       <<<n_blocks, block_size>>>(val_dev.get(), 1. / factor, nnz);
 
+#  ifdef DEBUG
     // Check that the kernel was launched correctly
     AssertCuda(cudaGetLastError());
     // Check that there was no problem during the execution of the kernel
     AssertCuda(cudaDeviceSynchronize());
+#  endif
 
     return *this;
   }
@@ -515,10 +519,13 @@ namespace CUDAWrappers
                                  column_index_dev.get(),
                                  row_ptr_dev.get(),
                                  column_sums.get_values());
+
+#  ifdef DEBUG
     // Check that the kernel was launched correctly
     AssertCuda(cudaGetLastError());
     // Check that there was no problem during the execution of the kernel
     AssertCuda(cudaDeviceSynchronize());
+#  endif
 
     return column_sums.linfty_norm();
   }
@@ -537,10 +544,13 @@ namespace CUDAWrappers
                                  column_index_dev.get(),
                                  row_ptr_dev.get(),
                                  row_sums.get_values());
+
+#  ifdef DEBUG
     // Check that the kernel was launched correctly
     AssertCuda(cudaGetLastError());
     // Check that there was no problem during the execution of the kernel
     AssertCuda(cudaDeviceSynchronize());
+#  endif
 
     return row_sums.linfty_norm();
   }

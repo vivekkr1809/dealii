@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,17 +56,8 @@ DEAL_II_NAMESPACE_OPEN
 
 #ifdef DEAL_II_WITH_P4EST
 
-namespace internal
-{
-  namespace DoFHandlerImplementation
-  {
-    namespace Policy
-    {
-      template <typename>
-      class ParallelDistributed;
-    }
-  } // namespace DoFHandlerImplementation
-} // namespace internal
+// Forward declarations
+#  ifndef DOXYGEN
 
 namespace FETools
 {
@@ -83,6 +74,7 @@ namespace GridTools
   template <typename CellIterator>
   struct PeriodicFacePair;
 }
+#  endif
 
 namespace parallel
 {
@@ -151,7 +143,7 @@ namespace parallel
      * and this function needs to know about boundaries. In other words, it is
      * <i>not</i> enough to just set boundary indicators on newly created
      * faces only <i>after</i> calling
-     * <tt>distributed::parallel::Triangulation::execute_coarsening_and_refinement</tt>:
+     * <tt>distributed::parallel::TriangulationBase::execute_coarsening_and_refinement</tt>:
      * it actually has to happen while that function is still running.
      *
      * The way to do this is by writing a function that sets boundary
@@ -178,18 +170,20 @@ namespace parallel
      *   ... create the coarse mesh ...
      *
      *   coarse_grid.signals.post_refinement.connect(
-     *     std::bind (&set_boundary_ids<dim>, std::ref(coarse_grid)));
+     *     [&coarse_grid](){
+     *       set_boundary_ids<dim>(coarse_grid);
+     *     });
      * }
      * @endcode
      *
-     * What the call to <code>std::bind</code> does is to produce an
-     * object that can be called like a function with no arguments. It does so
-     * by taking the address of a function that does, in fact, take an
-     * argument but permanently fix this one argument to a reference to the
-     * coarse grid triangulation. After each refinement step, the
+     * The object passed as argument to <code>connect</code> is an object
+     * that can be called like a function with no arguments. It does so by
+     * wrapping a function that does, in fact, take an argument but this one
+     * argument is stored as a reference to the coarse grid triangulation when
+     * the lambda function is created. After each refinement step, the
      * triangulation will then call the object so created which will in turn
-     * call <code>set_boundary_ids<dim></code> with the reference to the
-     * coarse grid as argument.
+     * call <code>set_boundary_ids<dim></code> with the reference to the coarse
+     * grid as argument.
      *
      * This approach can be generalized. In the example above, we have used a
      * global function that will be called. However, sometimes it is necessary
@@ -218,17 +212,17 @@ namespace parallel
      *   ... create the coarse mesh ...
      *
      *   coarse_grid.signals.post_refinement.connect(
-     *     std::bind (&MyGeometry<dim>::set_boundary_ids,
-     *                std::cref(*this),
-     *                std::ref(coarse_grid)));
+     *     [this, &coarse_grid]()
+     *     {
+     *       this->set_boundary_ids(coarse_grid);
+     *     });
      * }
      * @endcode
-     * Here, like any other member function, <code>set_boundary_ids</code>
-     * implicitly takes a pointer or reference to the object it belongs to as
-     * first argument. <code>std::bind</code> again creates an object that can
+     * The lambda function above again is an object that can
      * be called like a global function with no arguments, and this object in
-     * turn calls <code>set_boundary_ids</code> with a pointer to the current
-     * object and a reference to the triangulation to work on. Note that
+     * turn calls the current object's member function
+     * <code>set_boundary_ids</code> with a reference to the triangulation to
+     * work on. Note that
      * because the <code>create_coarse_mesh</code> function is declared as
      * <code>const</code>, it is necessary that the
      * <code>set_boundary_ids</code> function is also declared
@@ -245,7 +239,8 @@ namespace parallel
      * @ingroup distributed
      */
     template <int dim, int spacedim = dim>
-    class Triangulation : public dealii::parallel::Triangulation<dim, spacedim>
+    class Triangulation
+      : public dealii::parallel::DistributedTriangulationBase<dim, spacedim>
     {
     public:
       /**
@@ -314,8 +309,7 @@ namespace parallel
         /**
          * This flags needs to be set to use the geometric multigrid
          * functionality. This option requires additional computation and
-         * communication. Note: geometric multigrid is still a work in
-         * progress.
+         * communication.
          */
         construct_multigrid_hierarchy = 0x2,
         /**
@@ -331,7 +325,7 @@ namespace parallel
       /**
        * Constructor.
        *
-       * @param mpi_communicator denotes the MPI communicator to be used for
+       * @param mpi_communicator The MPI communicator to be used for
        * the triangulation.
        *
        * @param smooth_grid Degree and kind of mesh smoothing to be applied to
@@ -359,7 +353,7 @@ namespace parallel
        * mesh independent of the number of processors into which the
        * triangulation is partitioned.
        */
-      Triangulation(
+      explicit Triangulation(
         MPI_Comm mpi_communicator,
         const typename dealii::Triangulation<dim, spacedim>::MeshSmoothing
                        smooth_grid = (dealii::Triangulation<dim, spacedim>::none),
@@ -378,6 +372,12 @@ namespace parallel
        */
       virtual void
       clear() override;
+
+      /**
+       * Return if multilevel hierarchy is supported and has been constructed.
+       */
+      bool
+      is_multilevel_hierarchy_constructed() const override;
 
       /**
        * Implementation of the same function as in the base class.
@@ -442,7 +442,7 @@ namespace parallel
        * Override the implementation of prepare_coarsening_and_refinement from
        * the base class. This is necessary if periodic boundaries are enabled
        * and the level difference over vertices over the periodic boundary
-       * must be not more than 2:1.
+       * must not be more than 2:1.
        */
       virtual bool
       prepare_coarsening_and_refinement() override;
@@ -647,7 +647,7 @@ namespace parallel
        * of classes that do this is parallel::distributed::SolutionTransfer
        * where each parallel::distributed::SolutionTransfer object that works
        * on the current Triangulation object then needs to register its intent.
-       * Each of these parties registers a callback function (the second
+       * Each of these parties registers a callback function (the first
        * argument here, @p pack_callback) that will be called whenever the
        * triangulation's execute_coarsening_and_refinement() or save()
        * functions are called.
@@ -814,6 +814,16 @@ namespace parallel
        */
       const std::vector<types::global_dof_index> &
       get_coarse_cell_to_p4est_tree_permutation() const;
+
+      /**
+       * This returns a pointer to the internally stored p4est object (of type
+       * p4est_t or p8est_t depending on @p dim).
+       *
+       * @warning: If you modify the p4est object, internal data structures
+       * can become inconsistent.
+       */
+      const typename dealii::internal::p4est::types<dim>::forest *
+      get_p4est() const;
 
       /**
        * In addition to the action in the base class Triangulation, this
@@ -1177,23 +1187,13 @@ namespace parallel
        * @return A vector of unsigned integers representing the weight or
        * computational load of every cell after the refinement/coarsening/
        * repartition cycle. Note that the number of entries does not need to
-       * be equal to either n_active_cells or n_locally_owned_active_cells,
+       * be equal to either n_active_cells() or n_locally_owned_active_cells(),
        * because the triangulation is not updated yet. The weights are sorted
        * in the order that p4est will encounter them while iterating over
        * them.
        */
       std::vector<unsigned int>
       get_cell_weights() const;
-
-      /**
-       * Override the implementation in parallel::Triangulation because
-       * we can ask p4est about ghost neighbors across periodic boundaries.
-       *
-       * Specifically, this function determines the neighboring subdomains that
-       * are adjacent to each vertex.
-       */
-      virtual std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-      compute_vertices_with_ghost_neighbors() const override;
 
       /**
        * This method returns a bit vector of length tria.n_vertices()
@@ -1207,9 +1207,13 @@ namespace parallel
       std::vector<bool>
       mark_locally_active_vertices_on_level(const int level) const;
 
-      template <typename>
-      friend class dealii::internal::DoFHandlerImplementation::Policy::
-        ParallelDistributed;
+      virtual unsigned int
+      coarse_cell_id_to_coarse_cell_index(
+        const types::coarse_cell_id coarse_cell_id) const override;
+
+      virtual types::coarse_cell_id
+      coarse_cell_index_to_coarse_cell_id(
+        const unsigned int coarse_cell_index) const override;
 
       template <int, int, class>
       friend class dealii::FETools::internal::ExtrapolateImplementation;
@@ -1223,7 +1227,7 @@ namespace parallel
      */
     template <int spacedim>
     class Triangulation<1, spacedim>
-      : public dealii::parallel::Triangulation<1, spacedim>
+      : public dealii::parallel::DistributedTriangulationBase<1, spacedim>
     {
     public:
       /**
@@ -1311,6 +1315,9 @@ namespace parallel
       void
       save(const std::string &filename) const;
 
+      bool
+      is_multilevel_hierarchy_constructed() const override;
+
       /**
        * This function is not implemented, but needs to be present for the
        * compiler.
@@ -1358,13 +1365,6 @@ namespace parallel
        * needs a stub because it is used in dof_handler_policy.cc
        */
       virtual std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-      compute_vertices_with_ghost_neighbors() const override;
-
-      /**
-       * Like above, this method, which is only implemented for dim = 2 or 3,
-       * needs a stub because it is used in dof_handler_policy.cc
-       */
-      virtual std::map<unsigned int, std::set<dealii::types::subdomain_id>>
       compute_level_vertices_with_ghost_neighbors(
         const unsigned int level) const;
 
@@ -1374,6 +1374,14 @@ namespace parallel
        */
       virtual std::vector<bool>
       mark_locally_active_vertices_on_level(const unsigned int level) const;
+
+      virtual unsigned int
+      coarse_cell_id_to_coarse_cell_index(
+        const types::coarse_cell_id coarse_cell_id) const override;
+
+      virtual types::coarse_cell_id
+      coarse_cell_index_to_coarse_cell_id(
+        const unsigned int coarse_cell_index) const override;
     };
   } // namespace distributed
 } // namespace parallel
@@ -1397,7 +1405,8 @@ namespace parallel
      * p4est is not available.
      */
     template <int dim, int spacedim = dim>
-    class Triangulation : public dealii::parallel::Triangulation<dim, spacedim>
+    class Triangulation
+      : public dealii::parallel::TriangulationBase<dim, spacedim>
     {
     public:
       /**

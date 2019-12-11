@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2018 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,7 +26,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 // Forward declarations:
-
+#ifndef DOXYGEN
 namespace internal
 {
   namespace BlockLinearOperatorImplementation
@@ -45,6 +45,7 @@ template <typename Range  = BlockVector<double>,
           typename BlockPayload =
             internal::BlockLinearOperatorImplementation::EmptyBlockPayload<>>
 class BlockLinearOperator;
+#endif
 
 template <typename Range  = BlockVector<double>,
           typename Domain = Range,
@@ -54,8 +55,8 @@ template <typename Range  = BlockVector<double>,
 BlockLinearOperator<Range, Domain, BlockPayload>
 block_operator(const BlockMatrixType &matrix);
 
-template <size_t m,
-          size_t n,
+template <std::size_t m,
+          std::size_t n,
           typename Range  = BlockVector<double>,
           typename Domain = Range,
           typename BlockPayload =
@@ -68,7 +69,7 @@ block_operator(
                               n>,
                    m> &);
 
-template <size_t m,
+template <std::size_t m,
           typename Range  = BlockVector<double>,
           typename Domain = Range,
           typename BlockPayload =
@@ -80,7 +81,7 @@ block_diagonal_operator(
                                   typename BlockPayload::BlockType>,
                    m> &);
 
-template <size_t m,
+template <std::size_t m,
           typename Range  = BlockVector<double>,
           typename Domain = Range,
           typename BlockPayload =
@@ -264,7 +265,7 @@ public:
    * LinearOperator. This constructor calls the corresponding block_operator()
    * specialization.
    */
-  template <size_t m, size_t n>
+  template <std::size_t m, std::size_t n>
   BlockLinearOperator(const std::array<std::array<BlockType, n>, m> &ops)
   {
     *this = block_operator<m, n, Range, Domain, BlockPayload>(ops);
@@ -275,7 +276,7 @@ public:
    * @p ops of LinearOperator. This constructor calls the corresponding
    * block_operator() specialization.
    */
-  template <size_t m>
+  template <std::size_t m>
   BlockLinearOperator(const std::array<BlockType, m> &ops)
   {
     *this = block_diagonal_operator<m, Range, Domain, BlockPayload>(ops);
@@ -304,7 +305,7 @@ public:
    * This assignment operator calls the corresponding block_operator()
    * specialization.
    */
-  template <size_t m, size_t n>
+  template <std::size_t m, std::size_t n>
   BlockLinearOperator<Range, Domain, BlockPayload> &
   operator=(const std::array<std::array<BlockType, n>, m> &ops)
   {
@@ -317,7 +318,7 @@ public:
    * that creates a block-diagonal BlockLinearOperator. This assignment
    * operator calls the corresponding block_operator() specialization.
    */
-  template <size_t m>
+  template <std::size_t m>
   BlockLinearOperator<Range, Domain, BlockPayload> &
   operator=(const std::array<BlockType, m> &ops)
   {
@@ -623,8 +624,8 @@ block_operator(const BlockMatrixType &block_matrix)
   using BlockType =
     typename BlockLinearOperator<Range, Domain, BlockPayload>::BlockType;
 
-  BlockLinearOperator<Range, Domain, BlockPayload> return_op(
-    BlockPayload(block_matrix, block_matrix));
+  BlockLinearOperator<Range, Domain, BlockPayload> return_op{
+    BlockPayload(block_matrix, block_matrix)};
 
   return_op.n_block_rows = [&block_matrix]() -> unsigned int {
     return block_matrix.n_block_rows();
@@ -679,8 +680,8 @@ block_operator(const BlockMatrixType &block_matrix)
  *
  * @ingroup LAOperators
  */
-template <size_t m,
-          size_t n,
+template <std::size_t m,
+          std::size_t n,
           typename Range,
           typename Domain,
           typename BlockPayload>
@@ -698,9 +699,8 @@ block_operator(
   using BlockType =
     typename BlockLinearOperator<Range, Domain, BlockPayload>::BlockType;
 
-  BlockLinearOperator<Range, Domain, BlockPayload> return_op(
-    (BlockPayload())); // TODO: Create block payload so that this can be
-                       // initialized correctly
+  // TODO: Create block payload so that this can be initialized correctly
+  BlockLinearOperator<Range, Domain, BlockPayload> return_op{BlockPayload()};
 
   return_op.n_block_rows = []() -> unsigned int { return m; };
 
@@ -744,8 +744,8 @@ block_diagonal_operator(const BlockMatrixType &block_matrix)
   using BlockType =
     typename BlockLinearOperator<Range, Domain, BlockPayload>::BlockType;
 
-  BlockLinearOperator<Range, Domain, BlockPayload> return_op(
-    BlockPayload(block_matrix, block_matrix));
+  BlockLinearOperator<Range, Domain, BlockPayload> return_op{
+    BlockPayload(block_matrix, block_matrix)};
 
   return_op.n_block_rows = [&block_matrix]() -> unsigned int {
     return block_matrix.n_block_rows();
@@ -793,7 +793,7 @@ block_diagonal_operator(const BlockMatrixType &block_matrix)
  *
  * @ingroup LAOperators
  */
-template <size_t m, typename Range, typename Domain, typename BlockPayload>
+template <std::size_t m, typename Range, typename Domain, typename BlockPayload>
 BlockLinearOperator<Range, Domain, BlockPayload>
 block_diagonal_operator(
   const std::array<LinearOperator<typename Range::BlockType,
@@ -842,7 +842,7 @@ block_diagonal_operator(
  *
  * @ingroup LAOperators
  */
-template <size_t m, typename Range, typename Domain, typename BlockPayload>
+template <std::size_t m, typename Range, typename Domain, typename BlockPayload>
 BlockLinearOperator<Range, Domain, BlockPayload>
 block_diagonal_operator(
   const LinearOperator<typename Range::BlockType,
@@ -910,8 +910,8 @@ block_forward_substitution(
   const BlockLinearOperator<Range, Domain, BlockPayload> &block_operator,
   const BlockLinearOperator<Domain, Range, BlockPayload> &diagonal_inverse)
 {
-  LinearOperator<Range, Range, typename BlockPayload::BlockType> return_op(
-    (typename BlockPayload::BlockType(diagonal_inverse)));
+  LinearOperator<Range, Range, typename BlockPayload::BlockType> return_op{
+    typename BlockPayload::BlockType(diagonal_inverse)};
 
   return_op.reinit_range_vector  = diagonal_inverse.reinit_range_vector;
   return_op.reinit_domain_vector = diagonal_inverse.reinit_domain_vector;
@@ -1025,8 +1025,8 @@ block_back_substitution(
   const BlockLinearOperator<Range, Domain, BlockPayload> &block_operator,
   const BlockLinearOperator<Domain, Range, BlockPayload> &diagonal_inverse)
 {
-  LinearOperator<Range, Range, typename BlockPayload::BlockType> return_op(
-    (typename BlockPayload::BlockType(diagonal_inverse)));
+  LinearOperator<Range, Range, typename BlockPayload::BlockType> return_op{
+    typename BlockPayload::BlockType(diagonal_inverse)};
 
   return_op.reinit_range_vector  = diagonal_inverse.reinit_range_vector;
   return_op.reinit_domain_vector = diagonal_inverse.reinit_domain_vector;

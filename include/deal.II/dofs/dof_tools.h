@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,6 +39,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 class BlockMask;
 template <int dim, typename RangeNumberType>
 class Function;
@@ -66,7 +68,7 @@ namespace GridTools
   template <typename CellIterator>
   struct PeriodicFacePair;
 }
-
+#endif
 
 /**
  * This is a collection of functions operating on, and manipulating the
@@ -160,7 +162,7 @@ namespace GridTools
  *
  * In some cases, one wants to only work with DoFs that sit on the boundary.
  * One application is, for example, if rather than interpolating non-
- * homogenous boundary values, one would like to project them. For this, we
+ * homogeneous boundary values, one would like to project them. For this, we
  * need two things: a way to identify nodes that are located on (parts of) the
  * boundary, and a way to build matrices out of only degrees of freedom that
  * are on the boundary (i.e. much smaller matrices, in which we do not even
@@ -283,8 +285,10 @@ namespace DoFTools
    */
 
   /**
-   * @name Functions to support code that generically uses both DoFHandler and
-   * hp::DoFHandler
+   * @name Generic Functions
+   *
+   * Functions to support code that generically uses both DoFHandler and
+   * hp::DoFHandler.
    * @{
    */
   /**
@@ -899,7 +903,7 @@ namespace DoFTools
    * in ${\cal V}_1$ since by construction ${\cal V}_0 \subset {\cal V}_1$.
    * However, not every function in ${\cal V}_1$ can be expressed as a linear
    * combination of the shape functions of ${\cal V}_0$. The functions that
-   * can be represented lie in a homogenous subspace of ${\cal V}_1$ (namely,
+   * can be represented lie in a homogeneous subspace of ${\cal V}_1$ (namely,
    * ${\cal V}_0$, of course) and this subspace can be represented by a linear
    * constraint of the form $CV=0$ where $V$ is the vector of nodal values of
    * functions $v\in {\cal V}_1$. In other words, every function $v_h=\sum_j
@@ -1146,24 +1150,39 @@ namespace DoFTools
    * This function makes sure that identity constraints don't create cycles
    * in @p constraints.
    *
+   * @p periodicity_factor can be used to to implement Bloch periodic conditions
+   * (a.k.a. phase shift periodic conditions) of the form
+   * $\psi(\mathbf{r})=e^{-i\mathbf{k}\cdot\mathbf{r}}u(\mathbf{r})$
+   * where $u$ is periodic with the same periodicity as the crystal lattice and
+   * and $\mathbf{k}$ is the wavevector, see
+   * [https://en.wikipedia.org/wiki/Bloch_wave](https://en.wikipedia.org/wiki/Bloch_wave).
+   * The solution at @p face_2 is equal to the solution at @p face_1 times
+   * @p periodicity_factor. For example, if the solution at @p face_1 is
+   * $\psi(0)$ and $\mathbf{d}$ is the corresponding point on @p face_2, then
+   * the solution at @p face_2 should be
+   * $\psi(d) = \psi(0)e^{-i \mathbf{k}\cdot \mathbf{d}}$. This condition can be
+   * implemented using
+   * $\mathrm{periodicity\_factor}=e^{-i \mathbf{k}\cdot \mathbf{d}}$.
+   *
    * Detailed information can be found in the see
    * @ref GlossPeriodicConstraints "Glossary entry on periodic boundary conditions".
    *
-   * @author Matthias Maier, 2012 - 2015
+   * @author Matthias Maier, Daniel Garcia-Sanchez 2012 - 2019
    */
-  template <typename FaceIterator>
+  template <typename FaceIterator, typename number>
   void
   make_periodicity_constraints(
     const FaceIterator &                         face_1,
     const typename identity<FaceIterator>::type &face_2,
-    AffineConstraints<double> &                  constraints,
+    AffineConstraints<number> &                  constraints,
     const ComponentMask &            component_mask   = ComponentMask(),
     const bool                       face_orientation = true,
     const bool                       face_flip        = false,
     const bool                       face_rotation    = false,
     const FullMatrix<double> &       matrix           = FullMatrix<double>(),
     const std::vector<unsigned int> &first_vector_components =
-      std::vector<unsigned int>());
+      std::vector<unsigned int>(),
+    const number periodicity_factor = 1.);
 
 
 
@@ -1188,16 +1207,17 @@ namespace DoFTools
    *
    * @author Daniel Arndt, Matthias Maier, 2013 - 2015
    */
-  template <typename DoFHandlerType>
+  template <typename DoFHandlerType, typename number>
   void
   make_periodicity_constraints(
     const std::vector<
       GridTools::PeriodicFacePair<typename DoFHandlerType::cell_iterator>>
       &                              periodic_faces,
-    AffineConstraints<double> &      constraints,
+    AffineConstraints<number> &      constraints,
     const ComponentMask &            component_mask = ComponentMask(),
     const std::vector<unsigned int> &first_vector_components =
-      std::vector<unsigned int>());
+      std::vector<unsigned int>(),
+    const number periodicity_factor = 1.);
 
 
 
@@ -1214,13 +1234,14 @@ namespace DoFTools
    *
    * This function tries to match all faces belonging to the first boundary
    * with faces belonging to the second boundary with the help of
-   * orthogonal_equality().
+   * orthogonal_equality(). More precisely, faces with coordinates only
+   * differing in the @p direction component are identified.
    *
    * If this matching is successful it constrains all DoFs associated with the
    * 'first' boundary to the respective DoFs of the 'second' boundary
    * respecting the relative orientation of the two faces.
    *
-   * @note: This function is a convenience wrapper. It internally calls
+   * @note This function is a convenience wrapper. It internally calls
    * GridTools::collect_periodic_faces() with the supplied parameters and
    * feeds the output to above make_periodicity_constraints() variant. If you
    * need more functionality use GridTools::collect_periodic_faces() directly.
@@ -1231,15 +1252,16 @@ namespace DoFTools
    *
    * @author Matthias Maier, 2012
    */
-  template <typename DoFHandlerType>
+  template <typename DoFHandlerType, typename number>
   void
   make_periodicity_constraints(
     const DoFHandlerType &     dof_handler,
     const types::boundary_id   b_id1,
     const types::boundary_id   b_id2,
-    const int                  direction,
-    AffineConstraints<double> &constraints,
-    const ComponentMask &      component_mask = ComponentMask());
+    const unsigned int         direction,
+    AffineConstraints<number> &constraints,
+    const ComponentMask &      component_mask     = ComponentMask(),
+    const number               periodicity_factor = 1.);
 
 
 
@@ -1252,13 +1274,14 @@ namespace DoFTools
    * boundary_ids this function defines a 'left' boundary as all faces with
    * local face index <code>2*dimension</code> and boundary indicator @p b_id
    * and, similarly, a 'right' boundary consisting of all face with local face
-   * index <code>2*dimension+1</code> and boundary indicator @p b_id.
+   * index <code>2*dimension+1</code> and boundary indicator @p b_id. Faces with
+   * coordinates only differing in the @p direction component are identified.
    *
    * @note This version of make_periodicity_constraints  will not work on
    * meshes with cells not in
    * @ref GlossFaceOrientation "standard orientation".
    *
-   * @note: This function is a convenience wrapper. It internally calls
+   * @note This function is a convenience wrapper. It internally calls
    * GridTools::collect_periodic_faces() with the supplied parameters and
    * feeds the output to above make_periodicity_constraints() variant. If you
    * need more functionality use GridTools::collect_periodic_faces() directly.
@@ -1267,14 +1290,15 @@ namespace DoFTools
    * @ref GlossPeriodicConstraints "Glossary entry on periodic boundary conditions"
    * for further information.
    */
-  template <typename DoFHandlerType>
+  template <typename DoFHandlerType, typename number>
   void
   make_periodicity_constraints(
     const DoFHandlerType &     dof_handler,
     const types::boundary_id   b_id,
-    const int                  direction,
-    AffineConstraints<double> &constraints,
-    const ComponentMask &      component_mask = ComponentMask());
+    const unsigned int         direction,
+    AffineConstraints<number> &constraints,
+    const ComponentMask &      component_mask     = ComponentMask(),
+    const number               periodicity_factor = 1.);
 
   /**
    * @}
@@ -1307,7 +1331,7 @@ namespace DoFTools
 
   /**
    * Same as above but return the selected DoFs as IndexSet. In particular,
-   * for parallel::Triangulation objects this function should be preferred.
+   * for parallel::TriangulationBase objects this function should be preferred.
    */
   template <int dim, int spacedim>
   IndexSet
@@ -1344,22 +1368,16 @@ namespace DoFTools
    *   corresponds to a vector component selected by the mask above. The size
    *   of this array must equal DoFHandler::n_locally_owned_dofs(), which for
    *   sequential computations of course equals DoFHandler::n_dofs(). The
-   * previous contents of this array are overwritten.
+   *   previous contents of this array are overwritten. Note that the resulting
+   *   vector just holds the locally owned extracted degrees of freedom, which
+   *   first have to be mapped to the global degrees of freedom, to correspond
+   *   with them.
    */
-  template <int dim, int spacedim>
+  template <typename DoFHandlerType>
   void
-  extract_dofs(const DoFHandler<dim, spacedim> &dof_handler,
-               const ComponentMask &            component_mask,
-               std::vector<bool> &              selected_dofs);
-
-  /**
-   * The same function as above, but for a hp::DoFHandler.
-   */
-  template <int dim, int spacedim>
-  void
-  extract_dofs(const hp::DoFHandler<dim, spacedim> &dof_handler,
-               const ComponentMask &                component_mask,
-               std::vector<bool> &                  selected_dofs);
+  extract_dofs(const DoFHandlerType &dof_handler,
+               const ComponentMask & component_mask,
+               std::vector<bool> &   selected_dofs);
 
   /**
    * This function is the equivalent to the DoFTools::extract_dofs() functions
@@ -1383,22 +1401,13 @@ namespace DoFTools
    *   corresponds to a vector block selected by the mask above. The size
    *   of this array must equal DoFHandler::n_locally_owned_dofs(), which for
    *   sequential computations of course equals DoFHandler::n_dofs(). The
-   * previous contents of this array are overwritten.
+   *   previous contents of this array are overwritten.
    */
-  template <int dim, int spacedim>
+  template <typename DoFHandlerType>
   void
-  extract_dofs(const DoFHandler<dim, spacedim> &dof_handler,
-               const BlockMask &                block_mask,
-               std::vector<bool> &              selected_dofs);
-
-  /**
-   * The same function as above, but for a hp::DoFHandler.
-   */
-  template <int dim, int spacedim>
-  void
-  extract_dofs(const hp::DoFHandler<dim, spacedim> &dof_handler,
-               const BlockMask &                    block_mask,
-               std::vector<bool> &                  selected_dofs);
+  extract_dofs(const DoFHandlerType &dof_handler,
+               const BlockMask &     block_mask,
+               std::vector<bool> &   selected_dofs);
 
   /**
    * Do the same thing as the corresponding extract_dofs() function for one
@@ -1438,7 +1447,7 @@ namespace DoFTools
    * @ref GlossComponentMask)
    * shall equal the number of components in the finite element used by @p
    * dof. The size of @p selected_dofs shall equal
-   * <tt>dof_handler.n_dofs()</tt>. Previous contents of this array or
+   * <tt>dof_handler.n_dofs()</tt>. Previous contents of this array are
    * overwritten.
    *
    * Using the usual convention, if a shape function is non-zero in more than
@@ -1455,7 +1464,7 @@ namespace DoFTools
    * DoFTools::extract_boundary_dofs function.
    *
    * @param[in] dof_handler The object that describes which degrees of freedom
-   * live on which cell
+   * live on which cell.
    * @param[in] component_mask A mask denoting the vector components of the
    * finite element that should be considered (see also
    * @ref GlossComponentMask).
@@ -1495,7 +1504,7 @@ namespace DoFTools
    * @ref GlossLocallyRelevantDof "locally relevant DoFs").
    *
    * @param[in] dof_handler The object that describes which degrees of freedom
-   * live on which cell
+   * live on which cell.
    * @param[in] component_mask A mask denoting the vector components of the
    * finite element that should be considered (see also
    * @ref GlossComponentMask).
@@ -2295,12 +2304,24 @@ namespace DoFTools
    * function unsuitable for the case that the given DoFHandler object derives
    * from a parallel::distributed::Triangulation object.  Consequently, this
    * function will produce an error if called with such a DoFHandler.
+   *
+   * @param mapping The mapping from the reference cell to the real cell on
+   * which DoFs are defined.
+   * @param dof_handler The object that describes which DoF indices live on
+   * which cell of the triangulation.
+   * @param support_points A vector that stores the corresponding location of the dofs
+   * in real space coordinates. Previous content of this object is deleted in
+   * this function.
+   * @param component_mask An optional component mask that restricts the
+   * components from which the support points are extracted.
+   *
    */
   template <int dim, int spacedim>
   void
   map_dofs_to_support_points(const Mapping<dim, spacedim> &   mapping,
                              const DoFHandler<dim, spacedim> &dof_handler,
-                             std::vector<Point<spacedim>> &   support_points);
+                             std::vector<Point<spacedim>> &   support_points,
+                             const ComponentMask &mask = ComponentMask());
 
   /**
    * Same as the previous function but for the hp case.
@@ -2311,7 +2332,8 @@ namespace DoFTools
   map_dofs_to_support_points(
     const dealii::hp::MappingCollection<dim, spacedim> &mapping,
     const hp::DoFHandler<dim, spacedim> &               dof_handler,
-    std::vector<Point<spacedim>> &                      support_points);
+    std::vector<Point<spacedim>> &                      support_points,
+    const ComponentMask &                               mask = ComponentMask());
 
   /**
    * This function is a version of the above map_dofs_to_support_points
@@ -2339,13 +2361,16 @@ namespace DoFTools
    * @param support_points A map that for every locally relevant DoF index
    * contains the corresponding location in real space coordinates. Previous
    * content of this object is deleted in this function.
+   * @param component_mask An optional component mask that restricts the
+   * components from which the support points are extracted.
    */
   template <int dim, int spacedim>
   void
   map_dofs_to_support_points(
     const Mapping<dim, spacedim> &                      mapping,
     const DoFHandler<dim, spacedim> &                   dof_handler,
-    std::map<types::global_dof_index, Point<spacedim>> &support_points);
+    std::map<types::global_dof_index, Point<spacedim>> &support_points,
+    const ComponentMask &                               mask = ComponentMask());
 
   /**
    * Same as the previous function but for the hp case.
@@ -2355,7 +2380,8 @@ namespace DoFTools
   map_dofs_to_support_points(
     const dealii::hp::MappingCollection<dim, spacedim> &mapping,
     const hp::DoFHandler<dim, spacedim> &               dof_handler,
-    std::map<types::global_dof_index, Point<spacedim>> &support_points);
+    std::map<types::global_dof_index, Point<spacedim>> &support_points,
+    const ComponentMask &                               mask = ComponentMask());
 
 
   /**

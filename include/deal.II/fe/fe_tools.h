@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,6 +39,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class FullMatrix;
 template <int dim>
@@ -51,7 +53,7 @@ template <int dim>
 class FiniteElementData;
 template <typename number>
 class AffineConstraints;
-
+#endif
 
 
 /*!@addtogroup feall */
@@ -169,7 +171,7 @@ namespace FETools
    * returned.
    *
    * The vector <tt>renumbering</tt> will be indexed by the standard numbering
-   * of local degrees of freedom, namely first first vertex, then second
+   * of local degrees of freedom, namely the first vertex, then the second
    * vertex, after vertices lines, quads, and hexes. For each index, the entry
    * indicates the index which this degree of freedom receives in a numbering
    * scheme, where the first block is numbered completely before the second.

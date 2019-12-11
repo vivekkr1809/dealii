@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_cuda_matrix_free_templates_h
 #define dealii_cuda_matrix_free_templates_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/matrix_free/cuda_matrix_free.h>
 
 #ifdef DEAL_II_COMPILER_CUDA_AWARE
@@ -24,6 +26,9 @@
 #  include <deal.II/base/cuda_size.h>
 #  include <deal.II/base/graph_coloring.h>
 
+#  include <deal.II/dofs/dof_tools.h>
+
+#  include <deal.II/fe/fe_dgq.h>
 #  include <deal.II/fe/fe_values.h>
 
 #  include <deal.II/grid/filtered_iterator.h>
@@ -43,12 +48,80 @@ namespace CUDAWrappers
   namespace internal
   {
     // These variables are stored in the device constant memory.
-    // TODO: use a template parameter
     constexpr unsigned int max_elem_degree = 10;
+
+    template <typename NumberType>
+    using DataArray = NumberType[(max_elem_degree + 1) * (max_elem_degree + 1)];
+
     __constant__ double
-      global_shape_values[(max_elem_degree + 1) * (max_elem_degree + 1)];
+      global_shape_values_d[(max_elem_degree + 1) * (max_elem_degree + 1)];
+    __constant__ float
+      global_shape_values_f[(max_elem_degree + 1) * (max_elem_degree + 1)];
+
+    template <typename Number>
+    __host__ __device__ inline DataArray<Number> &
+             get_global_shape_values();
+
+    template <>
+    __host__ __device__ inline DataArray<double> &
+             get_global_shape_values<double>()
+    {
+      return global_shape_values_d;
+    }
+
+    template <>
+    __host__ __device__ inline DataArray<float> &
+             get_global_shape_values<float>()
+    {
+      return global_shape_values_f;
+    }
+
     __constant__ double
-      global_shape_gradients[(max_elem_degree + 1) * (max_elem_degree + 1)];
+      global_shape_gradients_d[(max_elem_degree + 1) * (max_elem_degree + 1)];
+    __constant__ float
+      global_shape_gradients_f[(max_elem_degree + 1) * (max_elem_degree + 1)];
+
+    template <typename Number>
+    __host__ __device__ inline DataArray<Number> &
+             get_global_shape_gradients();
+
+    template <>
+    __host__ __device__ inline DataArray<double> &
+             get_global_shape_gradients<double>()
+    {
+      return global_shape_gradients_d;
+    }
+
+    template <>
+    __host__ __device__ inline DataArray<float> &
+             get_global_shape_gradients<float>()
+    {
+      return global_shape_gradients_f;
+    }
+
+    // for collocation methods
+    __constant__ double global_co_shape_gradients_d[(max_elem_degree + 1) *
+                                                    (max_elem_degree + 1)];
+    __constant__ float  global_co_shape_gradients_f[(max_elem_degree + 1) *
+                                                   (max_elem_degree + 1)];
+
+    template <typename Number>
+    __host__ __device__ inline DataArray<Number> &
+             get_global_co_shape_gradients();
+
+    template <>
+    __host__ __device__ inline DataArray<double> &
+             get_global_co_shape_gradients<double>()
+    {
+      return global_co_shape_gradients_d;
+    }
+
+    template <>
+    __host__ __device__ inline DataArray<float> &
+             get_global_co_shape_gradients<float>()
+    {
+      return global_co_shape_gradients_f;
+    }
 
     template <typename Number>
     using CUDAVector = ::dealii::LinearAlgebra::CUDAWrappers::Vector<Number>;
@@ -94,14 +167,15 @@ namespace CUDAWrappers
     /**
      * Allocate an array to the device and copy @p array_host to the device.
      */
-    template <typename Number1, typename Number2>
+    template <typename Number1>
     void
-    alloc_and_copy(Number1 **            array_device,
-                   std::vector<Number2> &array_host,
-                   const unsigned int    n)
+    alloc_and_copy(Number1 **array_device,
+                   const ArrayView<const Number1, MemorySpace::Host> array_host,
+                   const unsigned int                                n)
     {
       cudaError_t error_code = cudaMalloc(array_device, n * sizeof(Number1));
       AssertCuda(error_code);
+      AssertDimension(array_host.size(), n);
 
       error_code = cudaMemcpy(*array_device,
                               array_host.data(),
@@ -137,7 +211,10 @@ namespace CUDAWrappers
 
       template <typename CellFilter>
       void
-      get_cell_data(const CellFilter &cell, const unsigned int cell_id);
+      get_cell_data(
+        const CellFilter &                                        cell,
+        const unsigned int                                        cell_id,
+        const std::shared_ptr<const Utilities::MPI::Partitioner> &partitioner);
 
       void
       alloc_and_copy_arrays(const unsigned int cell);
@@ -146,7 +223,7 @@ namespace CUDAWrappers
       MatrixFree<dim, Number> *data;
       // Host data
       std::vector<types::global_dof_index> local_to_global_host;
-      std::vector<Point<dim>>              q_points_host;
+      std::vector<Point<dim, Number>>      q_points_host;
       std::vector<Number>                  JxW_host;
       std::vector<Number>                  inv_jacobian_host;
       std::vector<unsigned int>            constraint_mask_host;
@@ -274,17 +351,25 @@ namespace CUDAWrappers
     template <int dim, typename Number>
     template <typename CellFilter>
     void
-    ReinitHelper<dim, Number>::get_cell_data(const CellFilter & cell,
-                                             const unsigned int cell_id)
+    ReinitHelper<dim, Number>::get_cell_data(
+      const CellFilter &                                        cell,
+      const unsigned int                                        cell_id,
+      const std::shared_ptr<const Utilities::MPI::Partitioner> &partitioner)
     {
       cell->get_dof_indices(local_dof_indices);
-
+      // When using MPI, we need to transform the local_dof_indices, which
+      // contains global dof indices, to get local (to the current MPI process)
+      // dof indices.
+      if (partitioner)
+        for (auto &index : local_dof_indices)
+          index = partitioner->global_to_local(index);
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         lexicographic_dof_indices[i] = local_dof_indices[lexicographic_inv[i]];
 
       hanging_nodes.setup_constraints(lexicographic_dof_indices,
                                       cell,
+                                      partitioner,
                                       constraint_mask_host[cell_id]);
 
       memcpy(&local_to_global_host[cell_id * padding_length],
@@ -334,9 +419,11 @@ namespace CUDAWrappers
           MatrixFree<dim, Number>::parallel_over_elem)
         transpose_in_place(local_to_global_host, n_cells, padding_length);
 
-      alloc_and_copy(&data->local_to_global[color],
-                     local_to_global_host,
-                     n_cells * padding_length);
+      alloc_and_copy(
+        &data->local_to_global[color],
+        ArrayView<const types::global_dof_index>(local_to_global_host.data(),
+                                                 local_to_global_host.size()),
+        n_cells * padding_length);
 
       // Quadrature points
       if (update_flags & update_quadrature_points)
@@ -346,7 +433,8 @@ namespace CUDAWrappers
             transpose_in_place(q_points_host, n_cells, padding_length);
 
           alloc_and_copy(&data->q_points[color],
-                         q_points_host,
+                         ArrayView<const Point<dim, Number>>(
+                           q_points_host.data(), q_points_host.size()),
                          n_cells * padding_length);
         }
 
@@ -357,7 +445,10 @@ namespace CUDAWrappers
               MatrixFree<dim, Number>::parallel_over_elem)
             transpose_in_place(JxW_host, n_cells, padding_length);
 
-          alloc_and_copy(&data->JxW[color], JxW_host, n_cells * padding_length);
+          alloc_and_copy(&data->JxW[color],
+                         ArrayView<const Number>(JxW_host.data(),
+                                                 JxW_host.size()),
+                         n_cells * padding_length);
         }
 
       // Inverse jacobians
@@ -381,12 +472,14 @@ namespace CUDAWrappers
                                padding_length);
 
           alloc_and_copy(&data->inv_jacobian[color],
-                         inv_jacobian_host,
+                         ArrayView<const Number>(inv_jacobian_host.data(),
+                                                 inv_jacobian_host.size()),
                          n_cells * dim * dim * padding_length);
         }
 
       alloc_and_copy(&data->constraint_mask[color],
-                     constraint_mask_host,
+                     ArrayView<const unsigned int>(constraint_mask_host.data(),
+                                                   constraint_mask_host.size()),
                      n_cells);
     }
 
@@ -414,12 +507,16 @@ namespace CUDAWrappers
     copy_constrained_dofs(
       const dealii::types::global_dof_index *constrained_dofs,
       const unsigned int                     n_constrained_dofs,
+      const unsigned int                     size,
       const Number *                         src,
       Number *                               dst)
     {
       const unsigned int dof =
         threadIdx.x + blockDim.x * (blockIdx.x + gridDim.x * blockIdx.y);
-      if (dof < n_constrained_dofs)
+      // When working with distributed vectors, the constrained dofs are
+      // computed for ghosted vectors but we want to copy the values of the
+      // constrained dofs of non-ghosted vectors.
+      if ((dof < n_constrained_dofs) && (constrained_dofs[dof] < size))
         dst[constrained_dofs[dof]] = src[constrained_dofs[dof]];
     }
 
@@ -430,48 +527,70 @@ namespace CUDAWrappers
     set_constrained_dofs(
       const dealii::types::global_dof_index *constrained_dofs,
       const unsigned int                     n_constrained_dofs,
+      const unsigned int                     size,
       Number                                 val,
       Number *                               dst)
     {
       const unsigned int dof =
         threadIdx.x + blockDim.x * (blockIdx.x + gridDim.x * blockIdx.y);
-      if (dof < n_constrained_dofs)
+      // When working with distributed vectors, the constrained dofs are
+      // computed for ghosted vectors but we want to set the values of the
+      // constrained dofs of non-ghosted vectors.
+      if ((dof < n_constrained_dofs) && (constrained_dofs[dof] < size))
         dst[constrained_dofs[dof]] = val;
     }
 
 
 
-    template <int dim, typename Number, typename functor>
+    template <int dim, typename Number, typename Functor>
     __global__ void
-    apply_kernel_shmem(const functor &                              func,
+    apply_kernel_shmem(Functor                                      func,
                        const typename MatrixFree<dim, Number>::Data gpu_data,
                        const Number *                               src,
                        Number *                                     dst)
     {
       constexpr unsigned int cells_per_block =
-        cells_per_block_shmem(dim, functor::n_dofs_1d - 1);
+        cells_per_block_shmem(dim, Functor::n_dofs_1d - 1);
 
       constexpr unsigned int n_dofs_per_block =
-        cells_per_block * functor::n_local_dofs;
+        cells_per_block * Functor::n_local_dofs;
       constexpr unsigned int n_q_points_per_block =
-        cells_per_block * functor::n_q_points;
+        cells_per_block * Functor::n_q_points;
       // TODO make use of dynamically allocated shared memory
       __shared__ Number values[n_dofs_per_block];
       __shared__ Number gradients[dim][n_q_points_per_block];
 
-      const unsigned int local_cell = threadIdx.x / functor::n_dofs_1d;
+      const unsigned int local_cell = threadIdx.x / Functor::n_dofs_1d;
       const unsigned int cell =
         local_cell + cells_per_block * (blockIdx.x + gridDim.x * blockIdx.y);
 
       Number *gq[dim];
       for (int d = 0; d < dim; ++d)
-        gq[d] = &gradients[d][local_cell * functor::n_q_points];
+        gq[d] = &gradients[d][local_cell * Functor::n_q_points];
 
       SharedData<dim, Number> shared_data(
-        &values[local_cell * functor::n_local_dofs], gq);
+        &values[local_cell * Functor::n_local_dofs], gq);
 
       if (cell < gpu_data.n_cells)
         func(cell, &gpu_data, &shared_data, src, dst);
+    }
+
+
+
+    template <int dim, typename Number, typename Functor>
+    __global__ void
+    evaluate_coeff(Functor                                      func,
+                   const typename MatrixFree<dim, Number>::Data gpu_data)
+    {
+      constexpr unsigned int cells_per_block =
+        cells_per_block_shmem(dim, Functor::n_dofs_1d - 1);
+
+      const unsigned int local_cell = threadIdx.x / Functor::n_dofs_1d;
+      const unsigned int cell =
+        local_cell + cells_per_block * (blockIdx.x + gridDim.x * blockIdx.y);
+
+      if (cell < gpu_data.n_cells)
+        func(cell, &gpu_data);
     }
   } // namespace internal
 
@@ -479,7 +598,8 @@ namespace CUDAWrappers
 
   template <int dim, typename Number>
   MatrixFree<dim, Number>::MatrixFree()
-    : constrained_dofs(nullptr)
+    : n_dofs(0)
+    , constrained_dofs(nullptr)
     , padding_length(0)
   {}
 
@@ -491,144 +611,38 @@ namespace CUDAWrappers
                                   const DoFHandler<dim> &          dof_handler,
                                   const AffineConstraints<Number> &constraints,
                                   const Quadrature<1> &            quad,
-                                  const AdditionalData additional_data)
+                                  const AdditionalData &additional_data)
   {
-    if (typeid(Number) == typeid(double))
-      cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+    const auto &triangulation = dof_handler.get_triangulation();
+    if (const auto parallel_triangulation =
+          dynamic_cast<const parallel::TriangulationBase<dim> *>(
+            &triangulation))
+      internal_reinit(mapping,
+                      dof_handler,
+                      constraints,
+                      quad,
+                      std::make_shared<const MPI_Comm>(
+                        parallel_triangulation->get_communicator()),
+                      additional_data);
+    else
+      internal_reinit(
+        mapping, dof_handler, constraints, quad, nullptr, additional_data);
+  }
 
-    const UpdateFlags &update_flags = additional_data.mapping_update_flags;
 
-    if (additional_data.parallelization_scheme != parallel_over_elem &&
-        additional_data.parallelization_scheme != parallel_in_elem)
-      AssertThrow(false, ExcMessage("Invalid parallelization scheme."));
 
-    this->parallelization_scheme = additional_data.parallelization_scheme;
-
-    // TODO: only free if we actually need arrays of different length
-    free();
-
-    const FiniteElement<dim> &fe = dof_handler.get_fe();
-
-    fe_degree = fe.degree;
-    // TODO this should be a templated parameter
-    const unsigned int n_dofs_1d     = fe_degree + 1;
-    const unsigned int n_q_points_1d = quad.size();
-
-    Assert(n_dofs_1d == n_q_points_1d,
-           ExcMessage("n_q_points_1d must be equal to fe_degree+1."));
-
-    // Set padding length to the closest power of two larger than or equal to
-    // the number of threads.
-    padding_length = 1 << static_cast<unsigned int>(
-                       std::ceil(dim * std::log2(fe_degree + 1.)));
-
-    dofs_per_cell     = fe.dofs_per_cell;
-    q_points_per_cell = std::pow(n_q_points_1d, dim);
-
-    const ::dealii::internal::MatrixFreeFunctions::ShapeInfo<Number> shape_info(
-      quad, fe);
-
-    unsigned int size_shape_values = n_dofs_1d * n_q_points_1d * sizeof(Number);
-
-    cudaError_t cuda_error = cudaMemcpyToSymbol(internal::global_shape_values,
-                                                &shape_info.shape_values[0],
-                                                size_shape_values,
-                                                0,
-                                                cudaMemcpyHostToDevice);
-    AssertCuda(cuda_error);
-
-    if (update_flags & update_gradients)
-      {
-        cuda_error = cudaMemcpyToSymbol(internal::global_shape_gradients,
-                                        &shape_info.shape_gradients[0],
-                                        size_shape_values,
-                                        0,
-                                        cudaMemcpyHostToDevice);
-        AssertCuda(cuda_error);
-      }
-
-    // Setup the number of cells per CUDA thread block
-    cells_per_block = cells_per_block_shmem(dim, fe_degree);
-
-    internal::ReinitHelper<dim, Number> helper(
-      this, mapping, fe, quad, shape_info, dof_handler, update_flags);
-
-    // Create a graph coloring
-    using CellFilter =
-      FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>;
-    CellFilter begin(IteratorFilters::LocallyOwnedCell(),
-                     dof_handler.begin_active());
-    CellFilter end(IteratorFilters::LocallyOwnedCell(), dof_handler.end());
-    const auto fun = [&](const CellFilter &filter) {
-      return internal::get_conflict_indices<dim, Number>(filter, constraints);
-    };
-
-    std::vector<std::vector<CellFilter>> graph =
-      GraphColoring::make_graph_coloring(begin, end, fun);
-    n_colors = graph.size();
-
-    helper.setup_color_arrays(n_colors);
-    for (unsigned int i = 0; i < n_colors; ++i)
-      {
-        n_cells[i] = graph[i].size();
-        helper.setup_cell_arrays(i);
-        typename std::vector<CellFilter>::iterator cell     = graph[i].begin(),
-                                                   end_cell = graph[i].end();
-        for (unsigned int cell_id = 0; cell != end_cell; ++cell, ++cell_id)
-          helper.get_cell_data(*cell, cell_id);
-
-        helper.alloc_and_copy_arrays(i);
-      }
-
-    // Setup row starts
-    row_start[0] = 0;
-    for (unsigned int i = 0; i < n_colors - 1; ++i)
-      row_start[i + 1] = row_start[i] + n_cells[i] * get_padding_length();
-
-    // Constrained indices
-    n_constrained_dofs = constraints.n_constraints();
-
-    if (n_constrained_dofs != 0)
-      {
-        const unsigned int constraint_n_blocks =
-          std::ceil(static_cast<double>(n_constrained_dofs) /
-                    static_cast<double>(block_size));
-        const unsigned int constraint_x_n_blocks =
-          std::round(std::sqrt(constraint_n_blocks));
-        const unsigned int constraint_y_n_blocks =
-          std::ceil(static_cast<double>(constraint_n_blocks) /
-                    static_cast<double>(constraint_x_n_blocks));
-
-        constraint_grid_dim =
-          dim3(constraint_x_n_blocks, constraint_y_n_blocks);
-        constraint_block_dim = dim3(block_size);
-
-        std::vector<dealii::types::global_dof_index> constrained_dofs_host(
-          n_constrained_dofs);
-
-        unsigned int       i_constraint = 0;
-        const unsigned int n_dofs       = dof_handler.n_dofs();
-        for (unsigned int i = 0; i < n_dofs; ++i)
-          {
-            if (constraints.is_constrained(i))
-              {
-                constrained_dofs_host[i_constraint] = i;
-                ++i_constraint;
-              }
-          }
-
-        cuda_error = cudaMalloc(&constrained_dofs,
-                                n_constrained_dofs *
-                                  sizeof(dealii::types::global_dof_index));
-        AssertCuda(cuda_error);
-
-        cuda_error = cudaMemcpy(constrained_dofs,
-                                constrained_dofs_host.data(),
-                                n_constrained_dofs *
-                                  sizeof(dealii::types::global_dof_index),
-                                cudaMemcpyHostToDevice);
-        AssertCuda(cuda_error);
-      }
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::reinit(const DoFHandler<dim> &          dof_handler,
+                                  const AffineConstraints<Number> &constraints,
+                                  const Quadrature<1> &            quad,
+                                  const AdditionalData &additional_data)
+  {
+    reinit(StaticMappingQ1<dim>::mapping,
+           dof_handler,
+           constraints,
+           quad,
+           additional_data);
   }
 
 
@@ -646,6 +660,7 @@ namespace CUDAWrappers
     data_copy.n_cells         = n_cells[color];
     data_copy.padding_length  = padding_length;
     data_copy.row_start       = row_start[color];
+    data_copy.use_coloring    = use_coloring;
 
     return data_copy;
   }
@@ -656,69 +671,27 @@ namespace CUDAWrappers
   void
   MatrixFree<dim, Number>::free()
   {
-    for (unsigned int i = 0; i < q_points.size(); ++i)
-      {
-        if (q_points[i] != nullptr)
-          {
-            cudaError_t cuda_error = cudaFree(q_points[i]);
-            AssertCuda(cuda_error);
-            q_points[i] = nullptr;
-          }
-      }
-
-    for (unsigned int i = 0; i < local_to_global.size(); ++i)
-      {
-        if (local_to_global[i] != nullptr)
-          {
-            cudaError_t cuda_error = cudaFree(local_to_global[i]);
-            AssertCuda(cuda_error);
-            local_to_global[i] = nullptr;
-          }
-      }
-
-    for (unsigned int i = 0; i < inv_jacobian.size(); ++i)
-      {
-        if (inv_jacobian[i] != nullptr)
-          {
-            cudaError_t cuda_error = cudaFree(inv_jacobian[i]);
-            AssertCuda(cuda_error);
-            inv_jacobian[i] = nullptr;
-          }
-      }
-
-    for (unsigned int i = 0; i < JxW.size(); ++i)
-      {
-        if (JxW[i] != nullptr)
-          {
-            cudaError_t cuda_error = cudaFree(JxW[i]);
-            AssertCuda(cuda_error);
-            JxW[i] = nullptr;
-          }
-      }
-
-    for (unsigned int i = 0; i < constraint_mask.size(); ++i)
-      {
-        if (constraint_mask[i] != nullptr)
-          {
-            cudaError_t cuda_error = cudaFree(constraint_mask[i]);
-            AssertCuda(cuda_error);
-            constraint_mask[i] = nullptr;
-          }
-      }
-
-
+    for (auto &q_points_color_ptr : q_points)
+      Utilities::CUDA::free(q_points_color_ptr);
     q_points.clear();
+
+    for (auto &local_to_global_color_ptr : local_to_global)
+      Utilities::CUDA::free(local_to_global_color_ptr);
     local_to_global.clear();
+
+    for (auto &inv_jacobian_color_ptr : inv_jacobian)
+      Utilities::CUDA::free(inv_jacobian_color_ptr);
     inv_jacobian.clear();
+
+    for (auto &JxW_color_ptr : JxW)
+      Utilities::CUDA::free(JxW_color_ptr);
     JxW.clear();
+
+    for (auto &constraint_mask_color_ptr : constraint_mask)
+      Utilities::CUDA::free(constraint_mask_color_ptr);
     constraint_mask.clear();
 
-    if (constrained_dofs != nullptr)
-      {
-        cudaError_t cuda_error = cudaFree(constrained_dofs);
-        AssertCuda(cuda_error);
-        constrained_dofs = nullptr;
-      }
+    Utilities::CUDA::free(constrained_dofs);
   }
 
 
@@ -732,11 +705,10 @@ namespace CUDAWrappers
     static_assert(
       std::is_same<Number, typename VectorType::value_type>::value,
       "VectorType::value_type and Number should be of the same type.");
-    internal::copy_constrained_dofs<Number>
-      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
-                                                      n_constrained_dofs,
-                                                      src.get_values(),
-                                                      dst.get_values());
+    if (partitioner)
+      distributed_copy_constrained_values(src, dst);
+    else
+      serial_copy_constrained_values(src, dst);
   }
 
 
@@ -750,11 +722,33 @@ namespace CUDAWrappers
     static_assert(
       std::is_same<Number, typename VectorType::value_type>::value,
       "VectorType::value_type and Number should be of the same type.");
-    internal::set_constrained_dofs<Number>
-      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
-                                                      n_constrained_dofs,
-                                                      val,
-                                                      dst.get_values());
+    if (partitioner)
+      distributed_set_constrained_values(val, dst);
+    else
+      serial_set_constrained_values(val, dst);
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::initialize_dof_vector(
+    LinearAlgebra::CUDAWrappers::Vector<Number> &vec) const
+  {
+    vec.reinit(n_dofs);
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::initialize_dof_vector(
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &vec) const
+  {
+    if (partitioner)
+      vec.reinit(partitioner);
+    else
+      vec.reinit(n_dofs);
   }
 
 
@@ -769,18 +763,28 @@ namespace CUDAWrappers
 
 
   template <int dim, typename Number>
-  template <typename functor, typename VectorType>
+  template <typename Functor, typename VectorType>
   void
-  MatrixFree<dim, Number>::cell_loop(const functor &   func,
+  MatrixFree<dim, Number>::cell_loop(const Functor &   func,
                                      const VectorType &src,
                                      VectorType &      dst) const
   {
+    if (partitioner)
+      distributed_cell_loop(func, src, dst);
+    else
+      serial_cell_loop(func, src, dst);
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename Functor>
+  void
+  MatrixFree<dim, Number>::evaluate_coefficients(Functor func) const
+  {
     for (unsigned int i = 0; i < n_colors; ++i)
-      internal::apply_kernel_shmem<dim, Number, functor>
-        <<<grid_dim[i], block_dim[i]>>>(func,
-                                        get_data(i),
-                                        src.get_values(),
-                                        dst.get_values());
+      internal::evaluate_coeff<dim, Number, Functor>
+        <<<grid_dim[i], block_dim[i]>>>(func, get_data(i));
   }
 
 
@@ -806,6 +810,391 @@ namespace CUDAWrappers
       }
 
     return bytes;
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::internal_reinit(
+    const Mapping<dim> &             mapping,
+    const DoFHandler<dim> &          dof_handler,
+    const AffineConstraints<Number> &constraints,
+    const Quadrature<1> &            quad,
+    std::shared_ptr<const MPI_Comm>  comm,
+    const AdditionalData             additional_data)
+  {
+    if (typeid(Number) == typeid(double))
+      cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
+
+    const UpdateFlags &update_flags = additional_data.mapping_update_flags;
+
+    if (additional_data.parallelization_scheme != parallel_over_elem &&
+        additional_data.parallelization_scheme != parallel_in_elem)
+      AssertThrow(false, ExcMessage("Invalid parallelization scheme."));
+
+    this->parallelization_scheme = additional_data.parallelization_scheme;
+    this->use_coloring           = additional_data.use_coloring;
+
+    // TODO: only free if we actually need arrays of different length
+    free();
+
+    n_dofs = dof_handler.n_dofs();
+
+    const FiniteElement<dim> &fe = dof_handler.get_fe();
+
+    fe_degree = fe.degree;
+    // TODO this should be a templated parameter
+    const unsigned int n_dofs_1d     = fe_degree + 1;
+    const unsigned int n_q_points_1d = quad.size();
+
+    Assert(n_dofs_1d == n_q_points_1d,
+           ExcMessage("n_q_points_1d must be equal to fe_degree+1."));
+
+    // Set padding length to the closest power of two larger than or equal to
+    // the number of threads.
+    padding_length = 1 << static_cast<unsigned int>(
+                       std::ceil(dim * std::log2(fe_degree + 1.)));
+
+    dofs_per_cell     = fe.dofs_per_cell;
+    q_points_per_cell = std::pow(n_q_points_1d, dim);
+
+    const ::dealii::internal::MatrixFreeFunctions::ShapeInfo<Number> shape_info(
+      quad, fe);
+
+    unsigned int size_shape_values = n_dofs_1d * n_q_points_1d * sizeof(Number);
+
+    FE_DGQArbitraryNodes<1> fe_quad_co(quad);
+    const ::dealii::internal::MatrixFreeFunctions::ShapeInfo<Number>
+      shape_info_co(quad, fe_quad_co);
+
+    unsigned int size_co_shape_values =
+      n_q_points_1d * n_q_points_1d * sizeof(Number);
+
+    cudaError_t cuda_error =
+      cudaMemcpyToSymbol(internal::get_global_shape_values<Number>(),
+                         shape_info.shape_values.data(),
+                         size_shape_values,
+                         0,
+                         cudaMemcpyHostToDevice);
+    AssertCuda(cuda_error);
+
+    if (update_flags & update_gradients)
+      {
+        cuda_error =
+          cudaMemcpyToSymbol(internal::get_global_shape_gradients<Number>(),
+                             shape_info.shape_gradients.data(),
+                             size_shape_values,
+                             0,
+                             cudaMemcpyHostToDevice);
+        AssertCuda(cuda_error);
+
+        cuda_error =
+          cudaMemcpyToSymbol(internal::get_global_co_shape_gradients<Number>(),
+                             shape_info_co.shape_gradients.data(),
+                             size_co_shape_values,
+                             0,
+                             cudaMemcpyHostToDevice);
+        AssertCuda(cuda_error);
+      }
+
+    // Setup the number of cells per CUDA thread block
+    cells_per_block = cells_per_block_shmem(dim, fe_degree);
+
+    internal::ReinitHelper<dim, Number> helper(
+      this, mapping, fe, quad, shape_info, dof_handler, update_flags);
+
+    // Create a graph coloring
+    using CellFilter =
+      FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>;
+    CellFilter begin(IteratorFilters::LocallyOwnedCell(),
+                     dof_handler.begin_active());
+    CellFilter end(IteratorFilters::LocallyOwnedCell(), dof_handler.end());
+    std::vector<std::vector<CellFilter>> graph;
+
+    if (begin != end)
+      {
+        if (additional_data.use_coloring)
+          {
+            const auto fun = [&](const CellFilter &filter) {
+              return internal::get_conflict_indices<dim, Number>(filter,
+                                                                 constraints);
+            };
+            graph = GraphColoring::make_graph_coloring(begin, end, fun);
+          }
+        else
+          {
+            // If we are not using coloring, all the cells belong to the same
+            // color.
+            graph.resize(1, std::vector<CellFilter>());
+            for (auto cell = begin; cell != end; ++cell)
+              graph[0].emplace_back(cell);
+          }
+      }
+    n_colors = graph.size();
+
+    helper.setup_color_arrays(n_colors);
+
+    IndexSet locally_relevant_dofs;
+    if (comm)
+      {
+        DoFTools::extract_locally_relevant_dofs(dof_handler,
+                                                locally_relevant_dofs);
+        partitioner = std::make_shared<Utilities::MPI::Partitioner>(
+          dof_handler.locally_owned_dofs(), locally_relevant_dofs, *comm);
+      }
+    for (unsigned int i = 0; i < n_colors; ++i)
+      {
+        n_cells[i] = graph[i].size();
+        helper.setup_cell_arrays(i);
+        typename std::vector<CellFilter>::iterator cell     = graph[i].begin(),
+                                                   end_cell = graph[i].end();
+        for (unsigned int cell_id = 0; cell != end_cell; ++cell, ++cell_id)
+          helper.get_cell_data(*cell, cell_id, partitioner);
+
+        helper.alloc_and_copy_arrays(i);
+      }
+
+    // Setup row starts
+    if (n_colors > 0)
+      row_start[0] = 0;
+    for (unsigned int i = 1; i < n_colors; ++i)
+      row_start[i] = row_start[i - 1] + n_cells[i - 1] * get_padding_length();
+
+    // Constrained indices
+    n_constrained_dofs = constraints.n_constraints();
+
+    if (n_constrained_dofs != 0)
+      {
+        const unsigned int constraint_n_blocks =
+          std::ceil(static_cast<double>(n_constrained_dofs) /
+                    static_cast<double>(block_size));
+        const unsigned int constraint_x_n_blocks =
+          std::round(std::sqrt(constraint_n_blocks));
+        const unsigned int constraint_y_n_blocks =
+          std::ceil(static_cast<double>(constraint_n_blocks) /
+                    static_cast<double>(constraint_x_n_blocks));
+
+        constraint_grid_dim =
+          dim3(constraint_x_n_blocks, constraint_y_n_blocks);
+        constraint_block_dim = dim3(block_size);
+
+        std::vector<dealii::types::global_dof_index> constrained_dofs_host(
+          n_constrained_dofs);
+
+        if (partitioner)
+          {
+            const unsigned int n_local_dofs =
+              locally_relevant_dofs.n_elements();
+            unsigned int i_constraint = 0;
+            for (unsigned int i = 0; i < n_local_dofs; ++i)
+              {
+                // is_constrained uses a global dof id but constrained_dofs_host
+                // works on the local id
+                if (constraints.is_constrained(partitioner->local_to_global(i)))
+                  {
+                    constrained_dofs_host[i_constraint] = i;
+                    ++i_constraint;
+                  }
+              }
+          }
+        else
+          {
+            const unsigned int n_local_dofs = dof_handler.n_dofs();
+            unsigned int       i_constraint = 0;
+            for (unsigned int i = 0; i < n_local_dofs; ++i)
+              {
+                if (constraints.is_constrained(i))
+                  {
+                    constrained_dofs_host[i_constraint] = i;
+                    ++i_constraint;
+                  }
+              }
+          }
+
+        cuda_error = cudaMalloc(&constrained_dofs,
+                                n_constrained_dofs *
+                                  sizeof(dealii::types::global_dof_index));
+        AssertCuda(cuda_error);
+
+        cuda_error = cudaMemcpy(constrained_dofs,
+                                constrained_dofs_host.data(),
+                                n_constrained_dofs *
+                                  sizeof(dealii::types::global_dof_index),
+                                cudaMemcpyHostToDevice);
+        AssertCuda(cuda_error);
+      }
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename Functor, typename VectorType>
+  void
+  MatrixFree<dim, Number>::serial_cell_loop(const Functor &   func,
+                                            const VectorType &src,
+                                            VectorType &      dst) const
+  {
+    // Execute the loop on the cells
+    for (unsigned int i = 0; i < n_colors; ++i)
+      internal::apply_kernel_shmem<dim, Number, Functor>
+        <<<grid_dim[i], block_dim[i]>>>(func,
+                                        get_data(i),
+                                        src.get_values(),
+                                        dst.get_values());
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename Functor>
+  void
+  MatrixFree<dim, Number>::distributed_cell_loop(
+    const Functor &                                                      func,
+    const LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &src,
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &dst) const
+  {
+    // in case we have compatible partitioners, we can simply use the provided
+    // vectors
+    if (src.get_partitioner().get() == partitioner.get() &&
+        dst.get_partitioner().get() == partitioner.get())
+      {
+        src.update_ghost_values();
+
+        // Execute the loop on the cells
+        for (unsigned int i = 0; i < n_colors; ++i)
+          internal::apply_kernel_shmem<dim, Number, Functor>
+            <<<grid_dim[i], block_dim[i]>>>(func,
+                                            get_data(i),
+                                            src.get_values(),
+                                            dst.get_values());
+        dst.compress(VectorOperation::add);
+        src.zero_out_ghosts();
+      }
+    else
+      {
+        // Create the ghosted source and the ghosted destination
+        LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA>
+          ghosted_src(partitioner);
+        LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA>
+          ghosted_dst(ghosted_src);
+        ghosted_src = src;
+
+        // Execute the loop on the cells
+        for (unsigned int i = 0; i < n_colors; ++i)
+          internal::apply_kernel_shmem<dim, Number, Functor>
+            <<<grid_dim[i], block_dim[i]>>>(func,
+                                            get_data(i),
+                                            ghosted_src.get_values(),
+                                            ghosted_dst.get_values());
+
+        // Add the ghosted values
+        ghosted_dst.compress(VectorOperation::add);
+        dst = ghosted_dst;
+      }
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename Functor>
+  void
+  MatrixFree<dim, Number>::distributed_cell_loop(
+    const Functor &,
+    const LinearAlgebra::CUDAWrappers::Vector<Number> &,
+    LinearAlgebra::CUDAWrappers::Vector<Number> &) const
+  {
+    Assert(false, ExcInternalError());
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename VectorType>
+  void
+  MatrixFree<dim, Number>::serial_copy_constrained_values(const VectorType &src,
+                                                          VectorType &dst) const
+  {
+    Assert(src.size() == dst.size(),
+           ExcMessage("src and dst vectors have different size."));
+    internal::copy_constrained_dofs<Number>
+      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
+                                                      n_constrained_dofs,
+                                                      src.size(),
+                                                      src.get_values(),
+                                                      dst.get_values());
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::distributed_copy_constrained_values(
+    const LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &src,
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &dst) const
+  {
+    Assert(src.size() == dst.size(),
+           ExcMessage("src and dst vectors have different local size."));
+    internal::copy_constrained_dofs<Number>
+      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
+                                                      n_constrained_dofs,
+                                                      src.local_size(),
+                                                      src.get_values(),
+                                                      dst.get_values());
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::distributed_copy_constrained_values(
+    const LinearAlgebra::CUDAWrappers::Vector<Number> &,
+    LinearAlgebra::CUDAWrappers::Vector<Number> &) const
+  {
+    Assert(false, ExcInternalError());
+  }
+
+
+
+  template <int dim, typename Number>
+  template <typename VectorType>
+  void
+  MatrixFree<dim, Number>::serial_set_constrained_values(const Number val,
+                                                         VectorType & dst) const
+  {
+    internal::set_constrained_dofs<Number>
+      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
+                                                      n_constrained_dofs,
+                                                      dst.size(),
+                                                      val,
+                                                      dst.get_values());
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::distributed_set_constrained_values(
+    const Number                                                   val,
+    LinearAlgebra::distributed::Vector<Number, MemorySpace::CUDA> &dst) const
+  {
+    internal::set_constrained_dofs<Number>
+      <<<constraint_grid_dim, constraint_block_dim>>>(constrained_dofs,
+                                                      n_constrained_dofs,
+                                                      dst.local_size(),
+                                                      val,
+                                                      dst.get_values());
+  }
+
+
+
+  template <int dim, typename Number>
+  void
+  MatrixFree<dim, Number>::distributed_set_constrained_values(
+    const Number,
+    LinearAlgebra::CUDAWrappers::Vector<Number> &) const
+  {
+    Assert(false, ExcInternalError());
   }
 } // namespace CUDAWrappers
 

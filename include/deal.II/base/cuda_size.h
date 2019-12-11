@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,14 +23,21 @@ DEAL_II_NAMESPACE_OPEN
 namespace CUDAWrappers
 {
   /**
-   * Define the size of a block when launching a CUDA kernel.
+   * Define the size of a block when launching a CUDA kernel. This number can be
+   * changed depending on the architecture the code is running on.
    */
   constexpr int block_size = 512;
 
   /**
-   * Define the size of chunk of data worked on by a thread.
+   * Define the size of chunk of data worked on by a thread. This number can be
+   * changed depending on the architecture the code is running on.
    */
-  constexpr int chunk_size = 8;
+  constexpr int chunk_size = 1;
+
+  /**
+   * Define the number of threads in a warp.
+   */
+  constexpr int warp_size = 32;
 } // namespace CUDAWrappers
 
 DEAL_II_NAMESPACE_CLOSE

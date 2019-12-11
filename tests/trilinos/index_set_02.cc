@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,7 +66,7 @@ test()
   TrilinosWrappers::MPI::Vector v;
 
   v.reinit(set_my, set_ghost, MPI_COMM_WORLD);
-  IndexSet from_partitioner(v.vector_partitioner());
+  IndexSet from_partitioner(v.trilinos_partitioner());
   deallog << "vec size: " << v.size()
           << " from_partitioner: " << from_partitioner.size() << std::endl;
 

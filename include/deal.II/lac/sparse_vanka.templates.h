@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_sparse_vanka_templates_h
 #define dealii_sparse_vanka_templates_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/thread_management.h>

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -174,7 +174,7 @@ namespace internal
         if (std::abs(xi_denominator0) > 1e-10 * max_x)
           {
             const double xi = (x + subexpr0) / xi_denominator0;
-            return Point<2>(xi, eta);
+            return {xi, static_cast<double>(eta)};
           }
         else
           {
@@ -187,7 +187,7 @@ namespace internal
             if (std::abs(xi_denominator1) > 1e-10 * max_y)
               {
                 const double xi = (subexpr1 + y) / xi_denominator1;
-                return Point<2>(xi, eta);
+                return {xi, static_cast<double>(eta)};
               }
             else // give up and try Newton iteration
               {
@@ -200,8 +200,8 @@ namespace internal
         // bogus return to placate compiler. It should not be possible to get
         // here.
         Assert(false, ExcInternalError());
-        return Point<2>(std::numeric_limits<double>::quiet_NaN(),
-                        std::numeric_limits<double>::quiet_NaN());
+        return {std::numeric_limits<double>::quiet_NaN(),
+                std::numeric_limits<double>::quiet_NaN()};
       }
 
 
@@ -296,7 +296,7 @@ namespace internal
             data.shape_fourth_derivatives.size() != 0)
           for (unsigned int point = 0; point < n_points; ++point)
             {
-              tensor_pols.compute(
+              tensor_pols.evaluate(
                 unit_points[point], values, grads, grad2, grad3, grad4);
 
               if (data.shape_values.size() != 0)
@@ -688,20 +688,12 @@ MappingQGeneric<dim, spacedim>::InternalData::initialize(
 
   const unsigned int n_q_points = q.size();
 
-  // see if we need the (transformation) shape function values
-  // and/or gradients and resize the necessary arrays
-  if (this->update_each & update_quadrature_points)
-    shape_values.resize(n_shape_functions * n_q_points);
-
-  if (this->update_each &
-      (update_covariant_transformation | update_contravariant_transformation |
-       update_JxW_values | update_boundary_forms | update_normal_vectors |
-       update_jacobians | update_jacobian_grads | update_inverse_jacobians |
-       update_jacobian_pushed_forward_grads | update_jacobian_2nd_derivatives |
-       update_jacobian_pushed_forward_2nd_derivatives |
-       update_jacobian_3rd_derivatives |
-       update_jacobian_pushed_forward_3rd_derivatives))
-    shape_derivatives.resize(n_shape_functions * n_q_points);
+  const bool needs_higher_order_terms =
+    this->update_each &
+    (update_jacobian_pushed_forward_grads | update_jacobian_2nd_derivatives |
+     update_jacobian_pushed_forward_2nd_derivatives |
+     update_jacobian_3rd_derivatives |
+     update_jacobian_pushed_forward_3rd_derivatives);
 
   if (this->update_each & update_covariant_transformation)
     covariant.resize(n_original_q_points);
@@ -712,23 +704,12 @@ MappingQGeneric<dim, spacedim>::InternalData::initialize(
   if (this->update_each & update_volume_elements)
     volume_elements.resize(n_original_q_points);
 
-  if (this->update_each &
-      (update_jacobian_grads | update_jacobian_pushed_forward_grads))
-    shape_second_derivatives.resize(n_shape_functions * n_q_points);
-
-  if (this->update_each & (update_jacobian_2nd_derivatives |
-                           update_jacobian_pushed_forward_2nd_derivatives))
-    shape_third_derivatives.resize(n_shape_functions * n_q_points);
-
-  if (this->update_each & (update_jacobian_3rd_derivatives |
-                           update_jacobian_pushed_forward_3rd_derivatives))
-    shape_fourth_derivatives.resize(n_shape_functions * n_q_points);
-
-  const std::vector<Point<dim>> &ref_q_points = q.get_points();
-  // now also fill the various fields with their correct values
-  compute_shape_function_values(ref_q_points);
-
   tensor_product_quadrature = q.is_tensor_product();
+
+  // use of MatrixFree only for higher order elements and with more than one
+  // point where tensor products do not make sense
+  if (polynomial_degree < 2 || n_q_points == 1)
+    tensor_product_quadrature = false;
 
   if (dim > 1)
     {
@@ -783,6 +764,43 @@ MappingQGeneric<dim, spacedim>::InternalData::initialize(
               values_dofs.resize(n_comp * n_shape_values);
             }
         }
+    }
+
+  // Only fill the big arrays on demand in case we cannot use the tensor
+  // product quadrature code path
+  if (dim == 1 || !tensor_product_quadrature || needs_higher_order_terms)
+    {
+      // see if we need the (transformation) shape function values
+      // and/or gradients and resize the necessary arrays
+      if (this->update_each & update_quadrature_points)
+        shape_values.resize(n_shape_functions * n_q_points);
+
+      if (this->update_each &
+          (update_covariant_transformation |
+           update_contravariant_transformation | update_JxW_values |
+           update_boundary_forms | update_normal_vectors | update_jacobians |
+           update_jacobian_grads | update_inverse_jacobians |
+           update_jacobian_pushed_forward_grads |
+           update_jacobian_2nd_derivatives |
+           update_jacobian_pushed_forward_2nd_derivatives |
+           update_jacobian_3rd_derivatives |
+           update_jacobian_pushed_forward_3rd_derivatives))
+        shape_derivatives.resize(n_shape_functions * n_q_points);
+
+      if (this->update_each &
+          (update_jacobian_grads | update_jacobian_pushed_forward_grads))
+        shape_second_derivatives.resize(n_shape_functions * n_q_points);
+
+      if (this->update_each & (update_jacobian_2nd_derivatives |
+                               update_jacobian_pushed_forward_2nd_derivatives))
+        shape_third_derivatives.resize(n_shape_functions * n_q_points);
+
+      if (this->update_each & (update_jacobian_3rd_derivatives |
+                               update_jacobian_pushed_forward_3rd_derivatives))
+        shape_fourth_derivatives.resize(n_shape_functions * n_q_points);
+
+      // now also fill the various fields with their correct values
+      compute_shape_function_values(q.get_points());
     }
 }
 
@@ -1737,7 +1755,7 @@ namespace internal
               Assert(data.n_shape_functions > 0, ExcInternalError());
 
               const Tensor<1, spacedim> *supp_pts =
-                &data.mapping_support_points[0];
+                data.mapping_support_points.data();
 
               for (unsigned int point = 0; point < n_q_points; ++point)
                 {
@@ -2517,7 +2535,7 @@ MappingQGeneric<1, 3>::transform_real_to_unit_cell_internal(
   const Point<1> &) const
 {
   Assert(false, ExcNotImplemented());
-  return Point<1>();
+  return {};
 }
 
 
@@ -2530,7 +2548,7 @@ MappingQGeneric<dim, spacedim>::transform_real_to_unit_cell(
 {
   // Use an exact formula if one is available. this is only the case
   // for Q1 mappings in 1d, and in 2d if dim==spacedim
-  if ((polynomial_degree == 1) &&
+  if (this->preserves_vertex_locations() && (polynomial_degree == 1) &&
       ((dim == 1) || ((dim == 2) && (dim == spacedim))))
     {
       // The dimension-dependent algorithms are much faster (about 25-45x in
@@ -2720,10 +2738,12 @@ std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase>
 MappingQGeneric<dim, spacedim>::get_data(const UpdateFlags      update_flags,
                                          const Quadrature<dim> &q) const
 {
-  auto data = std_cxx14::make_unique<InternalData>(polynomial_degree);
-  data->initialize(this->requires_update_flags(update_flags), q, q.size());
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
+    std_cxx14::make_unique<InternalData>(polynomial_degree);
+  auto &data = dynamic_cast<InternalData &>(*data_ptr);
+  data.initialize(this->requires_update_flags(update_flags), q, q.size());
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -2734,12 +2754,14 @@ MappingQGeneric<dim, spacedim>::get_face_data(
   const UpdateFlags          update_flags,
   const Quadrature<dim - 1> &quadrature) const
 {
-  auto data = std_cxx14::make_unique<InternalData>(polynomial_degree);
-  data->initialize_face(this->requires_update_flags(update_flags),
-                        QProjector<dim>::project_to_all_faces(quadrature),
-                        quadrature.size());
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
+    std_cxx14::make_unique<InternalData>(polynomial_degree);
+  auto &data = dynamic_cast<InternalData &>(*data_ptr);
+  data.initialize_face(this->requires_update_flags(update_flags),
+                       QProjector<dim>::project_to_all_faces(quadrature),
+                       quadrature.size());
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -2750,12 +2772,14 @@ MappingQGeneric<dim, spacedim>::get_subface_data(
   const UpdateFlags          update_flags,
   const Quadrature<dim - 1> &quadrature) const
 {
-  auto data = std_cxx14::make_unique<InternalData>(polynomial_degree);
-  data->initialize_face(this->requires_update_flags(update_flags),
-                        QProjector<dim>::project_to_all_subfaces(quadrature),
-                        quadrature.size());
+  std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase> data_ptr =
+    std_cxx14::make_unique<InternalData>(polynomial_degree);
+  auto &data = dynamic_cast<InternalData &>(*data_ptr);
+  data.initialize_face(this->requires_update_flags(update_flags),
+                       QProjector<dim>::project_to_all_subfaces(quadrature),
+                       quadrature.size());
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -3344,7 +3368,7 @@ namespace internal
       void
       transform_fields(
         const ArrayView<const Tensor<rank, dim>> &               input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<rank, spacedim>> &                output)
       {
@@ -3358,7 +3382,7 @@ namespace internal
             static_cast<const typename dealii::MappingQGeneric<dim, spacedim>::
                           InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_contravariant:
               {
@@ -3422,7 +3446,7 @@ namespace internal
       void
       transform_gradients(
         const ArrayView<const Tensor<rank, dim>> &               input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<rank, spacedim>> &                output)
       {
@@ -3436,7 +3460,7 @@ namespace internal
             static_cast<const typename dealii::MappingQGeneric<dim, spacedim>::
                           InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_contravariant_gradient:
               {
@@ -3452,7 +3476,7 @@ namespace internal
 
                 for (unsigned int i = 0; i < output.size(); ++i)
                   {
-                    DerivativeForm<1, spacedim, dim> A =
+                    const DerivativeForm<1, spacedim, dim> A =
                       apply_transformation(data.contravariant[i],
                                            transpose(input[i]));
                     output[i] =
@@ -3472,7 +3496,7 @@ namespace internal
 
                 for (unsigned int i = 0; i < output.size(); ++i)
                   {
-                    DerivativeForm<1, spacedim, dim> A =
+                    const DerivativeForm<1, spacedim, dim> A =
                       apply_transformation(data.covariant[i],
                                            transpose(input[i]));
                     output[i] =
@@ -3500,9 +3524,9 @@ namespace internal
 
                 for (unsigned int i = 0; i < output.size(); ++i)
                   {
-                    DerivativeForm<1, spacedim, dim> A =
+                    const DerivativeForm<1, spacedim, dim> A =
                       apply_transformation(data.covariant[i], input[i]);
-                    Tensor<2, spacedim> T =
+                    const Tensor<2, spacedim> T =
                       apply_transformation(data.contravariant[i],
                                            A.transpose());
 
@@ -3524,7 +3548,7 @@ namespace internal
       void
       transform_hessians(
         const ArrayView<const Tensor<3, dim>> &                  input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<3, spacedim>> &                   output)
       {
@@ -3538,7 +3562,7 @@ namespace internal
             static_cast<const typename dealii::MappingQGeneric<dim, spacedim>::
                           InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_contravariant_hessian:
               {
@@ -3693,7 +3717,7 @@ namespace internal
       void
       transform_differential_forms(
         const ArrayView<const DerivativeForm<rank, dim, spacedim>> &input,
-        const MappingType                                        mapping_type,
+        const MappingKind                                        mapping_kind,
         const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
         const ArrayView<Tensor<rank + 1, spacedim>> &            output)
       {
@@ -3707,7 +3731,7 @@ namespace internal
             static_cast<const typename dealii::MappingQGeneric<dim, spacedim>::
                           InternalData &>(mapping_data);
 
-        switch (mapping_type)
+        switch (mapping_kind)
           {
             case mapping_covariant:
               {
@@ -3735,12 +3759,12 @@ template <int dim, int spacedim>
 void
 MappingQGeneric<dim, spacedim>::transform(
   const ArrayView<const Tensor<1, dim>> &                  input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<1, spacedim>> &                   output) const
 {
   internal::MappingQGenericImplementation::transform_fields(input,
-                                                            mapping_type,
+                                                            mapping_kind,
                                                             mapping_data,
                                                             output);
 }
@@ -3751,12 +3775,12 @@ template <int dim, int spacedim>
 void
 MappingQGeneric<dim, spacedim>::transform(
   const ArrayView<const DerivativeForm<1, dim, spacedim>> &input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<2, spacedim>> &                   output) const
 {
   internal::MappingQGenericImplementation::transform_differential_forms(
-    input, mapping_type, mapping_data, output);
+    input, mapping_kind, mapping_data, output);
 }
 
 
@@ -3765,15 +3789,15 @@ template <int dim, int spacedim>
 void
 MappingQGeneric<dim, spacedim>::transform(
   const ArrayView<const Tensor<2, dim>> &                  input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<2, spacedim>> &                   output) const
 {
-  switch (mapping_type)
+  switch (mapping_kind)
     {
       case mapping_contravariant:
         internal::MappingQGenericImplementation::transform_fields(input,
-                                                                  mapping_type,
+                                                                  mapping_kind,
                                                                   mapping_data,
                                                                   output);
         return;
@@ -3782,7 +3806,7 @@ MappingQGeneric<dim, spacedim>::transform(
       case mapping_contravariant_gradient:
       case mapping_covariant_gradient:
         internal::MappingQGenericImplementation::transform_gradients(
-          input, mapping_type, mapping_data, output);
+          input, mapping_kind, mapping_data, output);
         return;
       default:
         Assert(false, ExcNotImplemented());
@@ -3795,7 +3819,7 @@ template <int dim, int spacedim>
 void
 MappingQGeneric<dim, spacedim>::transform(
   const ArrayView<const DerivativeForm<2, dim, spacedim>> &input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<3, spacedim>> &                   output) const
 {
@@ -3804,7 +3828,7 @@ MappingQGeneric<dim, spacedim>::transform(
          ExcInternalError());
   const InternalData &data = static_cast<const InternalData &>(mapping_data);
 
-  switch (mapping_type)
+  switch (mapping_kind)
     {
       case mapping_covariant_gradient:
         {
@@ -3844,17 +3868,17 @@ template <int dim, int spacedim>
 void
 MappingQGeneric<dim, spacedim>::transform(
   const ArrayView<const Tensor<3, dim>> &                  input,
-  const MappingType                                        mapping_type,
+  const MappingKind                                        mapping_kind,
   const typename Mapping<dim, spacedim>::InternalDataBase &mapping_data,
   const ArrayView<Tensor<3, spacedim>> &                   output) const
 {
-  switch (mapping_type)
+  switch (mapping_kind)
     {
       case mapping_piola_hessian:
       case mapping_contravariant_hessian:
       case mapping_covariant_hessian:
         internal::MappingQGenericImplementation::transform_hessians(
-          input, mapping_type, mapping_data, output);
+          input, mapping_kind, mapping_data, output);
         return;
       default:
         Assert(false, ExcNotImplemented());

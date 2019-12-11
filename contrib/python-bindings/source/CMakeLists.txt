@@ -29,14 +29,15 @@ IF(FEATURE_BOOST_BUNDLED_CONFIGURED)
 ENDIF()
 
 #
-# Unset Boost_Found and run the low level FindBOOST.cmake module again to
-# pick up libboost_python.so
+# As of 1.67, boost requires specifying the suffix for the python 
+# component manually. 
 #
-LIST(REMOVE_ITEM CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules/)
-SET(Boost_FOUND)
-# Use the low level _FIND_PACKAGE function instead of our wrapper
-_FIND_PACKAGE(Boost 1.54 COMPONENTS python)
-LIST(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules/)
+UNSET(Boost_FOUND)
+IF(${BOOST_VERSION} VERSION_LESS 1.67)
+  _FIND_PACKAGE(Boost 1.59 COMPONENTS python REQUIRED)
+ELSE()
+  _FIND_PACKAGE(Boost 1.67 COMPONENTS python${PYTHON_VERSION_MAJOR}${PYTHON_VERSION_MINOR} REQUIRED)
+ENDIF()
 
 IF(NOT Boost_FOUND)
   MESSAGE(FATAL_ERROR
@@ -89,12 +90,18 @@ INCLUDE_DIRECTORIES(SYSTEM ${PYTHON_INCLUDE_DIRS})
 
 SET(_src
   wrappers.cc
+  export_tria_accessor.cc
   export_cell_accessor.cc
   export_point.cc
   export_triangulation.cc
+  export_mapping.cc
+  export_manifold.cc
   cell_accessor_wrapper.cc
+  tria_accessor_wrapper.cc
   point_wrapper.cc
   triangulation_wrapper.cc
+  mapping_wrapper.cc
+  manifold_wrapper.cc
   )
 
 FOREACH(_build ${DEAL_II_BUILD_TYPES})

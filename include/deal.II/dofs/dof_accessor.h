@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,6 +29,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class FullMatrix;
 template <typename number>
@@ -41,7 +43,6 @@ class TriaRawIterator;
 
 template <int, int>
 class FiniteElement;
-
 
 namespace internal
 {
@@ -67,6 +68,7 @@ namespace internal
     }
   } // namespace hp
 } // namespace internal
+#endif
 
 // note: the file dof_accessor.templates.h is included at the end of
 // this file.  this includes a lot of templates and thus makes
@@ -168,7 +170,7 @@ namespace internal
  * either type or the other. Additionally, they can be cast into each other,
  * in case this is needed, since they access the same data.
  *
- * It is highly recommended to use the function get_active_or_mg_dof_indices()
+ * It is recommended to use the function get_active_or_mg_dof_indices()
  * in generic loops in lieu of get_dof_indices() or get_mg_dof_indices().
  *
  * <h3>Inheritance</h3>
@@ -729,20 +731,16 @@ protected:
     const types::global_dof_index index,
     const unsigned int fe_index = DoFHandlerType::default_fe_index) const;
 
-  /**
-   * Iterator classes need to be friends because they need to access
-   * operator== and operator!=.
-   */
+  // Iterator classes need to be friends because they need to access
+  // operator== and operator!=.
   template <typename>
   friend class TriaRawIterator;
   template <int, class, bool>
   friend class DoFAccessor;
 
 private:
-  /**
-   * Make the DoFHandler class a friend so that it can call the set_xxx()
-   * functions.
-   */
+  // Make the DoFHandler class a friend so that it can call the set_xxx()
+  // functions.
   template <int dim, int spacedim>
   friend class DoFHandler;
   template <int dim, int spacedim>
@@ -1206,18 +1204,14 @@ protected:
     const types::global_dof_index index,
     const unsigned int fe_index = AccessorData::default_fe_index) const;
 
-  /**
-   * Iterator classes need to be friends because they need to access
-   * operator== and operator!=.
-   */
+  // Iterator classes need to be friends because they need to access
+  // operator== and operator!=.
   template <typename>
   friend class TriaRawIterator;
 
 
-  /**
-   * Make the DoFHandler class a friend so that it can call the set_xxx()
-   * functions.
-   */
+  // Make the DoFHandler class a friend so that it can call the set_xxx()
+  // functions.
   template <int, int>
   friend class DoFHandler;
   template <int, int>
@@ -1480,6 +1474,13 @@ public:
    */
   face_iterator
   face(const unsigned int i) const;
+
+  /**
+   * Return an array of iterators to all faces of this cell.
+   */
+  inline std::array<face_iterator,
+                    GeometryInfo<DoFHandlerType::dimension>::faces_per_cell>
+  face_iterators() const;
 
   /**
    * Return the result of the @p neighbor_child_on_subface function of the
@@ -1832,9 +1833,6 @@ public:
   get_dof_indices(std::vector<types::global_dof_index> &dof_indices) const;
 
   /**
-   * @deprecated Use get_active_or_mg_dof_indices() with level_cell_iterator
-   * returned from begin_mg().
-   *
    * Retrieve the global indices of the degrees of freedom on this cell in the
    * level vector associated to the level of the cell.
    */
@@ -1885,10 +1883,14 @@ public:
    * parallel::shared::Triangulation or parallel::distributed::Triangulation
    * classes, it is only allowed to call this function on locally
    * owned or ghost cells. No information is available on artificial cells.
-   * Furthermore, @p active_fe_index information is exchanged from locally
+   * Furthermore, @p active_fe_index information is only exchanged from locally
    * owned cells on one processor to other processors where they may be
-   * ghost cells, during the call to hp::DoFHandler::distribute_dofs().
-   * See the documentation of hp::DoFHandler for more information.
+   * ghost cells, during the call to hp::DoFHandler::set_fe() and
+   * hp::DoFHandler::distribute_dofs(). Be aware that if you call
+   * set_active_fe_index() on a cell after calling one of these functions, then
+   * this information will not be propagated to other processors who may have
+   * this cell as a ghost cell. See the documentation of hp::DoFHandler for more
+   * information.
    */
   unsigned int
   active_fe_index() const;
@@ -1911,8 +1913,7 @@ public:
    * classes, it is only allowed to call this function on locally
    * owned cells (see
    * @ref GlossLocallyOwnedCell "this glossary entry").
-   * This
-   * is because otherwise a common source of errors would be if one
+   * This is because otherwise a common source of errors would be if one
    * processor sets a different @p active_fe_index on a ghost cell than
    * the processor that actually owns the cell does. To avoid this mistake,
    * one can only set @p active_fe_index information on locally owned
@@ -1945,11 +1946,93 @@ public:
   void
   update_cell_dof_indices_cache() const;
 
-private:
   /**
-   * Make the DoFHandler class a friend so that it can call the
-   * update_cell_dof_indices_cache() function
+   * @name Dealing with refinement indicators
    */
+  /**
+   * @{
+   */
+
+  /**
+   * Return the finite element that will be assigned to this cell next time the
+   * triangulation gets refined and coarsened. If no future finite element has
+   * been specified for this cell via the set_future_fe_index() function, the
+   * active one will remain unchanged, in which case the active finite element
+   * will be returned.
+   *
+   * For non-hp DoF handlers, this is of course always the same element,
+   * independent of the cell we are presently on, but for hp DoF handlers, this
+   * may change from cell to cell.
+   *
+   * @note Since degrees of freedom only exist on active cells for
+   * hp::DoFHandler (i.e., there is currently no implementation of multilevel
+   * hp::DoFHandler objects), it does not make sense to query the finite
+   * element on non-active cells since they do not have finite element spaces
+   * associated with them without having any degrees of freedom. Consequently,
+   * this function will produce an exception when called on non-active cells.
+   */
+  const FiniteElement<DoFHandlerType::dimension,
+                      DoFHandlerType::space_dimension> &
+  get_future_fe() const;
+
+  /**
+   * Return the fe_index of the finite element that will be assigned to this
+   * cell next time the triangulation gets refined and coarsened. If no future
+   * finite element has been specified for this cell via the
+   * set_future_fe_index() function, the active one will remain unchanged, in
+   * which case the fe_index of the active finite element will be returned.
+   *
+   * @note Since degrees of freedom only exist on active cells for
+   * hp::DoFHandler (i.e., there is currently no implementation of multilevel
+   * hp::DoFHandler objects), it does not make sense to query future FE
+   * indices on non-active cells since they do not have finite element spaces
+   * associated with them without having any degrees of freedom. Consequently,
+   * this function will produce an exception when called on non-active cells.
+   *
+   * @note When using parallel meshes, either through the
+   * parallel::shared::Triangulation or parallel::distributed::Triangulation
+   * classes, it is only allowed to call this function on locally owned cells.
+   */
+  unsigned int
+  future_fe_index() const;
+
+  /**
+   * Set the fe_index of the finite element that will be assigned to this
+   * cell next time the triangulation gets refined and coarsened. A previously
+   * assigned future finite element will be overwritten.
+   *
+   * See notes of future_fe_index() for information about restrictions on this
+   * functionality.
+   */
+  void
+  set_future_fe_index(const unsigned int i) const;
+
+  /**
+   * Return whether a future finite element has been set.
+   *
+   * See notes of future_fe_index() for information about restrictions on this
+   * functionality.
+   */
+  bool
+  future_fe_index_set() const;
+
+  /**
+   * Revoke the future finite element assigned. Thus, the active finite element
+   * will remain unchanged next time the triangulation gets refined and
+   * coarsened.
+   *
+   * See notes on future_fe_index() for information about restrictions on this
+   * functionality.
+   */
+  void
+  clear_future_fe_index() const;
+  /**
+   * @}
+   */
+
+private:
+  // Make the DoFHandler class a friend so that it can call the
+  // update_cell_dof_indices_cache() function
   template <int dim, int spacedim>
   friend class DoFHandler;
   friend struct dealii::internal::DoFCellAccessorImplementation::Implementation;

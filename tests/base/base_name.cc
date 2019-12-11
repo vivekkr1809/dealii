@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,9 +22,10 @@ main()
 {
   initlog();
 
-  deallog << dealjobid.base_name("mypath/test.cc") << std::endl;
-  ;
-  deallog << dealjobid.base_name("/foo.bar/mypath/test.cc") << std::endl;
+  deallog << JobIdentifier::get_dealjobid().base_name("mypath/test.cc")
+          << std::endl;
+  deallog << JobIdentifier::get_dealjobid().base_name("/foo.bar/mypath/test.cc")
+          << std::endl;
 
   return 0;
 }

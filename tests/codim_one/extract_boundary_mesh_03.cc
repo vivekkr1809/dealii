@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2018 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -72,13 +72,10 @@ test_vertices_orientation(
         }
 
 
-      for (unsigned int k = 0; k < GeometryInfo<s_dim>::vertices_per_cell; ++k)
-        {
-          Point<spacedim> diff(face->vertex(k));
-          diff -= cell->vertex(k);
-          AssertThrow(diff.square() < 1.e-15 * face->vertex(k).square(),
-                      ExcInternalError());
-        }
+      Point<spacedim> diff(face->center());
+      diff -= cell->center();
+      AssertThrow(diff.square() < 1.e-15 * face->center().square(),
+                  ExcInternalError());
     }
 }
 

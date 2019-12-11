@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -118,9 +118,7 @@ private:
    */
   ACCESSOR accessor;
 
-  /**
-   * Allow other iterators access to private data.
-   */
+  // Allow other iterators access to private data.
   template <class OtherAccessor>
   friend class MatrixIterator;
 };

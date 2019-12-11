@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 
 #ifndef dealii_mg_matrix_h
 #define dealii_mg_matrix_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/mg_level_object.h>
 
@@ -35,8 +37,8 @@ namespace mg
 {
   /**
    * Multilevel matrix. This matrix stores an MGLevelObject of
-   * LinearOpetors. It implements the interface defined in MGMatrixBase, so
-   * that it can be used as a matrix in Multigrid.
+   * LinearOperator objects. It implements the interface defined in
+   * MGMatrixBase, so that it can be used as a matrix in Multigrid.
    *
    * @author Guido Kanschat
    * @date 2002, 2010

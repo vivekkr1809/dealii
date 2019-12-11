@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -219,7 +219,7 @@ public:
 
   /**
    * Copies the content of the distributed matrix into the locally replicated @p matrix
-   * on the process with rank @rank. For all processes except @p rank @p matrix is not referenced.
+   * on the process with rank @p rank. For all processes except @p rank @p matrix is not referenced.
    * The distributed matrix and @p matrix on the process @p rank must have matching dimensions.
    *
    * The user has to ensure that all processes call this with identical @p rank.

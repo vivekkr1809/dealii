@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -30,7 +30,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
+// Forward declarations
+#ifndef DOXYGEN
 template <int, int>
 class Mapping;
 template <int>
@@ -41,7 +42,7 @@ namespace hp
   template <int>
   class QCollection;
 }
-
+#endif
 
 
 /**
@@ -117,10 +118,12 @@ namespace hp
  * contributions of the faces (which are the integrated square of the jumps
  * times some factor) of each cell and take the square root.
  *
- * The integration is done using a quadrature formula on the face. For linear
- * trial functions (FEQ1), QGauss (with two points) or even the QMidpoint rule
- * will suffice. For higher order elements, it is necessary to utilize higher
- * order quadrature formulae as well.
+ * The integration is done using a quadrature formula on the face
+ * provided by the caller of the estimate() functions declared by this
+ * class. For linear trial functions (FE_Q(1)), QGauss with two points
+ * or even the QMidpoint rule might actually suffice. For higher order
+ * elements, it is necessary to utilize higher order quadrature
+ * formulae with `fe.degree+1` Gauss points.
  *
  * We store the contribution of each face in a @p map, as provided by the C++
  * standard library, with the iterator pointing to that face being the key
@@ -154,8 +157,8 @@ namespace hp
  * finite element field and each component of the error estimator will then be
  * weighted by the respective component in this coefficient function. In the
  * other case, when all components have the same meaning (for example the
- * displacements in Lame's equations of elasticity), you can specify a scalar
- * coefficient which will then be used for all components.
+ * displacements in Lam&eacute;'s equations of elasticity), you can specify a
+ * scalar coefficient which will then be used for all components.
  *
  *
  * <h3>Boundary values</h3>
@@ -398,7 +401,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -419,7 +422,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -442,7 +445,7 @@ public:
     const InputVector &       solution,
     Vector<float> &           error,
     const ComponentMask &     component_mask = ComponentMask(),
-    const Function<spacedim> *coefficients   = 0,
+    const Function<spacedim> *coefficients   = nullptr,
     const unsigned int        n_threads      = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id   = numbers::invalid_subdomain_id,
     const types::material_id  material_id    = numbers::invalid_material_id,
@@ -487,7 +490,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -686,7 +689,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -707,7 +710,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -730,7 +733,7 @@ public:
     const InputVector &       solution,
     Vector<float> &           error,
     const ComponentMask &     component_mask = ComponentMask(),
-    const Function<spacedim> *coefficients   = 0,
+    const Function<spacedim> *coefficients   = nullptr,
     const unsigned int        n_threads      = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id   = numbers::invalid_subdomain_id,
     const types::material_id  material_id    = numbers::invalid_material_id,
@@ -752,7 +755,7 @@ public:
     const InputVector &       solution,
     Vector<float> &           error,
     const ComponentMask &     component_mask = ComponentMask(),
-    const Function<spacedim> *coefficients   = 0,
+    const Function<spacedim> *coefficients   = nullptr,
     const unsigned int        n_threads      = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id   = numbers::invalid_subdomain_id,
     const types::material_id  material_id    = numbers::invalid_material_id,
@@ -775,7 +778,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,
@@ -797,7 +800,7 @@ public:
     const std::vector<const InputVector *> &solutions,
     std::vector<Vector<float> *> &          errors,
     const ComponentMask &                   component_mask = ComponentMask(),
-    const Function<spacedim> *              coefficients   = 0,
+    const Function<spacedim> *              coefficients   = nullptr,
     const unsigned int        n_threads    = numbers::invalid_unsigned_int,
     const types::subdomain_id subdomain_id = numbers::invalid_subdomain_id,
     const types::material_id  material_id  = numbers::invalid_material_id,

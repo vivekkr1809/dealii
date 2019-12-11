@@ -32,6 +32,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 template <int dim, int spacedim>
 class Triangulation;
 template <int, int, int>
@@ -41,6 +43,7 @@ template <typename>
 class TriaIterator;
 template <typename>
 class TriaActiveIterator;
+#  endif
 
 
 
@@ -111,7 +114,7 @@ class TriaActiveIterator;
  * anyway. Most iterator and accessor functions are inlined.
  *
  * The main functionality of iterators, resides in the <tt>++</tt> and
- * <tt>--</tt> operators. These move the iterator forward or backward just as
+ * <tt>\--</tt> operators. These move the iterator forward or backward just as
  * if it were a pointer into an array. Here, this operation is not so easy,
  * since it may include skipping some elements and the transition between the
  * triangulation levels. This is completely hidden from the user, though you
@@ -148,7 +151,7 @@ class TriaActiveIterator;
  * member function <tt>bool used()</tt>, for the latter a member function
  * <tt>bool active()</tt>.
  *
- * <li> It must have void operators <tt>++</tt> and <tt>--</tt>.
+ * <li> It must have void operators <tt>++</tt> and <tt>\--</tt>.
  *
  * <li> It must declare a local alias <tt>AccessorData</tt> which states the
  * data type the accessor expects to get passed as fourth constructor
@@ -208,8 +211,8 @@ class TriaActiveIterator;
  * iterator is invalid anyway, regardless of the state of the triangulation
  * pointer and the state of the element pointed to.
  *
- * Past-the-end iterators may also be used to compare an iterator with the <i
- * >before-the-start</i> value, when running backwards. There is no
+ * Past-the-end iterators may also be used to compare an iterator with the
+ * <i>before-the-start</i> value, when running backwards. There is no
  * distinction between the iterators pointing past the two ends of a vector.
  *
  * By defining only one value to be past-the-end and making all other values
@@ -420,7 +423,9 @@ public:
   bool
   operator>(const TriaRawIterator &) const;
 
-  /**@name Advancement of iterators*/
+  /**
+   * @name Advancement of iterators
+   */
   /*@{*/
   /**
    * Prefix <tt>++</tt> operator: <tt>++iterator</tt>. This operator advances
@@ -445,14 +450,14 @@ public:
   operator++(int);
 
   /**
-   * Prefix @p -- operator: @p --iterator. This operator moves the iterator to
+   * Prefix @p \-- operator: @p \--iterator. This operator moves the iterator to
    * the previous element and returns a reference to <tt>*this</tt>.
    */
   TriaRawIterator &
   operator--();
 
   /**
-   * Postfix @p -- operator: @p iterator--. This operator moves the iterator
+   * Postfix @p \-- operator: @p iterator\--. This operator moves the iterator
    * to the previous element, but returns an iterator to the element
    * previously pointed to.
    *
@@ -496,7 +501,9 @@ public:
   using pointer           = Accessor *;
   using reference         = Accessor &;
 
-  /**@name Exceptions*/
+  /**
+   * @name Exceptions
+   */
   /*@{*/
   /**
    * Exception for TriaObjects with level, i.e. cells.
@@ -544,15 +551,13 @@ protected:
   Accessor accessor;
 
 
-  /**
-   * Make all other iterator class templates friends of this class. This is
-   * necessary for the implementation of conversion constructors.
-   *
-   * In fact, we would not need them to be friends if they were for different
-   * dimensions, but the compiler dislikes giving a fixed dimension and
-   * variable accessor since then it says that would be a partial
-   * specialization.
-   */
+  // Make all other iterator class templates friends of this class. This is
+  // necessary for the implementation of conversion constructors.
+  //
+  // In fact, we would not need them to be friends if they were for different
+  // dimensions, but the compiler dislikes giving a fixed dimension and
+  // variable accessor since then it says that would be a partial
+  // specialization.
   template <typename SomeAccessor>
   friend class TriaRawIterator;
   template <typename SomeAccessor>
@@ -684,7 +689,9 @@ public:
   TriaIterator<Accessor> &
   operator=(const TriaRawIterator<OtherAccessor> &);
 
-  /**@name Advancement of iterators*/
+  /**
+   * @name Advancement of iterators
+   */
   /*@{*/
   /**
    * Prefix <tt>++</tt> operator: <tt>++i</tt>. This operator advances the
@@ -707,14 +714,14 @@ public:
   operator++(int);
 
   /**
-   * Prefix @p -- operator: @p --i. This operator advances the iterator to the
+   * Prefix @p \-- operator: @p \--i. This operator advances the iterator to the
    * previous used element and returns a reference to <tt>*this</tt>.
    */
   TriaIterator<Accessor> &
   operator--();
 
   /**
-   * Postfix @p -- operator: @p i--.
+   * Postfix @p \-- operator: @p i\--.
    */
   TriaIterator<Accessor>
   operator--(int);
@@ -891,7 +898,9 @@ public:
   TriaActiveIterator<Accessor> &
   operator++();
 
-  /**@name Advancement of iterators*/
+  /**
+   * @name Advancement of iterators
+   */
   /*@{*/
   /**
    * Postfix <tt>++</tt> operator: <tt>i++</tt>. This operator advances the
@@ -906,14 +915,14 @@ public:
   operator++(int);
 
   /**
-   * Prefix @p -- operator: @p --i. This operator advances the iterator to the
+   * Prefix @p \-- operator: @p \--i. This operator advances the iterator to the
    * previous active element and returns a reference to <tt>*this</tt>.
    */
   TriaActiveIterator<Accessor> &
   operator--();
 
   /**
-   * Postfix @p -- operator: @p i--.
+   * Postfix @p \-- operator: @p i\--.
    */
   TriaActiveIterator<Accessor>
   operator--(int);

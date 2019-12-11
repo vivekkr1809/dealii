@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_block_info_h
 #define dealii_block_info_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/subscriptor.h>
 
@@ -26,7 +28,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 // Forward declarations
-
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class DoFHandler;
 namespace hp
@@ -34,6 +36,7 @@ namespace hp
   template <int dim, int spacedim>
   class DoFHandler;
 }
+#endif
 
 
 /**

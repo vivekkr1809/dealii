@@ -161,6 +161,15 @@ namespace LinearAlgebra
            const bool omit_zeroing_entries = false) override;
 
     /**
+     * Returns `false` as this is a serial vector.
+     *
+     * This functionality only needs to be called if using MPI based vectors and
+     * exists in other objects for compatibility.
+     */
+    bool
+    has_ghost_elements() const;
+
+    /**
      * Copies the data of the input vector @p in_vector.
      */
     Vector<Number> &
@@ -344,13 +353,25 @@ namespace LinearAlgebra
     locally_owned_elements() const override;
 
     /**
-     * Prints the vector to the output stream @p out.
+     * Print the vector to the output stream @p out.
      */
     virtual void
     print(std::ostream &     out,
           const unsigned int precision  = 3,
           const bool         scientific = true,
           const bool         across     = true) const override;
+
+    /**
+     * Print the vector to the output stream @p out in a format that can be
+     * read by numpy::readtxt(). Note that the IndexSet is not printed but only
+     * the values stored in the Vector. To load the vector in python just do
+     * <code>
+     * vector = numpy.loadtxt('my_vector.txt')
+     * </code>
+     */
+    void
+    print_as_numpy_array(std::ostream &     out,
+                         const unsigned int precision = 9) const;
 
     /**
      * Write the vector en bloc to a file. This is done in a binary mode, so
@@ -399,9 +420,7 @@ namespace LinearAlgebra
 
     friend class boost::serialization::access;
 
-    /**
-     * Make all other ReadWriteVector types friends.
-     */
+    // Make all other ReadWriteVector types friends.
     template <typename Number2>
     friend class Vector;
   };
@@ -497,6 +516,21 @@ namespace LinearAlgebra
 template <typename Number>
 struct is_serial_vector<LinearAlgebra::Vector<Number>> : std::true_type
 {};
+
+#ifndef DOXYGEN
+/*----------------------- Inline functions ----------------------------------*/
+
+namespace LinearAlgebra
+{
+  template <typename Number>
+  inline bool
+  Vector<Number>::has_ghost_elements() const
+  {
+    return false;
+  }
+} // namespace LinearAlgebra
+
+#endif
 
 
 DEAL_II_NAMESPACE_CLOSE

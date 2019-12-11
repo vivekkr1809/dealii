@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2006 - 2016 by the deal.II authors
+## Copyright (C) 2006 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -17,7 +17,7 @@
 # skip header lines at the top of the file, such as copyright notices 
 # and license information, if the file is a step-xx.cc tutorial. don't
 # skip for other files such as code-gallery files
-if ($ARGV[0] =~ /step-\d+.cc/)
+if ($ARGV[0] =~ /step-\d+.[cc|cu]/)
 {
   $_ = <>;
   while ( m!^/\*!  ||  m!\s*\*! || m/^$/ ) {

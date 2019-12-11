@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_swappable_vector_templates_h
 #define dealii_swappable_vector_templates_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/memory_consumption.h>
 
@@ -39,7 +41,7 @@ SwappableVector<number>::SwappableVector(const SwappableVector<number> &v)
   , filename()
   , data_is_preloaded(false)
 {
-  Assert(v.filename == "", ExcInvalidCopyOperation());
+  Assert(v.filename.empty(), ExcInvalidCopyOperation());
 }
 
 
@@ -54,7 +56,7 @@ SwappableVector<number>::~SwappableVector()
   // first, before killing the vector
   // itself
 
-  if (filename != "")
+  if (!filename.empty())
     {
       try
         {
@@ -72,7 +74,7 @@ SwappableVector<number> &
 SwappableVector<number>::operator=(const SwappableVector<number> &v)
 {
   // if necessary, first delete data
-  if (filename != "")
+  if (!filename.empty())
     kill_file();
 
   // if in MT mode, block all other
@@ -97,7 +99,7 @@ SwappableVector<number>::swap_out(const std::string &name)
   // that has not been deleted in the
   // meantime, then we kill that file
   // first
-  if (filename != "")
+  if (!filename.empty())
     kill_file();
 
   filename = name;
@@ -197,7 +199,7 @@ SwappableVector<number>::reload_vector(const bool set_flag)
 {
   (void)set_flag;
 
-  Assert(filename != "", ExcInvalidFilename(filename));
+  Assert(!filename.empty(), ExcInvalidFilename(filename));
   Assert(this->size() == 0, ExcSizeNonzero());
 
   std::ifstream tmp_in(filename.c_str());
@@ -233,7 +235,7 @@ SwappableVector<number>::kill_file()
   // is most probably an error, not?
   Assert(data_is_preloaded == false, ExcInternalError());
 
-  if (filename != "")
+  if (!filename.empty())
     {
       int status = std::remove(filename.c_str());
       (void)status;

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2017 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -611,14 +611,14 @@ public:
                              const double &     sigma,
                              const std::string &rhs_expr,
                              const std::string &boundary_expr,
-                             const double &     refinement = 11);
+                             const unsigned int refinement = 11);
   EstimateEnrichmentFunction(const Point<1> &   center,
                              const double &     left_bound,
                              const double &     right_bound,
                              const double &     sigma,
                              const std::string &rhs_expr,
                              const std::string &boundary_expr,
-                             const double &     refinement = 11);
+                             const unsigned int refinement = 11);
   ~EstimateEnrichmentFunction();
   void
   run();
@@ -669,7 +669,7 @@ EstimateEnrichmentFunction::EstimateEnrichmentFunction(
   const double &     sigma,
   const std::string &rhs_expr,
   const std::string &boundary_expr,
-  const double &     refinement)
+  const unsigned int refinement)
   : center(center)
   , domain_size(domain_size)
   , sigma(sigma)
@@ -692,7 +692,7 @@ EstimateEnrichmentFunction::EstimateEnrichmentFunction(
   const double &     sigma,
   const std::string &rhs_expr,
   const std::string &boundary_expr,
-  const double &     refinement)
+  const unsigned int refinement)
   : center(center)
   , left_bound(left_bound)
   , right_bound(right_bound)
@@ -934,7 +934,7 @@ plot_shape_function(hp::DoFHandler<dim> &dof_handler, unsigned int patches = 5)
 
   // find set of dofs which belong to enriched cells
   std::set<unsigned int> enriched_cell_dofs;
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     if (cell->active_fe_index() != 0)
       {
         unsigned int dofs_per_cell = cell->get_fe().dofs_per_cell;
@@ -1014,7 +1014,7 @@ plot_shape_function(hp::DoFHandler<dim> &dof_handler, unsigned int patches = 5)
 
   // get material ids:
   Vector<float> fe_index(dof_handler.get_triangulation().n_active_cells());
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     {
       fe_index[cell->active_cell_index()] = cell->active_fe_index();
     }
@@ -1247,12 +1247,12 @@ LaplaceProblem<dim>::make_enrichment_functions()
        * function for which the enrichment function is to be estimated.
        *
        * The center is 0 since the function is evaluated with respect to
-       * relative position from focal point anyway.
+       * the relative position from the focal point anyway.
        *
-       * For hexahedral cells, dimension can extend upto sqrt(3) < 2 times!
-       * So take a factor of 4 as size of the problem. This ensures that
+       * For hexahedral cells, the dimension can extend up to sqrt(3) < 2 times!
+       * So take a factor of 4 as size of the problem. This ensures that the
        * enrichment function can be evaluated at all points in the enrichment
-       * domain
+       * domain.
        */
       double center = 0;
       double sigma  = prm.sigmas[i];
@@ -1424,7 +1424,9 @@ LaplaceProblem<dim>::setup_system()
 {
   pcout << "...start setup system" << std::endl;
 
-  GridTools::partition_triangulation(n_mpi_processes, triangulation);
+  GridTools::partition_triangulation(n_mpi_processes,
+                                     triangulation,
+                                     SparsityTools::Partitioner::zoltan);
 
   dof_handler.distribute_dofs(*fe_collection);
 
@@ -1498,7 +1500,7 @@ LaplaceProblem<dim>::assemble_system()
                                    update_JxW_values);
 
 
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     if (cell->subdomain_id() == this_mpi_process)
       {
         fe_values_hp.reinit(cell);

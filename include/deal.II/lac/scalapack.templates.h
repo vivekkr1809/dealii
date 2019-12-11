@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -449,12 +449,12 @@ extern "C"
 
   /**
    * Perform one of the matrix-matrix operations:
-   * @f{align*}
+   * @f{align*}{
    * \mathrm{sub}(C) &\dealcoloneq \alpha op(\mathrm{sub}(A))op(\mathrm{sub}(B))
    *                            + \beta \mathrm{sub}(C), \\
    * \mathrm{sub}(C) &\dealcoloneq \alpha op(\mathrm{sub}(A))op(\mathrm{sub}(B))
    *                            + beta sub(C),
-   * @f
+   * @f}
    * where
    * $\mathrm{sub}(C)$ denotes C(IC:IC+M-1,JC:JC+N-1),  and, $op(X)$ is one of
    * $op(X) = X$ or $op(X) = X^T$.

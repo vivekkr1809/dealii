@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -1040,7 +1040,7 @@ namespace ColorEnriched
    * <table>
    * <tr>
    * <th>Active FE index</th>
-   * <th>FiniteElement name</code> </th>
+   * <th>FiniteElement name</th>
    * </tr>
    * <tr>
    * <td>0</td>

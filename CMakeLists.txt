@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -157,6 +157,7 @@ ADD_SUBDIRECTORY(cmake/config) # has to be included after source
 ADD_SUBDIRECTORY(examples)
 
 ADD_SUBDIRECTORY(contrib/python-bindings)
+ADD_SUBDIRECTORY(contrib/utilities)
 
 IF(DEAL_II_HAVE_TESTS_DIRECTORY)
   ADD_SUBDIRECTORY(tests)

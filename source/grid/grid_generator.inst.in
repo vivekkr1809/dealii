@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,7 +38,8 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         Triangulation<deal_II_dimension, deal_II_space_dimension> &,
         const unsigned int,
         const double,
-        const double);
+        const double,
+        const bool);
 
 
       template void
@@ -63,6 +64,14 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         Triangulation<deal_II_dimension, deal_II_space_dimension> &,
         const std::vector<unsigned int> &,
         const bool);
+
+      template void
+      subdivided_hyper_L(
+        Triangulation<deal_II_dimension, deal_II_space_dimension> &,
+        const std::vector<unsigned int> &,
+        const Point<deal_II_dimension> &,
+        const Point<deal_II_dimension> &,
+        const std::vector<int> &);
 
       template void
       cheese<deal_II_dimension, deal_II_space_dimension>(
@@ -106,6 +115,10 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
           &cells_to_remove,
         Triangulation<deal_II_dimension, deal_II_space_dimension> &result);
 
+      template void
+      general_cell(Triangulation<deal_II_dimension, deal_II_space_dimension> &,
+                   const std::vector<Point<deal_II_space_dimension>> &,
+                   const bool);
 #endif
     \}
   }
@@ -154,11 +167,6 @@ for (deal_II_dimension : DIMENSIONS)
                                  const bool);
 
       template void
-      general_cell(Triangulation<deal_II_dimension> &,
-                   const std::vector<Point<deal_II_dimension>> &,
-                   const bool);
-
-      template void
       simplex<deal_II_dimension>(
         Triangulation<deal_II_dimension, deal_II_dimension> &,
         const std::vector<Point<deal_II_dimension>> &);
@@ -201,6 +209,14 @@ for (deal_II_dimension : DIMENSIONS)
                               const double,
                               const unsigned int,
                               const bool);
+
+      template void
+      eccentric_hyper_shell(Triangulation<deal_II_dimension> &,
+                            const Point<deal_II_dimension> &,
+                            const Point<deal_II_dimension> &,
+                            const double,
+                            const double,
+                            const unsigned int);
 
     \}
   }

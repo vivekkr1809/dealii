@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -236,13 +236,13 @@ MGTransferBlockBase::build_matrices(const DoFHandler<dim, spacedim> &,
   // for later use.
   mg_block_start = sizes;
   // Compute start indices from sizes
-  for (unsigned int l = 0; l < mg_block_start.size(); ++l)
+  for (auto &level_blocks : mg_block_start)
     {
       types::global_dof_index k = 0;
-      for (unsigned int i = 0; i < mg_block_start[l].size(); ++i)
+      for (types::global_dof_index &level_block_start : level_blocks)
         {
-          const types::global_dof_index t = mg_block_start[l][i];
-          mg_block_start[l][i]            = k;
+          const types::global_dof_index t = level_block_start;
+          level_block_start               = k;
           k += t;
         }
     }
@@ -252,10 +252,10 @@ MGTransferBlockBase::build_matrices(const DoFHandler<dim, spacedim> &,
     static_cast<const DoFHandler<dim, spacedim> &>(mg_dof), block_start);
 
   types::global_dof_index k = 0;
-  for (unsigned int i = 0; i < block_start.size(); ++i)
+  for (types::global_dof_index &first_index : block_start)
     {
-      const types::global_dof_index t = block_start[i];
-      block_start[i]                  = k;
+      const types::global_dof_index t = first_index;
+      first_index                     = k;
       k += t;
     }
   // Build index vectors for
@@ -364,9 +364,9 @@ MGTransferBlockBase::build_matrices(const DoFHandler<dim, spacedim> &,
                         if ((icomp == jcomp) && selected[icomp])
                           prolongation_sparsities[level]->add(
                             dof_indices_child[i], dof_indices_parent[j]);
-                      };
-              };
-          };
+                      }
+              }
+          }
       prolongation_sparsities[level]->compress();
 
       prolongation_matrices[level]->reinit(*prolongation_sparsities[level]);
@@ -544,9 +544,9 @@ MGTransferBlockSelect<number>::build_matrices(
       const types::global_dof_index n_active_dofs =
         std::count_if(temp_copy_indices.begin(),
                       temp_copy_indices.end(),
-                      std::bind(std::not_equal_to<types::global_dof_index>(),
-                                std::placeholders::_1,
-                                numbers::invalid_dof_index));
+                      [](const types::global_dof_index index) {
+                        return index != numbers::invalid_dof_index;
+                      });
       copy_indices[selected_block][level].resize(n_active_dofs);
       types::global_dof_index counter = 0;
       for (types::global_dof_index i = 0; i < temp_copy_indices.size(); ++i)
@@ -623,12 +623,12 @@ MGTransferBlock<number>::build_matrices(const DoFHandler<dim, spacedim> &dof,
       for (unsigned int block = 0; block < n_blocks; ++block)
         if (selected[block])
           {
-            const types::global_dof_index n_active_dofs = std::count_if(
-              temp_copy_indices[block].begin(),
-              temp_copy_indices[block].end(),
-              std::bind(std::not_equal_to<types::global_dof_index>(),
-                        std::placeholders::_1,
-                        numbers::invalid_dof_index));
+            const types::global_dof_index n_active_dofs =
+              std::count_if(temp_copy_indices[block].begin(),
+                            temp_copy_indices[block].end(),
+                            [](const types::global_dof_index index) {
+                              return index != numbers::invalid_dof_index;
+                            });
             copy_indices[block][level].resize(n_active_dofs);
             types::global_dof_index counter = 0;
             for (types::global_dof_index i = 0;

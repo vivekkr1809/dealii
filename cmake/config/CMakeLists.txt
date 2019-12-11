@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2017 by the deal.II authors
+## Copyright (C) 2012 - 2018 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -134,6 +134,7 @@ SET(CONFIG_INCLUDE_DIRS
   ${DEAL_II_BUNDLED_INCLUDE_DIRS}
   ${DEAL_II_USER_INCLUDE_DIRS}
   )
+
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
   ${CMAKE_BINARY_DIR}/${DEAL_II_PROJECT_CONFIG_RELDIR}/${DEAL_II_PROJECT_CONFIG_NAME}Config.cmake
@@ -149,12 +150,23 @@ CONFIGURE_FILE(
 # For installation:
 #
 
+# Make sure that we only ever record the bundled subdirectory if it is in
+# fact created:
+IF("${DEAL_II_BUNDLED_INCLUDE_DIRS}" STREQUAL "")
+  SET(_installed_bundled "")
+ELSE()
+  SET(_installed_bundled
+    "\${DEAL_II_PATH}/\${DEAL_II_INCLUDE_RELDIR}/deal.II/bundled"
+    )
+ENDIF()
+
 SET(CONFIG_BUILD_DIR FALSE)
 SET(CONFIG_INCLUDE_DIRS
   \${DEAL_II_PATH}/\${DEAL_II_INCLUDE_RELDIR}
-  \${DEAL_II_PATH}/\${DEAL_II_INCLUDE_RELDIR}/deal.II/bundled
+  ${_installed_bundled}
   ${DEAL_II_USER_INCLUDE_DIRS}
   )
+
 CONFIGURE_FILE(
   ${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/${DEAL_II_PROJECT_CONFIG_NAME}Config.cmake
@@ -219,4 +231,179 @@ FOREACH(_name ${_deal_ii_features_sorted})
   ENDFOREACH()
 ENDFOREACH()
 
+
+########################################################################
+#                                                                      #
+#                           pkgconfig files                            #
+#                                                                      #
+########################################################################
+
+#
+# Set up the pkgconfig configuration files consisting of
+#
+#   deal.II_debug      # for the debug variant of the library
+#   deal.II_release    # for the release variant of the library
+#
+# Similarly to the CMake project configuration, we provide pkgconfig files
+# directly for the build directory, as well as for the final installation.
+# So we have to prepare two distinct setups.
+#
+# pkgconfig looks for *.pc files in an environmental variable called
+# PKG_CONFIG_PATH. So, to use the library in the build directory issue
+# export PKG_CONFIG_PATH=/path/to/BUILD_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
+#
+# To use the library in the installed location
+# export PKG_CONFIG_PATH=/path/to/INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH
+#
+
+#
+# We need to gather some variables for the regex below to work.
+#
+
+SET(_library_prefixes "")
+IF (CMAKE_SHARED_LIBRARY_PREFIX)
+  LIST(APPEND _library_prefixes ${CMAKE_SHARED_LIBRARY_PREFIX})
+ENDIF()
+IF (CMAKE_STATIC_LIBRARY_PREFIX)
+  LIST(APPEND _library_prefixes ${CMAKE_STATIC_LIBRARY_PREFIX})
+ENDIF()
+STRING(REPLACE ";" "|" _library_prefixes "${_library_prefixes}")
+
+SET(_library_suffixes "")
+IF (CMAKE_SHARED_LIBRARY_SUFFIX)
+  LIST(APPEND _library_suffixes ${CMAKE_SHARED_LIBRARY_SUFFIX})
+ENDIF()
+IF (CMAKE_STATIC_LIBRARY_SUFFIX)
+  LIST(APPEND _library_suffixes ${CMAKE_STATIC_LIBRARY_SUFFIX})
+ENDIF()
+STRING(REPLACE ";" "|" _library_suffixes "${_library_suffixes}")
+
+#
+# Build up the link line from our list of libraries:
+#
+
+FOREACH(_build ${DEAL_II_BUILD_TYPES})
+  STRING(TOLOWER ${_build} _build_lowercase)
+
+  SET(_name "${DEAL_II_BASE_NAME}${DEAL_II_${_build}_SUFFIX}")
+
+  SET(CONFIG_RPATH_${_build}_PC "\\\${libdir}")
+  SET(CONFIG_LIBRARIES_${_build}_PC "-L\${libdir} -l${_name}")
+
+  FOREACH(_lib ${DEAL_II_LIBRARIES_${_build}} ${DEAL_II_LIBRARIES})
+
+    GET_FILENAME_COMPONENT(_name ${_lib} NAME)
+    GET_FILENAME_COMPONENT(_dir ${_lib} PATH)
+
+    IF("${_dir}" STREQUAL "")
+      # ${_lib} is a simple library name, just add it to the link line:
+      SET(_library_string "-l${_lib}")
+
+    ELSE()
+      # ${_lib} is a full library path:
+
+      #
+      # Only append a library directory if it is new ...
+      #
+
+      LIST(FIND CONFIG_RPATH_${_build}_PC "${_dir}" _index)
+      IF (${_index} EQUAL -1)
+        SET(_library_string "-L${_dir} ")
+        LIST(APPEND CONFIG_RPATH_${_build}_PC ${_dir})
+      ELSE()
+        SET(_library_string "")
+      ENDIF()
+
+      # Recover short name:
+      IF(_library_prefixes)
+        STRING(REGEX REPLACE "^(${_library_prefixes})" "" _name "${_name}")
+      ENDIF()
+      IF(_library_suffixes)
+        STRING(REGEX REPLACE "(${_library_suffixes})$" "" _name "${_name}")
+      ENDIF()
+      SET(_library_string "${_library_string}-l${_name}")
+    ENDIF()
+
+    SET(CONFIG_LIBRARIES_${_build}_PC
+      "${CONFIG_LIBRARIES_${_build}_PC} ${_library_string}"
+      )
+  ENDFOREACH()
+
+  TO_STRING_AND_ADD_PREFIX(CONFIG_RPATH_${_build}_PC
+    "-Wl,-rpath," ${CONFIG_RPATH_${_build}_PC}
+    )
+ENDFOREACH()
+
+
+#
+# For binary dir (aka build dir):
+#
+
+SET(CONFIG_PATH_PC "${CMAKE_BINARY_DIR}")
+
+TO_STRING_AND_ADD_PREFIX(CONFIG_INCLUDE_DIRS_PC "-I"
+  \\\${prefix}/include
+  ${CMAKE_SOURCE_DIR}/include
+  ${DEAL_II_BUNDLED_INCLUDE_DIRS}
+  ${DEAL_II_USER_INCLUDE_DIRS}
+  )
+
+FOREACH(_build ${DEAL_II_BUILD_TYPES})
+  STRING(TOLOWER ${_build} _build_lowercase)
+
+  SET(_config_directory "${CMAKE_BINARY_DIR}/${DEAL_II_PKGCONF_RELDIR}")
+
+  CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/config_${_build_lowercase}.pc.in
+    ${_config_directory}/${DEAL_II_PROJECT_CONFIG_NAME}_${_build_lowercase}.pc
+    @ONLY
+    )
+ENDFOREACH()
+
+#
+# For installation:
+#
+
+SET(CONFIG_PATH_PC "${CMAKE_INSTALL_PREFIX}")
+
+TO_STRING_AND_ADD_PREFIX(CONFIG_INCLUDE_DIRS_PC "-I"
+  \\\${includedir}
+  ${DEAL_II_BUNDLED_INCLUDE_DIRS}
+  ${DEAL_II_USER_INCLUDE_DIRS}
+  )
+
+FOREACH(_build ${DEAL_II_BUILD_TYPES})
+  STRING(TOLOWER ${_build} _build_lowercase)
+
+  #
+  # Only populate the pkgconf files for the install directory if
+  # CMAKE_INSTALL_RPATH_USE_LINK_PATH is true.
+  #
+  # We use this a heuristic for now to decide whether the user actually
+  # wants to have RPATHs in configuration files after installation.
+  #
+  # FIXME: Unify RPATH handling between cmake and pkgconf configuration and
+  # clearly document RPATH behavior.
+  #
+  IF(NOT CMAKE_INSTALL_RPATH_USE_LINK_PATH)
+    SET(CONFIG_RPATH_${_build}_PC "")
+  ENDIF()
+
+  CONFIGURE_FILE(
+    ${CMAKE_CURRENT_SOURCE_DIR}/config_${_build_lowercase}.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/${DEAL_II_PROJECT_CONFIG_NAME}_${_build_lowercase}.pc
+    @ONLY
+    )
+  INSTALL(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/${DEAL_II_PROJECT_CONFIG_NAME}_${_build_lowercase}.pc
+    DESTINATION ${DEAL_II_PKGCONF_RELDIR}
+    COMPONENT library
+    )
+ENDFOREACH()
+
+#
+# Job's done.
+#
+
 MESSAGE(STATUS "Setting up project configuration - Done")
+

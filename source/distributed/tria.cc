@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -1351,19 +1351,17 @@ namespace parallel
       //
       // To deal with the case that at least one of the processors does not own
       // any cell at all, we will exchange the information about the data sizes
-      // among them later. The code inbetween is still well-defined, since the
+      // among them later. The code in between is still well-defined, since the
       // following loops will be skipped.
       std::vector<unsigned int> local_sizes_fixed(
         1 + n_callbacks_fixed + (variable_size_data_stored ? 1 : 0));
-      for (auto data_cell_fixed_it = packed_fixed_size_data.cbegin();
-           data_cell_fixed_it != packed_fixed_size_data.cend();
-           ++data_cell_fixed_it)
+      for (const auto &data_cell : packed_fixed_size_data)
         {
-          if (data_cell_fixed_it->size() == local_sizes_fixed.size())
+          if (data_cell.size() == local_sizes_fixed.size())
             {
               auto sizes_fixed_it = local_sizes_fixed.begin();
-              auto data_fixed_it  = data_cell_fixed_it->cbegin();
-              for (; data_fixed_it != data_cell_fixed_it->cend();
+              auto data_fixed_it  = data_cell.cbegin();
+              for (; data_fixed_it != data_cell.cend();
                    ++data_fixed_it, ++sizes_fixed_it)
                 {
                   *sizes_fixed_it = data_fixed_it->size();
@@ -1404,16 +1402,12 @@ namespace parallel
       if (variable_size_data_stored)
         {
           src_sizes_variable.reserve(packed_variable_size_data.size());
-          for (auto data_cell_variable_it = packed_variable_size_data.cbegin();
-               data_cell_variable_it != packed_variable_size_data.cend();
-               ++data_cell_variable_it)
+          for (const auto &data_cell : packed_variable_size_data)
             {
               int variable_data_size_on_cell = 0;
 
-              for (auto data_variable_it = data_cell_variable_it->cbegin();
-                   data_variable_it != data_cell_variable_it->cend();
-                   ++data_variable_it)
-                variable_data_size_on_cell += data_variable_it->size();
+              for (const auto &data : data_cell)
+                variable_data_size_on_cell += data.size();
 
               src_sizes_variable.push_back(variable_data_size_on_cell);
             }
@@ -1431,24 +1425,20 @@ namespace parallel
 
       // Move every piece of packed fixed size data into the consecutive buffer.
       src_data_fixed.reserve(expected_size_fixed);
-      for (auto data_cell_fixed_it = packed_fixed_size_data.begin();
-           data_cell_fixed_it != packed_fixed_size_data.end();
-           ++data_cell_fixed_it)
+      for (const auto &data_cell_fixed : packed_fixed_size_data)
         {
           // Move every fraction of packed data into the buffer
           // reserved for this particular cell.
-          for (auto data_fixed_it = data_cell_fixed_it->begin();
-               data_fixed_it != data_cell_fixed_it->end();
-               ++data_fixed_it)
-            std::move(data_fixed_it->begin(),
-                      data_fixed_it->end(),
+          for (const auto &data_fixed : data_cell_fixed)
+            std::move(data_fixed.begin(),
+                      data_fixed.end(),
                       std::back_inserter(src_data_fixed));
 
           // If we only packed the CellStatus information
           // (i.e. encountered a cell flagged CELL_INVALID),
           // fill the remaining space with invalid entries.
           // We can skip this if there is nothing else to pack.
-          if ((data_cell_fixed_it->size() == 1) &&
+          if ((data_cell_fixed.size() == 1) &&
               (sizes_fixed_cumulative.size() > 1))
             {
               const std::size_t bytes_skipped =
@@ -1465,17 +1455,13 @@ namespace parallel
       if (variable_size_data_stored)
         {
           src_data_variable.reserve(expected_size_variable);
-          for (auto data_cell_variable_it = packed_variable_size_data.begin();
-               data_cell_variable_it != packed_variable_size_data.end();
-               ++data_cell_variable_it)
+          for (const auto &data_cell : packed_variable_size_data)
             {
               // Move every fraction of packed data into the buffer
               // reserved for this particular cell.
-              for (auto data_variable_it = data_cell_variable_it->begin();
-                   data_variable_it != data_cell_variable_it->end();
-                   ++data_variable_it)
-                std::move(data_variable_it->begin(),
-                          data_variable_it->end(),
+              for (const auto &data : data_cell)
+                std::move(data.begin(),
+                          data.end(),
                           std::back_inserter(src_data_variable));
             }
         }
@@ -1876,8 +1862,6 @@ namespace parallel
           const std::string fname_variable =
             std::string(filename) + "_variable.data";
 
-          const int n_procs = Utilities::MPI::n_mpi_processes(mpi_communicator);
-
           MPI_Info info;
           int      ierr = MPI_Info_create(&info);
           AssertThrowMPI(ierr);
@@ -1920,36 +1904,26 @@ namespace parallel
           // Gather size of data in bytes we want to store from this processor.
           const unsigned int size_on_proc = src_data_variable.size();
 
-          // Share information among all processors.
-          std::vector<unsigned int> sizes_on_all_procs(n_procs);
-          ierr = MPI_Allgather(DEAL_II_MPI_CONST_CAST(&size_on_proc),
-                               1,
-                               MPI_UNSIGNED,
-                               sizes_on_all_procs.data(),
-                               1,
-                               MPI_UNSIGNED,
-                               mpi_communicator);
+          // Compute prefix sum
+          unsigned int prefix_sum = 0;
+          ierr = MPI_Exscan(DEAL_II_MPI_CONST_CAST(&size_on_proc),
+                            &prefix_sum,
+                            1,
+                            MPI_UNSIGNED,
+                            MPI_SUM,
+                            mpi_communicator);
           AssertThrowMPI(ierr);
-
-          // Generate accumulated sum to get an offset for writing variable
-          // size data.
-          std::partial_sum(sizes_on_all_procs.begin(),
-                           sizes_on_all_procs.end(),
-                           sizes_on_all_procs.begin());
 
           const char *data = src_data_variable.data();
 
           // Write data consecutively into file.
-          ierr = MPI_File_write_at(
-            fh,
-            offset_variable +
-              ((myrank == 0) ?
-                 0 :
-                 sizes_on_all_procs[myrank - 1]), // global position in file
-            DEAL_II_MPI_CONST_CAST(data),
-            src_data_variable.size(), // local buffer
-            MPI_CHAR,
-            MPI_STATUS_IGNORE);
+          ierr = MPI_File_write_at(fh,
+                                   offset_variable +
+                                     prefix_sum, // global position in file
+                                   DEAL_II_MPI_CONST_CAST(data),
+                                   src_data_variable.size(), // local buffer
+                                   MPI_CHAR,
+                                   MPI_STATUS_IGNORE);
           AssertThrowMPI(ierr);
 
           ierr = MPI_File_close(&fh);
@@ -2047,8 +2021,6 @@ namespace parallel
           const std::string fname_variable =
             std::string(filename) + "_variable.data";
 
-          const int n_procs = Utilities::MPI::n_mpi_processes(mpi_communicator);
-
           MPI_Info info;
           int      ierr = MPI_Info_create(&info);
           AssertThrowMPI(ierr);
@@ -2084,27 +2056,19 @@ namespace parallel
                             dest_sizes_variable.end(),
                             0);
 
-          // share information among all processors
-          std::vector<unsigned int> sizes_on_all_procs(n_procs);
-          ierr = MPI_Allgather(DEAL_II_MPI_CONST_CAST(&size_on_proc),
-                               1,
-                               MPI_UNSIGNED,
-                               sizes_on_all_procs.data(),
-                               1,
-                               MPI_UNSIGNED,
-                               mpi_communicator);
+          // share information among all processors by prefix sum
+          unsigned int prefix_sum = 0;
+          ierr = MPI_Exscan(DEAL_II_MPI_CONST_CAST(&size_on_proc),
+                            &prefix_sum,
+                            1,
+                            MPI_UNSIGNED,
+                            MPI_SUM,
+                            mpi_communicator);
           AssertThrowMPI(ierr);
-
-          // generate accumulated sum
-          std::partial_sum(sizes_on_all_procs.begin(),
-                           sizes_on_all_procs.end(),
-                           sizes_on_all_procs.begin());
 
           dest_data_variable.resize(size_on_proc);
           ierr = MPI_File_read_at(fh,
-                                  offset + ((myrank == 0) ?
-                                              0 :
-                                              sizes_on_all_procs[myrank - 1]),
+                                  offset + prefix_sum,
                                   dest_data_variable.data(),
                                   dest_data_variable.size(),
                                   MPI_CHAR,
@@ -2159,20 +2123,20 @@ namespace parallel
       MPI_Comm mpi_communicator,
       const typename dealii::Triangulation<dim, spacedim>::MeshSmoothing
                      smooth_grid,
-      const Settings settings_)
+      const Settings settings)
       : // Do not check for distorted cells.
         // For multigrid, we need limit_level_difference_at_vertices
         // to make sure the transfer operators only need to consider two levels.
-      dealii::parallel::Triangulation<dim, spacedim>(
+      dealii::parallel::DistributedTriangulationBase<dim, spacedim>(
         mpi_communicator,
-        (settings_ & construct_multigrid_hierarchy) ?
+        (settings & construct_multigrid_hierarchy) ?
           static_cast<
             typename dealii::Triangulation<dim, spacedim>::MeshSmoothing>(
             smooth_grid |
             Triangulation<dim, spacedim>::limit_level_difference_at_vertices) :
           smooth_grid,
         false)
-      , settings(settings_)
+      , settings(settings)
       , triangulation_has_content(false)
       , connectivity(nullptr)
       , parallel_forest(nullptr)
@@ -2245,8 +2209,8 @@ namespace parallel
           Assert(false, ExcInternalError());
         }
 
-      this->update_number_cache();
       this->update_periodic_face_map();
+      this->update_number_cache();
     }
 
 
@@ -2497,13 +2461,8 @@ namespace parallel
                       }
 
                   if (vertex_indices.size() > 0)
-                    for (std::set<dealii::types::subdomain_id>::iterator it =
-                           send_to.begin();
-                         it != send_to.end();
-                         ++it)
+                    for (const auto subdomain : send_to)
                       {
-                        const dealii::types::subdomain_id subdomain = *it;
-
                         // get an iterator to what needs to be sent to that
                         // subdomain (if already exists), or create such an
                         // object
@@ -2640,6 +2599,16 @@ namespace parallel
 
     template <int dim, int spacedim>
     bool
+    Triangulation<dim, spacedim>::is_multilevel_hierarchy_constructed() const
+    {
+      return settings &
+             Triangulation<dim, spacedim>::construct_multigrid_hierarchy;
+    }
+
+
+
+    template <int dim, int spacedim>
+    bool
     Triangulation<dim, spacedim>::has_hanging_nodes() const
     {
       if (this->n_global_levels() <= 1)
@@ -2770,7 +2739,11 @@ namespace parallel
 
         tria->cell_attached_data.n_attached_data_sets = 0;
         tria->cell_attached_data.pack_callbacks_fixed.clear();
+        tria->cell_attached_data.pack_callbacks_variable.clear();
       }
+
+      // signal that serialization has finished
+      this->signals.post_distributed_save();
     }
 
 
@@ -2789,6 +2762,8 @@ namespace parallel
         ExcMessage(
           "Triangulation may only contain coarse cells when calling load()."));
 
+      // signal that de-serialization is going to happen
+      this->signals.pre_distributed_load();
 
       if (parallel_ghost != nullptr)
         {
@@ -2878,12 +2853,11 @@ namespace parallel
             }
         }
 
+      this->update_periodic_face_map();
       this->update_number_cache();
 
       // signal that de-serialization is finished
       this->signals.post_distributed_load();
-
-      this->update_periodic_face_map();
     }
 
 
@@ -2901,13 +2875,24 @@ namespace parallel
 
 
     template <int dim, int spacedim>
+    const typename dealii::internal::p4est::types<dim>::forest *
+    Triangulation<dim, spacedim>::get_p4est() const
+    {
+      Assert(parallel_forest != nullptr,
+             ExcMessage("The forest has not been allocated yet."));
+      return parallel_forest;
+    }
+
+
+
+    template <int dim, int spacedim>
     void
     Triangulation<dim, spacedim>::update_number_cache()
     {
-      parallel::Triangulation<dim, spacedim>::update_number_cache();
+      parallel::TriangulationBase<dim, spacedim>::update_number_cache();
 
       if (settings & construct_multigrid_hierarchy)
-        parallel::Triangulation<dim, spacedim>::fill_level_ghost_owners();
+        parallel::TriangulationBase<dim, spacedim>::fill_level_ghost_owners();
     }
 
 
@@ -3598,12 +3583,11 @@ namespace parallel
                g_idx < parallel_ghost->ghosts.elem_count;
                ++g_idx)
             {
-              while (
-                g_idx >=
-                (unsigned int)parallel_ghost->proc_offsets[ghost_owner + 1])
+              while (g_idx >= static_cast<unsigned int>(
+                                parallel_ghost->proc_offsets[ghost_owner + 1]))
                 ++ghost_owner;
-              while (g_idx >=
-                     (unsigned int)parallel_ghost->tree_offsets[ghost_tree + 1])
+              while (g_idx >= static_cast<unsigned int>(
+                                parallel_ghost->tree_offsets[ghost_tree + 1]))
                 ++ghost_tree;
 
               quadr = static_cast<
@@ -3855,12 +3839,12 @@ namespace parallel
             }
         }
 
+      this->prepare_coarsening_and_refinement();
+
       // signal that refinement is going to happen
       this->signals.pre_distributed_refinement();
 
       // now do the work we're supposed to do when we are in charge
-      this->prepare_coarsening_and_refinement();
-
       // make sure all flags are cleared on cells we don't own, since nothing
       // good can come of that if they are still around
       for (typename Triangulation<dim, spacedim>::active_cell_iterator cell =
@@ -4071,14 +4055,11 @@ namespace parallel
         }
 #  endif
 
+      this->update_periodic_face_map();
       this->update_number_cache();
 
-      // signal that refinement is finished,
-      // this is triggered before update_periodic_face_map
-      // to be consistent with the serial triangulation class
+      // signal that refinement is finished
       this->signals.post_distributed_refinement();
-
-      this->update_periodic_face_map();
     }
 
 
@@ -4098,6 +4079,9 @@ namespace parallel
             ExcMessage(
               "Error: There shouldn't be any cells flagged for coarsening/refinement when calling repartition()."));
 #  endif
+
+      // signal that repartitioning is going to happen
+      this->signals.pre_distributed_repartition();
 
       // before repartitioning the mesh let others attach mesh related info
       // (such as SolutionTransfer data) to the p4est
@@ -4172,9 +4156,13 @@ namespace parallel
                                          previous_global_first_quadrant.data());
         }
 
+      this->update_periodic_face_map();
+
       // update how many cells, edges, etc, we store locally
       this->update_number_cache();
-      this->update_periodic_face_map();
+
+      // signal that repartitioning is finished
+      this->signals.post_distributed_repartition();
     }
 
 
@@ -4206,7 +4194,8 @@ namespace parallel
       // Here, it is sufficient to collect all vertices that are located
       // at that boundary.
       const std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-        vertices_with_ghost_neighbors = compute_vertices_with_ghost_neighbors();
+        vertices_with_ghost_neighbors =
+          this->compute_vertices_with_ghost_neighbors();
 
       // now collect cells and their vertices
       // for the interested neighbors
@@ -4235,7 +4224,16 @@ namespace parallel
             needs_to_get_cells);
         }
 
-      // sending
+      // Send information
+
+      // We need to protect this communication below using a mutex:
+      static Utilities::MPI::CollectiveMutex      mutex;
+      Utilities::MPI::CollectiveMutex::ScopedLock lock(
+        mutex, this->get_communicator());
+
+      const int mpi_tag = Utilities::MPI::internal::Tags::
+        triangulation_communicate_locally_moved_vertices;
+
       std::vector<std::vector<char>> sendbuffers(needs_to_get_cells.size());
       std::vector<std::vector<char>>::iterator buffer = sendbuffers.begin();
       std::vector<MPI_Request>  requests(needs_to_get_cells.size());
@@ -4262,11 +4260,11 @@ namespace parallel
           // that the packet has been
           // received
           it->second.pack_data(*buffer);
-          const int ierr = MPI_Isend(&(*buffer)[0],
+          const int ierr = MPI_Isend(buffer->data(),
                                      buffer->size(),
                                      MPI_BYTE,
                                      it->first,
-                                     123,
+                                     mpi_tag,
                                      this->get_communicator(),
                                      &requests[idx]);
           AssertThrowMPI(ierr);
@@ -4287,10 +4285,13 @@ namespace parallel
       for (unsigned int i = 0; i < n_senders; ++i)
         {
           MPI_Status status;
-          int        len;
-          int        ierr =
-            MPI_Probe(MPI_ANY_SOURCE, 123, this->get_communicator(), &status);
+          int        ierr = MPI_Probe(MPI_ANY_SOURCE,
+                               mpi_tag,
+                               this->get_communicator(),
+                               &status);
           AssertThrowMPI(ierr);
+
+          int len;
           ierr = MPI_Get_count(&status, MPI_BYTE, &len);
           AssertThrowMPI(ierr);
           receive.resize(len);
@@ -4483,19 +4484,6 @@ namespace parallel
 
 
     template <int dim, int spacedim>
-    std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-    Triangulation<dim, spacedim>::compute_vertices_with_ghost_neighbors() const
-    {
-      Assert(dim > 1, ExcNotImplemented());
-
-      return dealii::internal::p4est::compute_vertices_with_ghost_neighbors<
-        dim,
-        spacedim>(*this, this->parallel_forest, this->parallel_ghost);
-    }
-
-
-
-    template <int dim, int spacedim>
     std::vector<bool>
     Triangulation<dim, spacedim>::mark_locally_active_vertices_on_level(
       const int level) const
@@ -4572,6 +4560,26 @@ namespace parallel
 
 
     template <int dim, int spacedim>
+    unsigned int
+    Triangulation<dim, spacedim>::coarse_cell_id_to_coarse_cell_index(
+      const types::coarse_cell_id coarse_cell_id) const
+    {
+      return p4est_tree_to_coarse_cell_permutation[coarse_cell_id];
+    }
+
+
+
+    template <int dim, int spacedim>
+    types::coarse_cell_id
+    Triangulation<dim, spacedim>::coarse_cell_index_to_coarse_cell_id(
+      const unsigned int coarse_cell_index) const
+    {
+      return coarse_cell_to_p4est_tree_permutation[coarse_cell_index];
+    }
+
+
+
+    template <int dim, int spacedim>
     void
     Triangulation<dim, spacedim>::add_periodicity(
       const std::vector<dealii::GridTools::PeriodicFacePair<cell_iterator>>
@@ -4582,26 +4590,18 @@ namespace parallel
       Assert(this->n_levels() == 1,
              ExcMessage("The triangulation is refined!"));
 
-      using FaceVector =
-        std::vector<dealii::GridTools::PeriodicFacePair<cell_iterator>>;
-      typename FaceVector::const_iterator it, periodic_end;
-      it           = periodicity_vector.begin();
-      periodic_end = periodicity_vector.end();
-
-      for (; it < periodic_end; ++it)
+      for (const auto &face_pair : periodicity_vector)
         {
-          const cell_iterator first_cell  = it->cell[0];
-          const cell_iterator second_cell = it->cell[1];
-          const unsigned int  face_left   = it->face_idx[0];
-          const unsigned int  face_right  = it->face_idx[1];
+          const cell_iterator first_cell  = face_pair.cell[0];
+          const cell_iterator second_cell = face_pair.cell[1];
+          const unsigned int  face_left   = face_pair.face_idx[0];
+          const unsigned int  face_right  = face_pair.face_idx[1];
 
           // respective cells of the matching faces in p4est
           const unsigned int tree_left =
-            coarse_cell_to_p4est_tree_permutation[std::distance(this->begin(),
-                                                                first_cell)];
+            coarse_cell_to_p4est_tree_permutation[first_cell->index()];
           const unsigned int tree_right =
-            coarse_cell_to_p4est_tree_permutation[std::distance(this->begin(),
-                                                                second_cell)];
+            coarse_cell_to_p4est_tree_permutation[second_cell->index()];
 
           // p4est wants to know which corner the first corner on
           // the face with the lower id is mapped to on the face with
@@ -4612,7 +4612,7 @@ namespace parallel
 
           unsigned int p4est_orientation = 0;
           if (dim == 2)
-            p4est_orientation = it->orientation[1];
+            p4est_orientation = face_pair.orientation[1];
           else
             {
               const unsigned int  face_idx_list[] = {face_left, face_right};
@@ -4656,26 +4656,26 @@ namespace parallel
               Assert(first_dealii_idx_on_face != numbers::invalid_unsigned_int,
                      ExcInternalError());
               // Now map dealii_idx_on_face according to the orientation
-              const unsigned int left_to_right[8][4] = {{0, 2, 1, 3},
-                                                        {0, 1, 2, 3},
-                                                        {3, 1, 2, 0},
-                                                        {3, 2, 1, 0},
-                                                        {2, 3, 0, 1},
-                                                        {1, 3, 0, 2},
-                                                        {1, 0, 3, 2},
-                                                        {2, 0, 3, 1}};
-              const unsigned int right_to_left[8][4] = {{0, 2, 1, 3},
-                                                        {0, 1, 2, 3},
-                                                        {3, 1, 2, 0},
-                                                        {3, 2, 1, 0},
-                                                        {2, 3, 0, 1},
-                                                        {2, 0, 3, 1},
-                                                        {1, 0, 3, 2},
-                                                        {1, 3, 0, 2}};
-              const unsigned int second_dealii_idx_on_face =
-                lower_idx == 0 ? left_to_right[it->orientation.to_ulong()]
+              constexpr unsigned int left_to_right[8][4] = {{0, 2, 1, 3},
+                                                            {0, 1, 2, 3},
+                                                            {3, 1, 2, 0},
+                                                            {3, 2, 1, 0},
+                                                            {2, 3, 0, 1},
+                                                            {1, 3, 0, 2},
+                                                            {1, 0, 3, 2},
+                                                            {2, 0, 3, 1}};
+              constexpr unsigned int right_to_left[8][4] = {{0, 2, 1, 3},
+                                                            {0, 1, 2, 3},
+                                                            {3, 1, 2, 0},
+                                                            {3, 2, 1, 0},
+                                                            {2, 3, 0, 1},
+                                                            {2, 0, 3, 1},
+                                                            {1, 0, 3, 2},
+                                                            {1, 3, 0, 2}};
+              const unsigned int     second_dealii_idx_on_face =
+                lower_idx == 0 ? left_to_right[face_pair.orientation.to_ulong()]
                                               [first_dealii_idx_on_face] :
-                                 right_to_left[it->orientation.to_ulong()]
+                                 right_to_left[face_pair.orientation.to_ulong()]
                                               [first_dealii_idx_on_face];
               const unsigned int second_dealii_idx_on_cell =
                 GeometryInfo<dim>::face_to_cell_vertices(
@@ -4745,8 +4745,8 @@ namespace parallel
     Triangulation<dim, spacedim>::memory_consumption() const
     {
       std::size_t mem =
-        this->dealii::parallel::Triangulation<dim,
-                                              spacedim>::memory_consumption() +
+        this->dealii::parallel::TriangulationBase<dim, spacedim>::
+          memory_consumption() +
         MemoryConsumption::memory_consumption(triangulation_has_content) +
         MemoryConsumption::memory_consumption(connectivity) +
         MemoryConsumption::memory_consumption(parallel_forest) +
@@ -4787,8 +4787,8 @@ namespace parallel
     {
       try
         {
-          dealii::parallel::Triangulation<dim, spacedim>::copy_triangulation(
-            other_tria);
+          dealii::parallel::TriangulationBase<dim, spacedim>::
+            copy_triangulation(other_tria);
         }
       catch (
         const typename dealii::Triangulation<dim, spacedim>::DistortedCellList
@@ -4841,8 +4841,8 @@ namespace parallel
           Assert(false, ExcInternalError());
         }
 
-      this->update_number_cache();
       this->update_periodic_face_map();
+      this->update_number_cache();
     }
 
 
@@ -4967,9 +4967,10 @@ namespace parallel
       const typename dealii::Triangulation<1, spacedim>::MeshSmoothing
         smooth_grid,
       const Settings /*settings*/)
-      : dealii::parallel::Triangulation<1, spacedim>(mpi_communicator,
-                                                     smooth_grid,
-                                                     false)
+      : dealii::parallel::DistributedTriangulationBase<1, spacedim>(
+          mpi_communicator,
+          smooth_grid,
+          false)
     {
       Assert(false, ExcNotImplemented());
     }
@@ -5036,16 +5037,6 @@ namespace parallel
 
     template <int spacedim>
     std::map<unsigned int, std::set<dealii::types::subdomain_id>>
-    Triangulation<1, spacedim>::compute_vertices_with_ghost_neighbors() const
-    {
-      Assert(false, ExcNotImplemented());
-      return std::map<unsigned int, std::set<dealii::types::subdomain_id>>();
-    }
-
-
-
-    template <int spacedim>
-    std::map<unsigned int, std::set<dealii::types::subdomain_id>>
     Triangulation<1, spacedim>::compute_level_vertices_with_ghost_neighbors(
       const unsigned int /*level*/) const
     {
@@ -5068,6 +5059,27 @@ namespace parallel
 
 
     template <int spacedim>
+    unsigned int
+    Triangulation<1, spacedim>::coarse_cell_id_to_coarse_cell_index(
+      const types::coarse_cell_id) const
+    {
+      Assert(false, ExcNotImplemented());
+      return 0;
+    }
+
+
+
+    template <int spacedim>
+    types::coarse_cell_id
+    Triangulation<1, spacedim>::coarse_cell_index_to_coarse_cell_id(
+      const unsigned int) const
+    {
+      Assert(false, ExcNotImplemented());
+      return 0;
+    }
+
+
+    template <int spacedim>
     void
     Triangulation<1, spacedim>::load(const std::string &, const bool)
     {
@@ -5081,6 +5093,16 @@ namespace parallel
     Triangulation<1, spacedim>::save(const std::string &) const
     {
       Assert(false, ExcNotImplemented());
+    }
+
+
+
+    template <int spacedim>
+    bool
+    Triangulation<1, spacedim>::is_multilevel_hierarchy_constructed() const
+    {
+      Assert(false, ExcNotImplemented());
+      return false;
     }
 
   } // namespace distributed

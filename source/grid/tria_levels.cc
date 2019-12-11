@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2006 - 2018 by the deal.II authors
+// Copyright (C) 2006 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -73,7 +73,7 @@ namespace internal
           else
             direction_flags.clear();
 
-          parents.reserve((int)(total_cells + 1) / 2);
+          parents.reserve((total_cells + 1) / 2);
           parents.insert(parents.end(),
                          (total_cells + 1) / 2 - parents.size(),
                          -1);
@@ -82,7 +82,7 @@ namespace internal
           neighbors.insert(neighbors.end(),
                            total_cells * (2 * dimension) - neighbors.size(),
                            std::make_pair(-1, -1));
-        };
+        }
     }
 
 
@@ -165,7 +165,7 @@ namespace internal
           else
             direction_flags.clear();
 
-          parents.reserve((int)(total_cells + 1) / 2);
+          parents.reserve((total_cells + 1) / 2);
           parents.insert(parents.end(),
                          (total_cells + 1) / 2 - parents.size(),
                          -1);
@@ -174,7 +174,7 @@ namespace internal
           neighbors.insert(neighbors.end(),
                            total_cells * (2 * dimension) - neighbors.size(),
                            std::make_pair(-1, -1));
-        };
+        }
     }
 
 

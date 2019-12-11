@@ -77,7 +77,7 @@ public:
     addit_data.tasks_parallel_scheme =
       MatrixFree<dim, number>::AdditionalData::none;
     addit_data.tasks_block_size = 3;
-    addit_data.level_mg_handler = level;
+    addit_data.mg_level         = level;
     addit_data.mapping_update_flags_inner_faces =
       (update_gradients | update_JxW_values);
     addit_data.mapping_update_flags_boundary_faces =
@@ -572,8 +572,10 @@ do_test(const DoFHandler<dim> &dof)
       smoother_data[level].smoothing_range     = 20.;
       smoother_data[level].degree              = 5;
       smoother_data[level].eig_cg_n_iterations = 15;
-      smoother_data[level].matrix_diagonal_inverse =
-        mg_matrices[level].get_matrix_diagonal_inverse();
+      auto preconditioner                      = std::make_shared<
+        DiagonalMatrix<LinearAlgebra::distributed::Vector<number>>>();
+      preconditioner->reinit(mg_matrices[level].get_matrix_diagonal_inverse());
+      smoother_data[level].preconditioner = std::move(preconditioner);
     }
   mg_smoother.initialize(mg_matrices, smoother_data);
 
@@ -628,7 +630,7 @@ test()
       FE_DGQ<dim>     fe(fe_degree);
       DoFHandler<dim> dof(tria);
       dof.distribute_dofs(fe);
-      dof.distribute_mg_dofs(fe);
+      dof.distribute_mg_dofs();
 
       do_test<dim, fe_degree, fe_degree + 1, double>(dof);
     }

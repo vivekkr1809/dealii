@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -77,9 +77,9 @@ test()
   FE_Q<dim>       fe2(1);
   DoFHandler<dim> dof_handler(tria);
   dof_handler.distribute_dofs(fe1);
-  dof_handler.distribute_mg_dofs(fe1);
+  dof_handler.distribute_mg_dofs();
   dof_handler.distribute_dofs(fe2);
-  dof_handler.distribute_mg_dofs(fe2);
+  dof_handler.distribute_mg_dofs();
   deallog << "OK" << std::endl;
 }
 

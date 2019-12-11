@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,11 +17,12 @@
 #define dealii_fe_tools_interpolate_templates_H
 
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/qprojector.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/std_cxx14/memory.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/dofs/dof_accessor.h>
@@ -45,7 +46,9 @@
 #include <deal.II/lac/la_vector.h>
 #include <deal.II/lac/petsc_block_vector.h>
 #include <deal.II/lac/petsc_vector.h>
+#include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 
@@ -511,6 +514,23 @@ namespace FETools
     {
       AssertThrow(false, ExcNotImplemented());
     }
+
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+    template <int dim, int spacedim, typename Number>
+    void
+    back_interpolate(
+      const DoFHandler<dim, spacedim> &,
+      const AffineConstraints<
+        typename LinearAlgebra::TpetraWrappers::Vector<Number>::value_type> &,
+      const LinearAlgebra::TpetraWrappers::Vector<Number> &,
+      const DoFHandler<dim, spacedim> &,
+      const AffineConstraints<
+        typename LinearAlgebra::TpetraWrappers::Vector<Number>::value_type> &,
+      LinearAlgebra::TpetraWrappers::Vector<Number> &)
+    {
+      AssertThrow(false, ExcNotImplemented());
+    }
+#  endif
 #endif
 
 

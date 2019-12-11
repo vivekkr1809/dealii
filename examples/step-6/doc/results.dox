@@ -160,16 +160,15 @@ Using these various different preconditioners, we can compare the
 number of CG iterations needed (available through the
 <code>solver_control.last_step()</code> call, see
 step-4) as well as CPU time needed (using the Timer class,
-discussed, for example, in step-12) and get the
+discussed, for example, in step-28) and get the
 following results (left: iterations; right: CPU time):
 
-<TABLE WIDTH="60%" ALIGN="center">
+<table width="60%" align="center">
   <tr>
-    <td ALIGN="center">
+    <td align="center">
       <img src="https://www.dealii.org/images/steps/developer/step-6.q2.dofs_vs_iterations.png" alt="">
     </td>
-
-    <td ALIGN="center">
+    <td align="center">
       <img src="https://www.dealii.org/images/steps/developer/step-6.q2.dofs_vs_time.png" alt="">
     </td>
   </tr>
@@ -187,13 +186,12 @@ The situation changes slightly when the finite element is not a
 bi-quadratic one as set in the constructor of this program, but a
 bi-linear one. If one makes this change, the results are as follows:
 
-<TABLE WIDTH="60%" ALIGN="center">
+<table width="60%" align="center">
   <tr>
-    <td ALIGN="center">
+    <td align="center">
       <img src="https://www.dealii.org/images/steps/developer/step-6.q1.dofs_vs_iterations.png" alt="">
     </td>
-
-    <td ALIGN="center">
+    <td align="center">
       <img src="https://www.dealii.org/images/steps/developer/step-6.q1.dofs_vs_time.png" alt="">
     </td>
   </tr>
@@ -414,7 +412,9 @@ This code then generates the following, much better sequence of meshes:
 Creating good meshes, and in particular making them fit the geometry you
 want, is a complex topic in itself. You can find much more on this in
 step-49, step-53, and step-54, among other tutorial programs that cover
-the issue. Information on curved domains can also be found in the
+the issue. step-65 shows another, less manual way to achieve a mesh
+well fit to the problem here.
+Information on curved domains can also be found in the
 documentation module on @ref manifold "Manifold descriptions".
 
 Why does it make sense to choose a mesh that tracks the internal
@@ -504,14 +504,13 @@ methods because the mesh will have to resolve the singularity that causes
 the solution to not be in $W^{1,\infty}$ any more.
 
 The typical example one uses for this is called the <i>Kellogg problem</i>
-(referring to the paper "On the Poisson equation with intersecting interfaces"
-by R. B. Kellogg, Applicable Analysis, vol. 4, pp. 101-129, 1974), which
-in the commonly used form has a coefficient $a(\mathbf x)$ that has different values
-in the four quadrants of the plane (or eight different values in the octants
-of ${\mathbb R}^3$). The exact degree of regularity (the $s$ in the
-index of the Sobolev space above) depends on the values of $a(\mathbf x)$ coming
-together at the origin, and by choosing the jumps large enough, the
-regularity of the solution can be made as close as desired to $H^1$.
+(referring to @cite Kel74), which in the commonly used form has a coefficient 
+$a(\mathbf x)$ that has different values in the four quadrants of the plane 
+(or eight different values in the octants of ${\mathbb R}^3$). The exact degree 
+of regularity (the $s$ in the index of the Sobolev space above) depends on the 
+values of $a(\mathbf x)$ coming together at the origin, and by choosing the 
+jumps large enough, the regularity of the solution can be made as close as 
+desired to $H^1$.
 
 To implement something like this, one could replace the coefficient
 function by the following (shown here only for the 2d case):

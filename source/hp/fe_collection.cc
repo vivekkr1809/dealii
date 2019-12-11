@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,129 +27,228 @@ namespace hp
   FECollection<dim, spacedim>::find_least_face_dominating_fe(
     const std::set<unsigned int> &fes) const
   {
-    return find_least_dominating_fe_in_collection(fes, /*codim*/ 1);
+    return find_dominated_fe(find_common_fes(fes, /*codim*/ 1),
+                             /*codim*/ 1);
+  }
+
+
+
+  template <int dim, int spacedim>
+  std::set<unsigned int>
+  FECollection<dim, spacedim>::find_common_fes(
+    const std::set<unsigned int> &fes,
+    const unsigned int            codim) const
+  {
+    // Validate user inputs.
+    Assert(codim <= dim, ExcImpossibleInDim(dim));
+    for (const auto &fe : fes)
+      {
+        (void)fe;
+        AssertIndexRange(fe, finite_elements.size());
+      }
+
+    // Check if any element of this FECollection is able to dominate all
+    // elements of @p fes. If one was found, we add it to the set of
+    // dominating elements.
+    std::set<unsigned int> dominating_fes;
+    for (unsigned int current_fe = 0; current_fe < finite_elements.size();
+         ++current_fe)
+      {
+        // Check if current_fe can dominate all elements in @p fes.
+        FiniteElementDomination::Domination domination =
+          FiniteElementDomination::no_requirements;
+        for (const auto &other_fe : fes)
+          domination =
+            domination & finite_elements[current_fe]->compare_for_domination(
+                           *finite_elements[other_fe], codim);
+
+        // If current_fe dominates, add it to the set.
+        if ((domination == FiniteElementDomination::this_element_dominates) ||
+            (domination == FiniteElementDomination::either_element_can_dominate
+             /*covers cases like {Q2,Q3,Q1,Q1} with fes={2,3}*/))
+          dominating_fes.insert(current_fe);
+      }
+    return dominating_fes;
+  }
+
+
+
+  template <int dim, int spacedim>
+  std::set<unsigned int>
+  FECollection<dim, spacedim>::find_enclosing_fes(
+    const std::set<unsigned int> &fes,
+    const unsigned int            codim) const
+  {
+    // Validate user inputs.
+    Assert(codim <= dim, ExcImpossibleInDim(dim));
+    for (const auto &fe : fes)
+      {
+        (void)fe;
+        AssertIndexRange(fe, finite_elements.size());
+      }
+
+    // Check if any element of this FECollection is dominated by all
+    // elements of @p fes. If one was found, we add it to the set of
+    // dominated elements.
+    std::set<unsigned int> dominated_fes;
+    for (unsigned int current_fe = 0; current_fe < finite_elements.size();
+         ++current_fe)
+      {
+        // Check if current_fe is dominated by all other elements in @p fes.
+        FiniteElementDomination::Domination domination =
+          FiniteElementDomination::no_requirements;
+        for (const auto &other_fe : fes)
+          domination =
+            domination & finite_elements[current_fe]->compare_for_domination(
+                           *finite_elements[other_fe], codim);
+
+        // If current_fe is dominated, add it to the set.
+        if ((domination == FiniteElementDomination::other_element_dominates) ||
+            (domination == FiniteElementDomination::either_element_can_dominate
+             /*covers cases like {Q2,Q3,Q1,Q1} with fes={2,3}*/))
+          dominated_fes.insert(current_fe);
+      }
+    return dominated_fes;
   }
 
 
 
   template <int dim, int spacedim>
   unsigned int
-  FECollection<dim, spacedim>::find_least_dominating_fe_in_collection(
+  FECollection<dim, spacedim>::find_dominating_fe(
     const std::set<unsigned int> &fes,
     const unsigned int            codim) const
   {
+    // Validate user inputs.
     Assert(codim <= dim, ExcImpossibleInDim(dim));
+    for (const auto &fe : fes)
+      {
+        (void)fe;
+        AssertIndexRange(fe, finite_elements.size());
+      }
 
-    for (auto it = fes.cbegin(); it != fes.cend(); ++it)
-      AssertIndexRange(*it, finite_elements.size());
-
-    // If the set of elements to be dominated contains only a single element X,
-    // then by definition the dominating set contains this single element X
-    // (because each element can dominate itself). There may also be others,
-    // say Y1...YN. Next you have to find one or more elements in the dominating
-    // set {X,Y1...YN} that is the weakest. Well, you can't find one that is
-    // weaker than X because if it were, it would not dominate X. In other
-    // words, X is guaranteed to be in the subset of {X,Y1...YN} of weakest
-    // dominating elements. Since we only guarantee that the function returns
-    // one of them, we may as well return X right away.
+    // If the set of elements contains only a single element,
+    // then this very element is considered to be the dominating one.
     if (fes.size() == 1)
       return *fes.begin();
 
-    std::set<unsigned int> candidate_fes;
-
-    // first loop over all FEs and check which can dominate those given in @p fes:
-    for (unsigned int cur_fe = 0; cur_fe < finite_elements.size(); ++cur_fe)
-      {
-        FiniteElementDomination::Domination domination =
-          FiniteElementDomination::no_requirements;
-        // check if cur_fe can dominate all FEs in @p fes:
-        for (const auto &other_fe : fes)
-          domination =
-            domination & finite_elements[cur_fe]->compare_for_domination(
-                           *finite_elements[other_fe], codim);
-
-        // if we found dominating element, keep them in a set.
-        if (
-          domination == FiniteElementDomination::this_element_dominates ||
-          domination == FiniteElementDomination::either_element_can_dominate /*covers cases like {Q2,Q3,Q1,Q1} with fes={2,3}*/)
-          candidate_fes.insert(cur_fe);
-      }
-
-    // among the ones we found, pick one that is dominated by all others and
-    // thus should represent the largest FE space.
-    if (candidate_fes.size() == 1)
-      {
-        return *candidate_fes.begin();
-      }
-    else
-      for (const auto &current_fe : candidate_fes)
-        {
-          FiniteElementDomination::Domination domination =
-            FiniteElementDomination::no_requirements;
-
-          for (const auto &other_fe : candidate_fes)
-            if (current_fe != other_fe)
-              domination = domination &
-                           finite_elements[current_fe]->compare_for_domination(
-                             *finite_elements[other_fe], codim);
-
-          if ((domination ==
-               FiniteElementDomination::other_element_dominates) ||
-              (domination ==
-               FiniteElementDomination::either_element_can_dominate
-               /*covers cases like candidate_fes={Q1,Q1}*/))
-            return current_fe;
-        }
-    // We couldn't find the FE, return invalid_unsigned_int :
-    return numbers::invalid_unsigned_int;
-  }
-
-
-
-  template <int dim, int spacedim>
-  unsigned int
-  FECollection<dim, spacedim>::find_dominating_fe_in_subset(
-    const std::set<unsigned int> &fes,
-    const unsigned int            codim) const
-  {
-    Assert(codim <= dim, ExcImpossibleInDim(dim));
-
-    for (auto it = fes.cbegin(); it != fes.cend(); ++it)
-      AssertIndexRange(*it, finite_elements.size());
-
-    // If the set of elements to be dominated contains only a single element X,
-    // then by definition the dominating set contains this single element
-    // (because each element can dominate itself).
     // There may also be others, in which case we'll check if any of these
     // elements is able to dominate all others. If one was found, we stop
     // looking further and return the dominating element.
-    if (fes.size() == 1)
-      return *fes.begin();
-
-    // loop over all finite elements given in the subset
-    // and check which one dominates the whole subset
     for (const auto &current_fe : fes)
       {
+        // Check if current_fe can dominate all elements in @p fes.
         FiniteElementDomination::Domination domination =
-          FiniteElementDomination::either_element_can_dominate;
-
+          FiniteElementDomination::no_requirements;
         for (const auto &other_fe : fes)
-          if (other_fe != current_fe)
+          if (current_fe != other_fe)
             domination =
               domination & finite_elements[current_fe]->compare_for_domination(
                              *finite_elements[other_fe], codim);
 
-        // see if this element is able to dominate all the other
-        // ones, and if so take it
+        // If current_fe dominates, return its index.
         if ((domination == FiniteElementDomination::this_element_dominates) ||
-            (domination ==
-             FiniteElementDomination::either_element_can_dominate) ||
-            (domination == FiniteElementDomination::no_requirements))
+            (domination == FiniteElementDomination::either_element_can_dominate
+             /*covers cases like {Q2,Q3,Q1,Q1} with fes={2,3}*/))
           return current_fe;
       }
 
-    // if we couldn't find the most dominating object
+    // If we couldn't find the dominating object, return an invalid one.
     return numbers::invalid_unsigned_int;
+  }
+
+
+
+  template <int dim, int spacedim>
+  unsigned int
+  FECollection<dim, spacedim>::find_dominated_fe(
+    const std::set<unsigned int> &fes,
+    const unsigned int            codim) const
+  {
+    // Validate user inputs.
+    Assert(codim <= dim, ExcImpossibleInDim(dim));
+    for (const auto &fe : fes)
+      {
+        (void)fe;
+        AssertIndexRange(fe, finite_elements.size());
+      }
+
+    // If the set of elements contains only a single element,
+    // then this very element is considered to be the dominated one.
+    if (fes.size() == 1)
+      return *fes.begin();
+
+    // There may also be others, in which case we'll check if any of these
+    // elements is dominated by all others. If one was found, we stop
+    // looking further and return the dominated element.
+    for (const auto &current_fe : fes)
+      {
+        // Check if current_fe is dominated by all other elements in @p fes.
+        FiniteElementDomination::Domination domination =
+          FiniteElementDomination::no_requirements;
+        for (const auto &other_fe : fes)
+          if (current_fe != other_fe)
+            domination =
+              domination & finite_elements[current_fe]->compare_for_domination(
+                             *finite_elements[other_fe], codim);
+
+        // If current_fe is dominated, return its index.
+        if ((domination == FiniteElementDomination::other_element_dominates) ||
+            (domination == FiniteElementDomination::either_element_can_dominate
+             /*covers cases like {Q2,Q3,Q1,Q1} with fes={2,3}*/))
+          return current_fe;
+      }
+
+    // If we couldn't find the dominated object, return an invalid one.
+    return numbers::invalid_unsigned_int;
+  }
+
+
+
+  template <int dim, int spacedim>
+  unsigned int
+  FECollection<dim, spacedim>::find_dominating_fe_extended(
+    const std::set<unsigned int> &fes,
+    const unsigned int            codim) const
+  {
+    unsigned int fe_index = find_dominating_fe(fes, codim);
+
+    if (fe_index == numbers::invalid_unsigned_int)
+      {
+        const std::set<unsigned int> dominating_fes =
+          find_common_fes(fes, codim);
+        fe_index = find_dominated_fe(dominating_fes, codim);
+      }
+
+    return fe_index;
+  }
+
+
+
+  template <int dim, int spacedim>
+  unsigned int
+  FECollection<dim, spacedim>::find_dominated_fe_extended(
+    const std::set<unsigned int> &fes,
+    const unsigned int            codim) const
+  {
+    unsigned int fe_index = find_dominated_fe(fes, codim);
+
+    if (fe_index == numbers::invalid_unsigned_int)
+      {
+        const std::set<unsigned int> dominated_fes =
+          find_enclosing_fes(fes, codim);
+        fe_index = find_dominating_fe(dominated_fes, codim);
+      }
+
+    return fe_index;
+  }
+
+
+
+  template <int dim, int spacedim>
+  FECollection<dim, spacedim>::FECollection()
+  {
+    set_default_hierarchy();
   }
 
 
@@ -157,6 +256,7 @@ namespace hp
   template <int dim, int spacedim>
   FECollection<dim, spacedim>::FECollection(
     const FiniteElement<dim, spacedim> &fe)
+    : FECollection()
   {
     push_back(fe);
   }
@@ -166,6 +266,7 @@ namespace hp
   template <int dim, int spacedim>
   FECollection<dim, spacedim>::FECollection(
     const std::vector<const FiniteElement<dim, spacedim> *> &fes)
+    : FECollection()
   {
     Assert(fes.size() > 0,
            ExcMessage("Need to pass at least one finite element."));
@@ -192,6 +293,64 @@ namespace hp
                         "same number of vector components!"));
 
     finite_elements.push_back(new_fe.clone());
+  }
+
+
+
+  template <int dim, int spacedim>
+  void
+  FECollection<dim, spacedim>::set_hierarchy(
+    const std::function<
+      unsigned int(const typename hp::FECollection<dim, spacedim> &,
+                   const unsigned int)> &next,
+    const std::function<
+      unsigned int(const typename hp::FECollection<dim, spacedim> &,
+                   const unsigned int)> &prev)
+  {
+    // copy hierarchy functions
+    hierarchy_next = next;
+    hierarchy_prev = prev;
+  }
+
+
+
+  template <int dim, int spacedim>
+  void
+  FECollection<dim, spacedim>::set_default_hierarchy()
+  {
+    // establish hierarchy corresponding to order of indices
+    set_hierarchy(&DefaultHierarchy::next_index,
+                  &DefaultHierarchy::previous_index);
+  }
+
+
+
+  template <int dim, int spacedim>
+  unsigned int
+  FECollection<dim, spacedim>::next_in_hierarchy(
+    const unsigned int fe_index) const
+  {
+    Assert(fe_index < size(), ExcIndexRange(fe_index, 0, size()));
+
+    const unsigned int new_fe_index = hierarchy_next(*this, fe_index);
+    Assert(new_fe_index < size(), ExcIndexRange(new_fe_index, 0, size()));
+
+    return new_fe_index;
+  }
+
+
+
+  template <int dim, int spacedim>
+  unsigned int
+  FECollection<dim, spacedim>::previous_in_hierarchy(
+    const unsigned int fe_index) const
+  {
+    Assert(fe_index < size(), ExcIndexRange(fe_index, 0, size()));
+
+    const unsigned int new_fe_index = hierarchy_prev(*this, fe_index);
+    Assert(new_fe_index < size(), ExcIndexRange(new_fe_index, 0, size()));
+
+    return new_fe_index;
   }
 
 

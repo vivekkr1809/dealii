@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -75,8 +75,7 @@ namespace PETScWrappers
               const size_type ghostidx =
                 vector.ghost_indices.index_within_set(index);
 
-              Assert(ghostidx + end - begin < (size_type)lsize,
-                     ExcInternalError());
+              AssertIndexRange(ghostidx + end - begin, lsize);
               value = *(ptr + ghostidx + end - begin);
             }
 
@@ -459,7 +458,7 @@ namespace PETScWrappers
           sum1 += *ptr++;
           sum2 += *ptr++;
           sum3 += *ptr++;
-        };
+        }
       // add up remaining elements
       while (ptr != start_ptr + size())
         sum0 += *ptr++;

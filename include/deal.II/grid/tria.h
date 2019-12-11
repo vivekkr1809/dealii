@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -44,6 +44,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class Manifold;
 
@@ -91,7 +93,7 @@ namespace hp
   template <int dim, int spacedim>
   class DoFHandler;
 }
-
+#endif
 
 /*------------------------------------------------------------------------*/
 
@@ -189,6 +191,22 @@ struct CellData
    * - manifold id to numbers::flat_manifold_id
    */
   CellData();
+
+  /**
+   * Comparison operator.
+   */
+  bool
+  operator==(const CellData<structdim> &other) const;
+
+  /**
+   * Boost serialization function
+   */
+  template <class Archive>
+  void
+  serialize(Archive &ar, const unsigned int version);
+
+  static_assert(structdim > 0,
+                "The class CellData can only be used for structdim>0.");
 };
 
 
@@ -1100,8 +1118,10 @@ namespace internal
  *       // triangulation that we want to be informed about mesh refinement
  *       previous_cell = current_cell;
  *       previous_cell->get_triangulation().signals.post_refinement.connect(
- *         std::bind (&FEValues<dim>::invalidate_previous_cell,
- *                    std::ref (*this)));
+ *         [this]()
+ *         {
+ *           this->invalidate_previous_cell();
+ *         });
  *     }
  *   else
  *    previous_cell = current_cell;
@@ -1327,7 +1347,7 @@ public:
      *
      * If the smoothing indicator given to the constructor contains the bit
      * for #limit_level_difference_at_vertices, situations as the above one
-     * are eliminated by also marking the lower left cell for refinement.
+     * are eliminated by also marking the upper right cell for refinement.
      *
      * In case of anisotropic refinement, the level of a cell is not linked to
      * the refinement of a cell as directly as in case of isotropic
@@ -1378,7 +1398,9 @@ public:
      */
     patch_level_1 = 0x4,
     /**
-     * Each @ref GlossCoarseMesh "coarse grid" cell is refined at least once,
+     * Each
+     * @ref GlossCoarseMesh "coarse grid"
+     * cell is refined at least once,
      * i.e., the triangulation
      * might have active cells on level 1 but not on level 0. This flag
      * ensures that a mesh which has coarsest_level_1 has still
@@ -1674,7 +1696,7 @@ public:
      * automatically generated destructor would have a different one due to
      * member objects.
      */
-    virtual ~DistortedCellList() noexcept override;
+    virtual ~DistortedCellList() noexcept override = default;
 
     /**
      * A list of those cells among the coarse mesh cells that are deformed or
@@ -1778,9 +1800,8 @@ public:
    * for non-linear (i.e.: non-Q1) transformations of cells to the unit cell
    * in shape function calculations.
    *
-   * The @p manifold_object is not copied and MUST persist until the
-   * triangulation is destroyed. This is also true for triangulations
-   * generated from this one by @p copy_triangulation.
+   * A copy of @p manifold_object is created using
+   * Manifold<dim, spacedim>::clone() and stored internally.
    *
    * It is possible to remove or replace the boundary object during the
    * lifetime of a non-empty triangulation. Usually, this is done before the
@@ -1954,7 +1975,8 @@ public:
    * of the latter being a list of <tt>1<<dim</tt> vertex indices. The
    * triangulation must be empty upon calling this function and the cell list
    * should be useful (connected domain, etc.). The result of calling this
-   * function is a @ref GlossCoarseMesh "coarse mesh".
+   * function is a
+   * @ref GlossCoarseMesh "coarse mesh".
    *
    * Material data for the cells is given within the @p cells array, while
    * boundary information is given in the @p subcelldata field.
@@ -2206,9 +2228,17 @@ public:
     /**
      * This signal is triggered at the end of execution of the
      * Triangulation::execute_coarsening_and_refinement() function when the
-     * triangulation has reached its final state
+     * triangulation has reached its final state.
      */
     boost::signals2::signal<void()> post_refinement;
+
+    /**
+     * This signal is triggered at the beginning of execution of the
+     * GridTools::partition_triangulation() and
+     * GridTools::partition_triangulation_zorder() functions. At the time this
+     * signal is triggered, the triangulation is still unchanged.
+     */
+    boost::signals2::signal<void()> pre_partition;
 
     /**
      * This signal is triggered when a function in deal.II moves the grid
@@ -2329,11 +2359,45 @@ public:
 
     /**
      * This signal is triggered at the beginning of execution of the
+     * parallel::distributed::Triangulation::repartition() function. At the time
+     * this signal is triggered, the triangulation is still unchanged.
+     *
+     * @note The parallel::distributed::Triangulation::repartition() function is
+     * also called by parallel::distributed::Triangulation::load(). Thus, the
+     * pre_distributed_repartition signal will be triggered after the
+     * pre_distributed_load one.
+     */
+    boost::signals2::signal<void()> pre_distributed_repartition;
+
+    /**
+     * This signal is triggered at the end of execution of the
+     * parallel::distributed::Triangulation::repartition()
+     * function when the triangulation has reached its final state.
+     */
+    boost::signals2::signal<void()> post_distributed_repartition;
+
+    /**
+     * This signal is triggered at the beginning of execution of the
      * parallel::distributed::Triangulation::save()
      * function. At the time this signal is triggered, the triangulation
      * is still unchanged.
      */
     boost::signals2::signal<void()> pre_distributed_save;
+
+    /**
+     * This signal is triggered at the end of execution of the
+     * parallel::distributed::Triangulation::save()
+     * function when the triangulation has reached its final state.
+     */
+    boost::signals2::signal<void()> post_distributed_save;
+
+    /**
+     * This signal is triggered at the beginning of execution of the
+     * parallel::distributed::Triangulation::load()
+     * function. At the time this signal is triggered, the triangulation
+     * is still unchanged.
+     */
+    boost::signals2::signal<void()> pre_distributed_load;
 
     /**
      * This signal is triggered at the end of execution of the
@@ -2706,6 +2770,20 @@ public:
 
   /**
    * Iterator to the first used cell on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   cell_iterator
   begin(const unsigned int level = 0) const;
@@ -2725,6 +2803,20 @@ public:
    *  @endcode
    * have zero iterations, as may be expected if there are no active cells on
    * this level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   active_cell_iterator
   begin_active(const unsigned int level = 0) const;
@@ -2739,6 +2831,20 @@ public:
   /**
    * Return an iterator which is the first iterator not on level. If @p level
    * is the last level, then this returns <tt>end()</tt>.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   cell_iterator
   end(const unsigned int level) const;
@@ -2747,6 +2853,20 @@ public:
    * Return an active iterator which is the first active iterator not on the
    * given level. If @p level is the last level, then this returns
    * <tt>end()</tt>.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   active_cell_iterator
   end_active(const unsigned int level) const;
@@ -3073,16 +3193,16 @@ public:
 
   /**
    * Return the total number of used faces, active or not.  In 2D, the result
-   * equals n_lines(), while in 3D it equals n_quads(). Since there are no
-   * face objects in 1d, the function returns zero in 1d.
+   * equals n_lines(), in 3D it equals n_quads(), while in 1D it equals
+   * the number of used vertices.
    */
   unsigned int
   n_faces() const;
 
   /**
-   * Return the total number of active faces, active or not.  In 2D, the
-   * result equals n_active_lines(), while in 3D it equals n_active_quads().
-   * Since there are no face objects in 1d, the function returns zero in 1d.
+   * Return the total number of active faces.  In 2D, the result equals
+   * n_active_lines(), in 3D it equals n_active_quads(), while in 1D it equals
+   * the number of used vertices.
    */
   unsigned int
   n_active_faces() const;
@@ -3295,7 +3415,8 @@ public:
 
   /**
    * Return the total number of faces, used or not. In 2d, the result equals
-   * n_raw_lines(), while in 3d it equals n_raw_quads().
+   * n_raw_lines(), in 3d it equals n_raw_quads(), while in 1D it equals
+   * the number of vertices.
    *
    * @note This function really exports internal information about the
    * triangulation. It shouldn't be used in applications. The function is only
@@ -3380,6 +3501,36 @@ public:
     std::pair<std::pair<cell_iterator, unsigned int>, std::bitset<3>>> &
   get_periodic_face_map() const;
 
+  /**
+   * Translate the unique id of a coarse cell to its index. See the glossary
+   * entry on @ref GlossCoarseCellId "coarse cell IDs" for more information.
+   *
+   * @note For serial and shared triangulation both id and index are the same.
+   *       For distributed triangulations setting both might differ, since the
+   *       id might correspond to a global id and the index to a local id.
+   *
+   * @param coarse_cell_id Unique id of the coarse cell.
+   * @return Index of the coarse cell within the current triangulation.
+   */
+  virtual unsigned int
+  coarse_cell_id_to_coarse_cell_index(
+    const types::coarse_cell_id coarse_cell_id) const;
+
+
+  /**
+   * Translate the index of coarse cell to its unique id. See the glossary
+   * entry on @ref GlossCoarseCellId "coarse cell IDs" for more information.
+   *
+   * @note See the note of the method
+   * coarse_cell_id_to_coarse_cell_index().
+   *
+   * @param coarse_cell_index Index of the coarse cell.
+   * @return Id of the coarse cell.
+   */
+  virtual types::coarse_cell_id
+  coarse_cell_index_to_coarse_cell_id(
+    const unsigned int coarse_cell_index) const;
+
 
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
@@ -3393,10 +3544,14 @@ public:
    *
    * @ingroup Exceptions
    */
-  DeclException1(ExcInvalidLevel,
+  DeclException2(ExcInvalidLevel,
                  int,
-                 << "The given level " << arg1
-                 << " is not in the valid range!");
+                 int,
+                 << "You are requesting information from refinement level "
+                 << arg1
+                 << " of a triangulation, but this triangulation only has "
+                 << arg2 << " refinement levels. The given level " << arg1
+                 << " must be *less* than " << arg2 << ".");
   /**
    * The function raising this exception can only operate on an empty
    * Triangulation, i.e., a Triangulation without grid cells.
@@ -3449,6 +3604,18 @@ public:
                  types::boundary_id,
                  << "The given boundary_id " << arg1
                  << " is not defined in this Triangulation!");
+
+  /**
+   * Exception
+   *
+   * @ingroup Exceptions
+   */
+  DeclExceptionMsg(
+    ExcInconsistentCoarseningFlags,
+    "A cell is flagged for coarsening, but either not all of its siblings "
+    "are active or flagged for coarsening as well. Please clean up all "
+    "coarsen flags on your triangulation via "
+    "Triangulation::prepare_coarsening_and_refinement() beforehand!");
 
   /*
    * @}
@@ -3572,12 +3739,40 @@ private:
 
   /**
    * Iterator to the first used line on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   line_iterator
   begin_line(const unsigned int level = 0) const;
 
   /**
    * Iterator to the first active line on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   active_line_iterator
   begin_active_line(const unsigned int level = 0) const;
@@ -3602,18 +3797,60 @@ private:
    * Iterator to the first quad, used or not, on the given level. If a level
    * has no quads, a past-the-end iterator is returned.  If quads are no
    * cells, i.e. for $dim>2$ no level argument must be given.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   raw_quad_iterator
   begin_raw_quad(const unsigned int level = 0) const;
 
   /**
    * Iterator to the first used quad on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   quad_iterator
   begin_quad(const unsigned int level = 0) const;
 
   /**
    * Iterator to the first active quad on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   active_quad_iterator
   begin_active_quad(const unsigned int level = 0) const;
@@ -3636,19 +3873,61 @@ private:
 
   /**
    * Iterator to the first hex, used or not, on level @p level. If a level has
-   * no hexs, a past-the-end iterator is returned.
+   * no hexes, a past-the-end iterator is returned.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   raw_hex_iterator
   begin_raw_hex(const unsigned int level = 0) const;
 
   /**
    * Iterator to the first used hex on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   hex_iterator
   begin_hex(const unsigned int level = 0) const;
 
   /**
    * Iterator to the first active hex on level @p level.
+   *
+   * @note The given @p level argument needs to correspond to a level of the
+   *   triangulation, i.e., should be less than the value returned by
+   *   n_levels(). On the other hand, for parallel computations using
+   *   a parallel::distributed::Triangulation object, it is often convenient
+   *   to write loops over the cells of all levels of the global mesh, even
+   *   if the <i>local</i> portion of the triangulation does not actually
+   *   have cells at one of the higher levels. In those cases, the
+   *   @p level argument is accepted if it is less than what the
+   *   n_global_levels() function returns. If the given @p level is
+   *   between the values returned by n_levels() and n_global_levels(),
+   *   then no cells exist in the local portion of the triangulation
+   *   at this level, and the function simply returns what end() would
+   *   return.
    */
   active_hex_iterator
   begin_active_hex(const unsigned int level = 0) const;
@@ -3851,15 +4130,14 @@ private:
 
 
 template <int structdim>
-inline CellData<structdim>::CellData()
+template <class Archive>
+void
+CellData<structdim>::serialize(Archive &ar, const unsigned int /*version*/)
 {
-  for (unsigned int i = 0; i < GeometryInfo<structdim>::vertices_per_cell; ++i)
-    vertices[i] = numbers::invalid_unsigned_int;
-
-  material_id = 0;
-
-  // And the manifold to be invalid
-  manifold_id = numbers::flat_manifold_id;
+  ar &vertices;
+  ar &material_id;
+  ar &boundary_id;
+  ar &manifold_id;
 }
 
 
@@ -4049,6 +4327,27 @@ Triangulation<dim, spacedim>::load(Archive &ar, const unsigned int)
   // the triangulation
   signals.create();
 }
+
+
+
+template <int dim, int spacedim>
+inline unsigned int
+Triangulation<dim, spacedim>::coarse_cell_id_to_coarse_cell_index(
+  const types::coarse_cell_id coarse_cell_id) const
+{
+  return coarse_cell_id;
+}
+
+
+
+template <int dim, int spacedim>
+inline types::coarse_cell_id
+Triangulation<dim, spacedim>::coarse_cell_index_to_coarse_cell_id(
+  const unsigned int coarse_cell_index) const
+{
+  return coarse_cell_index;
+}
+
 
 
 /* -------------- declaration of explicit specializations ------------- */

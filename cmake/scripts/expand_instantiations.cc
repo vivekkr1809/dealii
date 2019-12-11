@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2007 - 2018 by the deal.II authors
+// Copyright (C) 2007 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -52,11 +52,16 @@
 #include <map>
 #include <string>
 
-// a map from the keys in the expansion lists to the list itself. For
+// Returns a map from the keys in the expansion lists to the list itself. For
 // instance, the example above will lead to the entry
-//      expansion_lists[REAL_SCALARS] = (double, float)
+//      get_expansion_lists()[REAL_SCALARS] = (double, float)
 // in this map, among others
-std::map<std::string, std::list<std::string>> expansion_lists;
+std::map<std::string, std::list<std::string>> &
+get_expansion_lists()
+{
+  static std::map<std::string, std::list<std::string>> expansion_lists;
+  return expansion_lists;
+}
 
 
 
@@ -161,12 +166,12 @@ read_whole_file(std::istream &in)
       whole_file += remove_comments(line);
       whole_file += '\n';
     }
-  // substitute tabs by spaces, multiple spaces by single ones
-  for (unsigned int i = 0; i < whole_file.size(); ++i)
-    if (whole_file[i] == '\t')
-      whole_file[i] = ' ';
-  while (whole_file.find("  ") != std::string::npos)
-    whole_file.replace(whole_file.find("  "), 2, " ");
+  // substitute tabs by spaces
+  std::replace(whole_file.begin(), whole_file.end(), '\t', ' ');
+  // substitute multiple spaces by single ones
+  std::size_t position = 0;
+  while ((position = whole_file.find("  ", position)) != std::string::npos)
+    whole_file.replace(position, 2, 1, ' ');
 
   return whole_file;
 }
@@ -214,10 +219,9 @@ std::list<std::string>
 delete_empty_entries(const std::list<std::string> &list)
 {
   std::list<std::string> return_list;
-  for (std::list<std::string>::const_iterator i = list.begin(); i != list.end();
-       ++i)
-    if (*i != "")
-      return_list.push_back(*i);
+  for (const auto &entry : list)
+    if (!entry.empty())
+      return_list.push_back(entry);
 
   return return_list;
 }
@@ -281,7 +285,7 @@ substitute_tokens(const std::string &text,
 
 // read and parse the expansion lists like
 //   REAL_SCALARS    := { double; float}
-// as specified at the top of the file and store them in the global
+// as specified at the top of the file and store them in the static
 // expansion_lists variable
 void
 read_expansion_lists(const std::string &filename)
@@ -338,7 +342,7 @@ read_expansion_lists(const std::string &filename)
       // happen if, for example, we have "Vector<double>; TRILINOS_VECTOR;"
       // and if TRILINOS_VECTOR is an empty expansion after running
       // ./configure)
-      expansion_lists[name] =
+      get_expansion_lists()[name] =
         delete_empty_entries(split_string_list(expansion, ';'));
     }
 }
@@ -361,7 +365,7 @@ substitute(const std::string &                                   text,
       const std::string name    = substitutions.front().first,
                         pattern = substitutions.front().second;
 
-      if (expansion_lists.find(pattern) == expansion_lists.end())
+      if (get_expansion_lists().find(pattern) == get_expansion_lists().end())
         {
           std::cerr << "could not find pattern '" << pattern << "'"
                     << std::endl;
@@ -373,8 +377,8 @@ substitute(const std::string &                                   text,
         rest_of_substitutions(++substitutions.begin(), substitutions.end());
 
       for (std::list<std::string>::const_iterator expansion =
-             expansion_lists[pattern].begin();
-           expansion != expansion_lists[pattern].end();
+             get_expansion_lists()[pattern].begin();
+           expansion != get_expansion_lists()[pattern].end();
            ++expansion)
         {
           std::string new_text = substitute_tokens(text, name, *expansion);
@@ -388,7 +392,7 @@ substitute(const std::string &                                   text,
       const std::string name    = substitutions.front().first,
                         pattern = substitutions.front().second;
 
-      if (expansion_lists.find(pattern) == expansion_lists.end())
+      if (get_expansion_lists().find(pattern) == get_expansion_lists().end())
         {
           std::cerr << "could not find pattern '" << pattern << "'"
                     << std::endl;
@@ -396,8 +400,8 @@ substitute(const std::string &                                   text,
         }
 
       for (std::list<std::string>::const_iterator expansion =
-             expansion_lists[pattern].begin();
-           expansion != expansion_lists[pattern].end();
+             get_expansion_lists()[pattern].begin();
+           expansion != get_expansion_lists()[pattern].end();
            ++expansion)
         {
           // surround each block in the for loop with an if-def hack
@@ -464,27 +468,22 @@ process_instantiations()
       // process the header
       std::list<std::pair<std::string, std::string>> substitutions;
 
-      for (std::list<std::string>::const_iterator s =
-             substitutions_list.begin();
-           s != substitutions_list.end();
-           ++s)
+      for (const auto &substitution : substitutions_list)
         {
           const std::list<std::string> names_and_type =
-            split_string_list(*s, ':');
+            split_string_list(substitution, ':');
           if (names_and_type.size() != 2)
             {
-              std::cerr << "Invalid instantiation header: '" << *s << "'"
-                        << std::endl;
+              std::cerr << "Invalid instantiation header: '" << substitution
+                        << "'" << std::endl;
               std::exit(1);
             }
 
           const std::list<std::string> names =
             split_string_list(names_and_type.front(), ',');
 
-          for (std::list<std::string>::const_iterator x = names.begin();
-               x != names.end();
-               ++x)
-            substitutions.emplace_back(*x, names_and_type.back());
+          for (const auto &name : names)
+            substitutions.emplace_back(name, names_and_type.back());
         }
 
       // now read the part in {...}

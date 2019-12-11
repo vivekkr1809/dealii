@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2009 - 2017 by the deal.II authors
+ * Copyright (C) 2009 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -237,7 +237,7 @@ namespace Step36
   template <int dim>
   void EigenvalueProblem<dim>::assemble_system()
   {
-    QGauss<dim> quadrature_formula(2);
+    QGauss<dim> quadrature_formula(fe.degree + 1);
 
     FEValues<dim> fe_values(fe,
                             quadrature_formula,

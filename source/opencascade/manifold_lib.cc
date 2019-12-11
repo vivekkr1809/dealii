@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2014 - 2018 by the deal.II authors
+// Copyright (C) 2014 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -404,7 +404,7 @@ namespace OpenCASCADE
     double u = proj_params.X();
     double v = proj_params.Y();
 
-    return Point<2>(u, v);
+    return {u, v};
   }
 
   template <int dim, int spacedim>

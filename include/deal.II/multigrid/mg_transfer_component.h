@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2017 by the deal.II authors
+// Copyright (C) 2001 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,9 +38,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
+// Forward declaration
+#ifndef DOXYGEN
 template <int dim, int spacedim>
 class DoFHandler;
+#endif
 
 /*
  * MGTransferBase is defined in mg_base.h

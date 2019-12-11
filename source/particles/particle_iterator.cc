@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,15 +59,6 @@ namespace Particles
                                          operator->() const
   {
     return &(this->operator*());
-  }
-
-
-  template <int dim, int spacedim>
-  ParticleIterator<dim, spacedim> &
-  ParticleIterator<dim, spacedim>::operator=(const ParticleIterator &other)
-  {
-    accessor = other.accessor;
-    return *this;
   }
 
 

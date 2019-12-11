@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2012 - 2018 by the deal.II authors
+ * Copyright (C) 2012 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -140,10 +140,6 @@ namespace Step15
   class BoundaryValues : public Function<dim>
   {
   public:
-    BoundaryValues()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> & p,
                          const unsigned int component = 0) const override;
   };
@@ -234,7 +230,7 @@ namespace Step15
   template <int dim>
   void MinimalSurfaceProblem<dim>::assemble_system()
   {
-    const QGauss<dim> quadrature_formula(3);
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
 
     system_matrix = 0;
     system_rhs    = 0;
@@ -376,7 +372,7 @@ namespace Step15
 
     KellyErrorEstimator<dim>::estimate(
       dof_handler,
-      QGauss<dim - 1>(3),
+      QGauss<dim - 1>(fe.degree + 1),
       std::map<types::boundary_id, const Function<dim> *>(),
       present_solution,
       estimated_error_per_cell);
@@ -504,7 +500,7 @@ namespace Step15
     evaluation_point = present_solution;
     evaluation_point.add(alpha, newton_update);
 
-    const QGauss<dim> quadrature_formula(3);
+    const QGauss<dim> quadrature_formula(fe.degree + 1);
     FEValues<dim>     fe_values(fe,
                             quadrature_formula,
                             update_gradients | update_quadrature_points |

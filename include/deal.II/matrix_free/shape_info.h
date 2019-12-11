@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2018 by the deal.II authors
+// Copyright (C) 2011 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_matrix_free_shape_info_h
 #define dealii_matrix_free_shape_info_h
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/aligned_vector.h>
 #include <deal.II/base/exceptions.h>
@@ -35,6 +37,15 @@ namespace internal
      * An enum that encodes the type of element detected during
      * initialization. FEEvaluation will select the most efficient algorithm
      * based on the given element type.
+     *
+     * There is an implied ordering in the type ElementType::tensor_symmetric
+     * in the sense that both ElementType::tensor_symmetric_collocation and
+     * ElementType::tensor_symmetric_hermite are also of type
+     * ElementType::tensor_symmetric. Likewise, a configuration of type
+     * ElementType::tensor_symmetric is also of type
+     * ElementType::tensor_general. As a consequence, we support `<=`
+     * operations between the types with this sorting, but not against the
+     * even higher indexed types such as ElementType::truncated_tensor.
      *
      * @ingroup matrixfree
      */
@@ -164,6 +175,18 @@ namespace internal
       AlignedVector<Number> shape_hessians;
 
       /**
+       * Stores the shape gradients of the shape function space associated to
+       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>).
+       */
+      AlignedVector<Number> shape_gradients_collocation;
+
+      /**
+       * Stores the shape hessians of the shape function space associated to
+       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>).
+       */
+      AlignedVector<Number> shape_hessians_collocation;
+
+      /**
        * Stores the shape values in a different format, namely the so-called
        * even-odd scheme where the symmetries in shape_values are used for
        * faster evaluation.
@@ -186,15 +209,17 @@ namespace internal
 
       /**
        * Stores the shape gradients of the shape function space associated to
-       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>). For
-       * faster evaluation only the even-odd format is necessary.
+       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>). This
+       * array provides an alternative representation of the
+       * shape_gradients_collocation field in the even-odd format.
        */
       AlignedVector<Number> shape_gradients_collocation_eo;
 
       /**
        * Stores the shape hessians of the shape function space associated to
-       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>). For
-       * faster evaluation only the even-odd format is necessary.
+       * the quadrature (collocation), given by FE_DGQ<1>(Quadrature<1>). This
+       * array provides an alternative representation of the
+       * shape_hessians_collocation field in the even-odd format.
        */
       AlignedVector<Number> shape_hessians_collocation_eo;
 
@@ -222,6 +247,12 @@ namespace internal
        * there are two subfaces, store two variants.
        */
       AlignedVector<Number> hessians_within_subface[2];
+
+      /**
+       * We store a copy of the one-dimensional quadrature formula
+       * used for initialization.
+       */
+      Quadrature<1> quadrature;
 
       /**
        * Renumbering from deal.II's numbering of cell degrees of freedom to
@@ -347,6 +378,7 @@ namespace internal
        */
       dealii::Table<2, unsigned int> face_to_cell_index_hermite;
 
+    private:
       /**
        * Check whether we have symmetries in the shape values. In that case,
        * also fill the shape_???_eo fields.
@@ -361,7 +393,7 @@ namespace internal
        * that save some operations in the evaluation.
        */
       bool
-      check_1d_shapes_collocation();
+      check_1d_shapes_collocation() const;
     };
 
 

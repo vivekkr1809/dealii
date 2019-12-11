@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2008 - 2018 by the deal.II authors
+ * Copyright (C) 2008 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -326,6 +326,16 @@ namespace Step22
                                                fe.component_mask(velocities));
     }
     constraints.close();
+
+    const std::vector<IndexSet> &locally_owned_dofs =
+      dof_handler.compute_locally_owned_dofs_per_processor();
+    IndexSet locally_active_dofs;
+    DoFTools::extract_locally_active_dofs(dof_handler, locally_active_dofs);
+    AssertThrow(constraints.is_consistent_in_parallel(locally_owned_dofs,
+                                                      locally_active_dofs,
+                                                      mpi_communicator,
+                                                      /*verbose*/ true),
+                ExcInternalError());
 
     {
       TrilinosWrappers::BlockSparsityPattern bsp(owned_partitioning,

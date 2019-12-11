@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -88,7 +88,7 @@ check(const FiniteElement<dim> &fe, const std::string &name)
   tria.refine_global(1);
   for (unsigned int ref = 0; ref < 2; ++ref)
     {
-      for (auto cell : tria.active_cell_iterators())
+      for (auto &cell : tria.active_cell_iterators())
         if (cell->is_locally_owned() && cell->center()(0) < .5 &&
             cell->center()(1) < .5)
           cell->set_refine_flag();

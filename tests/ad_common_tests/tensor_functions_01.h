@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -41,8 +41,8 @@ test_tensor()
             << "Type code: " << static_cast<int>(ad_type_code) << std::endl;
 
   const ADNumberType                 a = 1.0;
-  const Tensor<1, dim, ADNumberType> v1;
-  const Tensor<1, dim, ADNumberType> v2;
+  const Tensor<1, dim, ADNumberType> v1{};
+  const Tensor<1, dim, ADNumberType> v2{};
   const Tensor<2, dim, ADNumberType> A(
     unit_symmetric_tensor<dim, ADNumberType>());
   const Tensor<2, dim, ADNumberType> B(
@@ -64,10 +64,10 @@ test_tensor()
   const ADNumberType                 A_l1_norm   = l1_norm(A);
   const ADNumberType                 A_linf_norm = linfty_norm(A);
 
-  const ADNumberType                 A_ddot_B = double_contract(A, B);
-  const Tensor<2, dim, ADNumberType> A_dot_B  = contract<1, 0>(A, B);
-  const ADNumberType                 sp_A_B   = scalar_product(A, B);
-  const Tensor<4, dim, ADNumberType> op_A_B   = outer_product(A, B);
+  const ADNumberType A_ddot_B = double_contract<0, 0, 1, 1>(A, B);
+  const Tensor<2, dim, ADNumberType> A_dot_B = contract<1, 0>(A, B);
+  const ADNumberType                 sp_A_B  = scalar_product(A, B);
+  const Tensor<4, dim, ADNumberType> op_A_B  = outer_product(A, B);
 
   if (dim == 2)
     const Tensor<1, dim, ADNumberType> v3 = cross_product_2d(v1);

@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2016 by the deal.II Authors
+## Copyright (C) 2012 - 2019 by the deal.II Authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -32,18 +32,7 @@ IF(DEAL_II_COMPONENT_DOCUMENTATION)
     COMPONENT documentation
     PATTERN "CMakeLists.txt" EXCLUDE
     PATTERN "doxygen" EXCLUDE
-    PATTERN "*.in" EXCLUDE
     PATTERN "news" EXCLUDE
-    )
-
-  CONFIGURE_FILE(
-    ${CMAKE_CURRENT_SOURCE_DIR}/title.html.in
-    ${CMAKE_CURRENT_BINARY_DIR}/title.html
-    )
-  INSTALL(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/title.html
-    DESTINATION ${DEAL_II_DOCHTML_RELDIR}
-    COMPONENT documentation
     )
 
   MESSAGE(STATUS "Setting up documentation - Done")

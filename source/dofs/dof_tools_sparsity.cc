@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,8 +16,10 @@
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/table.h>
 #include <deal.II/base/template_constraints.h>
-#include <deal.II/base/thread_management.h>
 #include <deal.II/base/utilities.h>
+
+#include <deal.II/distributed/shared_tria.h>
+#include <deal.II/distributed/tria_base.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -222,23 +224,59 @@ namespace DoFTools
     Assert(sparsity.n_cols() == n_dofs_col,
            ExcDimensionMismatch(sparsity.n_cols(), n_dofs_col));
 
+    // It doesn't make sense to assemble sparsity patterns when the
+    // Triangulations are both parallel (i.e., different cells are assigned to
+    // different processors) and unequal: no processor will be responsible for
+    // assembling coupling terms between dofs on a cell owned by one processor
+    // and dofs on a cell owned by a different processor.
+    constexpr int dim      = DoFHandlerType::dimension;
+    constexpr int spacedim = DoFHandlerType::space_dimension;
+    if (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+          &dof_row.get_triangulation()) != nullptr ||
+        dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+          &dof_col.get_triangulation()) != nullptr)
+      {
+        Assert(&dof_row.get_triangulation() == &dof_col.get_triangulation(),
+               ExcMessage("This function can only be used with with parallel "
+                          "Triangulations when the Triangulations are equal."));
+      }
+
     // TODO: Looks like wasteful memory management here
 
-    const std::list<std::pair<typename DoFHandlerType::cell_iterator,
-                              typename DoFHandlerType::cell_iterator>>
-      cell_list = GridTools::get_finest_common_cells(dof_row, dof_col);
+    using cell_iterator = typename DoFHandlerType::cell_iterator;
+    std::list<std::pair<cell_iterator, cell_iterator>> cell_list =
+      GridTools::get_finest_common_cells(dof_row, dof_col);
 
-
-    typename std::list<std::pair<typename DoFHandlerType::cell_iterator,
-                                 typename DoFHandlerType::cell_iterator>>::
-      const_iterator cell_iter = cell_list.begin();
-
-    for (; cell_iter != cell_list.end(); ++cell_iter)
+#ifdef DEAL_II_WITH_MPI
+    // get_finest_common_cells returns all cells (locally owned and otherwise)
+    // for shared::Tria, but we don't want to assemble on cells that are not
+    // locally owned so remove them
+    if (dynamic_cast<const parallel::shared::Triangulation<dim, spacedim> *>(
+          &dof_row.get_triangulation()) != nullptr ||
+        dynamic_cast<const parallel::shared::Triangulation<dim, spacedim> *>(
+          &dof_col.get_triangulation()) != nullptr)
       {
-        const typename DoFHandlerType::cell_iterator cell_row =
-          cell_iter->first;
-        const typename DoFHandlerType::cell_iterator cell_col =
-          cell_iter->second;
+        const types::subdomain_id this_subdomain_id =
+          dof_row.get_triangulation().locally_owned_subdomain();
+        Assert(this_subdomain_id ==
+                 dof_col.get_triangulation().locally_owned_subdomain(),
+               ExcInternalError());
+        cell_list.erase(
+          std::remove_if(
+            cell_list.begin(),
+            cell_list.end(),
+            [=](const std::pair<cell_iterator, cell_iterator> &pair) {
+              return pair.first->subdomain_id() != this_subdomain_id ||
+                     pair.second->subdomain_id() != this_subdomain_id;
+            }),
+          cell_list.end());
+      }
+#endif
+
+    for (const auto &cell_pair : cell_list)
+      {
+        const cell_iterator cell_row = cell_pair.first;
+        const cell_iterator cell_col = cell_pair.second;
 
         if (!cell_row->has_children() && !cell_col->has_children())
           {
@@ -343,14 +381,11 @@ namespace DoFTools
     if (sparsity.n_rows() != 0)
       {
         types::global_dof_index max_element = 0;
-        for (std::vector<types::global_dof_index>::const_iterator i =
-               dof_to_boundary_mapping.begin();
-             i != dof_to_boundary_mapping.end();
-             ++i)
-          if ((*i != numbers::invalid_dof_index) && (*i > max_element))
-            max_element = *i;
+        for (const types::global_dof_index index : dof_to_boundary_mapping)
+          if ((index != numbers::invalid_dof_index) && (index > max_element))
+            max_element = index;
         AssertDimension(max_element, sparsity.n_rows() - 1);
-      };
+      }
 #endif
 
     std::vector<types::global_dof_index> dofs_on_this_face;
@@ -426,7 +461,7 @@ namespace DoFTools
               sparsity.add_entries(boundary_dof_boundary_indices[i],
                                    boundary_dof_boundary_indices.begin(),
                                    boundary_dof_boundary_indices.end());
-          };
+          }
         return;
       }
 
@@ -447,14 +482,11 @@ namespace DoFTools
     if (sparsity.n_rows() != 0)
       {
         types::global_dof_index max_element = 0;
-        for (std::vector<types::global_dof_index>::const_iterator i =
-               dof_to_boundary_mapping.begin();
-             i != dof_to_boundary_mapping.end();
-             ++i)
-          if ((*i != numbers::invalid_dof_index) && (*i > max_element))
-            max_element = *i;
+        for (const types::global_dof_index index : dof_to_boundary_mapping)
+          if ((index != numbers::invalid_dof_index) && (index > max_element))
+            max_element = index;
         AssertDimension(max_element, sparsity.n_rows() - 1);
-      };
+      }
 #endif
 
     std::vector<types::global_dof_index> dofs_on_this_face;

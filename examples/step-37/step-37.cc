@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2009 - 2018 by the deal.II authors
+ * Copyright (C) 2009 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -86,10 +86,6 @@ namespace Step37
   class Coefficient : public Function<dim>
   {
   public:
-    Coefficient()
-      : Function<dim>()
-    {}
-
     virtual double value(const Point<dim> & p,
                          const unsigned int component = 0) const override;
 
@@ -870,7 +866,7 @@ namespace Step37
           MatrixFree<dim, float>::AdditionalData::none;
         additional_data.mapping_update_flags =
           (update_gradients | update_JxW_values | update_quadrature_points);
-        additional_data.level_mg_handler = level;
+        additional_data.mg_level = level;
         std::shared_ptr<MatrixFree<dim, float>> mg_mf_storage_level(
           new MatrixFree<dim, float>());
         mg_mf_storage_level->reinit(dof_handler,
@@ -950,7 +946,7 @@ namespace Step37
     // do not have the matrix elements available explicitly, and it is
     // difficult to make it work efficiently in %parallel.)  The smoother is
     // initialized with our level matrices and the mandatory additional data
-    // for the Chebyshev smoother. We use a relatively high degree here (4),
+    // for the Chebyshev smoother. We use a relatively high degree here (5),
     // since matrix-vector products are comparably cheap. We choose to smooth
     // out a range of $[1.2 \hat{\lambda}_{\max}/15,1.2 \hat{\lambda}_{\max}]$
     // in the smoother where $\hat{\lambda}_{\max}$ is an estimate of the
@@ -1002,7 +998,7 @@ namespace Step37
         if (level > 0)
           {
             smoother_data[level].smoothing_range     = 15.;
-            smoother_data[level].degree              = 4;
+            smoother_data[level].degree              = 5;
             smoother_data[level].eig_cg_n_iterations = 10;
           }
         else
@@ -1132,29 +1128,11 @@ namespace Step37
     data_out.add_data_vector(solution, "solution");
     data_out.build_patches();
 
-    std::ofstream output(
-      "solution-" + std::to_string(cycle) + "." +
-      std::to_string(Utilities::MPI::this_mpi_process(MPI_COMM_WORLD)) +
-      ".vtu");
     DataOutBase::VtkFlags flags;
     flags.compression_level = DataOutBase::VtkFlags::best_speed;
     data_out.set_flags(flags);
-    data_out.write_vtu(output);
-
-    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
-      {
-        std::vector<std::string> filenames;
-        for (unsigned int i = 0;
-             i < Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
-             ++i)
-          filenames.emplace_back("solution-" + std::to_string(cycle) + "." +
-                                 std::to_string(i) + ".vtu");
-
-        std::string master_name =
-          "solution-" + Utilities::to_string(cycle) + ".pvtu";
-        std::ofstream master_output(master_name);
-        data_out.write_pvtu_record(master_output, filenames);
-      }
+    data_out.write_vtu_with_pvtu_record(
+      "./", "solution", cycle, 3, MPI_COMM_WORLD);
 
     time_details << "Time write output          (CPU/wall) " << time.cpu_time()
                  << "s/" << time.wall_time() << "s\n";

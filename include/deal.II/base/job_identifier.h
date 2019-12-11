@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,6 +66,12 @@ public:
   const std::string
   operator()() const;
 
+  /**
+   * Function to identify the presently running program.
+   */
+  static const JobIdentifier &
+  get_dealjobid();
+
 private:
   /**
    * String holding the identifier of the presently running program.
@@ -73,14 +79,6 @@ private:
   std::string id;
 };
 
-
-/*----------------------------- Inline functions ----------------------------*/
-
-
-/**
- * Global object to identify the presently running program.
- */
-extern JobIdentifier dealjobid;
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

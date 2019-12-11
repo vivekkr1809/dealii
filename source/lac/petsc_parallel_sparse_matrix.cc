@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -291,15 +291,15 @@ namespace PETScWrappers
       Assert(row_lengths.size() == m,
              ExcDimensionMismatch(row_lengths.size(), m));
 
-      // For the case that
-      // local_columns is smaller
-      // than one of the row lengths
-      // MatCreateMPIAIJ throws an
-      // error. In this case use a
+      // For the case that local_columns is smaller than one of the row lengths
+      // MatCreateMPIAIJ throws an error. In this case use a
       // PETScWrappers::SparseMatrix
-      for (size_type i = 0; i < row_lengths.size(); ++i)
-        Assert(row_lengths[i] <= local_columns,
-               ExcIndexRange(row_lengths[i], 1, local_columns + 1));
+      for (const size_type row_length : row_lengths)
+        {
+          (void)row_length;
+          Assert(row_length <= local_columns,
+                 ExcIndexRange(row_length, 1, local_columns + 1));
+        }
 
       // use the call sequence indicating a
       // maximal number of elements for each
@@ -456,7 +456,7 @@ namespace PETScWrappers
           // now copy over the information
           // from the sparsity pattern.
           {
-            PetscInt *ptr = &colnums_in_window[0];
+            PetscInt *ptr = colnums_in_window.data();
             for (PetscInt i = local_row_start; i < local_row_end; ++i)
               for (typename SparsityPatternType::iterator p =
                      sparsity_pattern.begin(i);
@@ -583,7 +583,7 @@ namespace PETScWrappers
           // now copy over the information
           // from the sparsity pattern.
           {
-            PetscInt *ptr = &colnums_in_window[0];
+            PetscInt *ptr = colnums_in_window.data();
             for (size_type i = local_row_start; i < local_row_end; ++i)
               for (typename SparsityPatternType::iterator p =
                      sparsity_pattern.begin(i);

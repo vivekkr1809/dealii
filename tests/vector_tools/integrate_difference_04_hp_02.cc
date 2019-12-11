@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -96,7 +96,7 @@ test(VectorTools::NormType norm, double value, double exp = 2.0)
   hp::DoFHandler<dim> dofh(tria);
 
   // assign FEs mostly randomly to each cell
-  for (auto cell : dofh.active_cell_iterators())
+  for (auto &cell : dofh.active_cell_iterators())
     if (cell->is_locally_owned())
       cell->set_active_fe_index(cell->active_cell_index() % fe.size());
   dofh.distribute_dofs(fe);

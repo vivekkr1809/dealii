@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,11 +16,14 @@
 #ifndef dealii_boost_adaptor_bounding_box_h
 #define dealii_boost_adaptor_bounding_box_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/bounding_box.h>
 
 #include <deal.II/boost_adaptors/point.h>
 
 #include <boost/geometry.hpp>
+#include <boost/geometry/geometries/geometries.hpp>
 
 namespace boost
 {
@@ -50,7 +53,7 @@ namespace boost
        * Access to the D-th coordinate of the lower left  corner of a
        * dealii::BoundingBox.
        */
-      template <int dim, class Number, size_t D>
+      template <int dim, class Number, std::size_t D>
       struct indexed_access<dealii::BoundingBox<dim, Number>, min_corner, D>
       {
         /**
@@ -78,7 +81,7 @@ namespace boost
        * Access to the D-th coordinate of the upper right corner of a
        * dealii::BoundingBox.
        */
-      template <int dim, class Number, size_t D>
+      template <int dim, class Number, std::size_t D>
       struct indexed_access<dealii::BoundingBox<dim, Number>, max_corner, D>
       {
         /**

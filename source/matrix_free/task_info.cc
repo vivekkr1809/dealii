@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -118,7 +118,7 @@ namespace internal
           work();
 
           if (is_blocked == true)
-            dummy->spawn(*dummy);
+            tbb::empty_task::spawn(*dummy);
           return nullptr;
         }
 
@@ -172,7 +172,7 @@ namespace internal
                   worker[j]->set_ref_count(2);
                   blocked_worker[j - 1]->dummy =
                     new (worker[j]->allocate_child()) tbb::empty_task;
-                  worker[j - 1]->spawn(*blocked_worker[j - 1]);
+                  tbb::task::spawn(*blocked_worker[j - 1]);
                 }
               else
                 worker[j]->set_ref_count(1);
@@ -195,13 +195,13 @@ namespace internal
                                    2 * j + 1,
                                  task_info,
                                  false);
-                      worker[j]->spawn(*worker[evens]);
+                      tbb::task::spawn(*worker[evens]);
                     }
                   else
                     {
                       tbb::empty_task *child =
                         new (worker[j]->allocate_child()) tbb::empty_task();
-                      worker[j]->spawn(*child);
+                      tbb::task::spawn(*child);
                     }
                 }
             }
@@ -209,7 +209,7 @@ namespace internal
           root->wait_for_all();
           root->destroy(*root);
           if (is_blocked == true)
-            dummy->spawn(*dummy);
+            tbb::empty_task::spawn(*dummy);
           return nullptr;
         }
 
@@ -289,7 +289,7 @@ namespace internal
           parallel_for(tbb::blocked_range<unsigned int>(0, n_chunks, 1),
                        CellWork(worker, task_info, partition));
           if (is_blocked == true)
-            dummy->spawn(*dummy);
+            tbb::empty_task::spawn(*dummy);
           return nullptr;
         }
 
@@ -336,6 +336,10 @@ namespace internal
     void
     TaskInfo::loop(MFWorkerInterface &funct) const
     {
+      if (scheme == none)
+        funct.cell_loop_pre_range(
+          partition_row_index[partition_row_index.size() - 2]);
+
       funct.vector_update_ghosts_start();
 
 #ifdef DEAL_II_WITH_THREADS
@@ -363,10 +367,7 @@ namespace internal
                       worker[j]->set_ref_count(2);
                       blocked_worker[j - 1]->dummy =
                         new (worker[j]->allocate_child()) tbb::empty_task;
-                      if (j > 1)
-                        worker[j - 1]->spawn(*blocked_worker[j - 1]);
-                      else
-                        worker_compr->spawn(*blocked_worker[j - 1]);
+                      tbb::task::spawn(*blocked_worker[j - 1]);
                     }
                   else
                     {
@@ -376,7 +377,7 @@ namespace internal
                       MPICommunication *worker_dist =
                         new (worker[j]->allocate_child())
                           MPICommunication(funct, false);
-                      worker_dist->spawn(*worker_dist);
+                      tbb::task::spawn(*worker_dist);
                     }
                   if (j < evens - 1)
                     {
@@ -392,13 +393,13 @@ namespace internal
                                                      2 * j + 1,
                                                      *this,
                                                      false);
-                          worker[j]->spawn(*worker[evens]);
+                          tbb::task::spawn(*worker[evens]);
                         }
                       else
                         {
                           tbb::empty_task *child =
                             new (worker[j]->allocate_child()) tbb::empty_task();
-                          worker[j]->spawn(*child);
+                          tbb::task::spawn(*child);
                         }
                     }
                 }
@@ -423,7 +424,6 @@ namespace internal
                   std::vector<color::PartitionWork *> blocked_worker(
                     n_blocked_workers);
                   unsigned int      worker_index = 0, slice_index = 0;
-                  unsigned int      spawn_index       = 0;
                   int               spawn_index_child = -2;
                   MPICommunication *worker_compr =
                     new (root->allocate_child()) MPICommunication(funct, true);
@@ -432,7 +432,6 @@ namespace internal
                        part < partition_row_index.size() - 1;
                        part++)
                     {
-                      const unsigned int spawn_index_new = worker_index;
                       if (part == 0)
                         worker[worker_index] =
                           new (worker_compr->allocate_child())
@@ -467,16 +466,13 @@ namespace internal
                               tbb::empty_task;
                           worker_index++;
                           if (spawn_index_child == -1)
-                            worker[spawn_index]->spawn(
-                              *blocked_worker[(part - 1) / 2]);
+                            tbb::task::spawn(*blocked_worker[(part - 1) / 2]);
                           else
                             {
                               Assert(spawn_index_child >= 0,
                                      ExcInternalError());
-                              worker[spawn_index]->spawn(
-                                *worker[spawn_index_child]);
+                              tbb::task::spawn(*worker[spawn_index_child]);
                             }
-                          spawn_index       = spawn_index_new;
                           spawn_index_child = -2;
                         }
                       else
@@ -484,7 +480,7 @@ namespace internal
                           MPICommunication *worker_dist =
                             new (worker[worker_index]->allocate_child())
                               MPICommunication(funct, false);
-                          worker_dist->spawn(*worker_dist);
+                          tbb::task::spawn(*worker_dist);
                           worker_index++;
                         }
                       part += 1;
@@ -539,14 +535,14 @@ namespace internal
                           tbb::empty_task *final =
                             new (worker[worker_index - 1]->allocate_child())
                               tbb::empty_task;
-                          worker[spawn_index]->spawn(*final);
+                          tbb::task::spawn(*final);
                           spawn_index_child = worker_index - 1;
                         }
                     }
                   if (evens == odds)
                     {
                       Assert(spawn_index_child >= 0, ExcInternalError());
-                      worker[spawn_index]->spawn(*worker[spawn_index_child]);
+                      tbb::task::spawn(*worker[spawn_index_child]);
                     }
                   root->wait_for_all();
                   root->destroy(*root);
@@ -568,7 +564,7 @@ namespace internal
                       color::PartitionWork *worker =
                         new (root->allocate_child())
                           color::PartitionWork(funct, color, *this, false);
-                      root->spawn(*worker);
+                      tbb::empty_task::spawn(*worker);
                       root->wait_for_all();
                       root->destroy(*root);
                     }
@@ -592,10 +588,11 @@ namespace internal
                    i < partition_row_index[part + 1];
                    ++i)
                 {
+                  funct.cell_loop_pre_range(i);
+                  funct.zero_dst_vector_range(i);
                   AssertIndexRange(i + 1, cell_partition_data.size());
                   if (cell_partition_data[i + 1] > cell_partition_data[i])
                     {
-                      funct.zero_dst_vector_range(i);
                       funct.cell(std::make_pair(cell_partition_data[i],
                                                 cell_partition_data[i + 1]));
                     }
@@ -611,6 +608,7 @@ namespace internal
                           std::make_pair(boundary_partition_data[i],
                                          boundary_partition_data[i + 1]));
                     }
+                  funct.cell_loop_post_range(i);
                 }
 
               if (part == 1)
@@ -618,6 +616,9 @@ namespace internal
             }
         }
       funct.vector_compress_finish();
+      if (scheme == none)
+        funct.cell_loop_post_range(
+          partition_row_index[partition_row_index.size() - 2]);
     }
 
 
@@ -639,6 +640,7 @@ namespace internal
       n_blocks             = 0;
       scheme               = none;
       partition_row_index.clear();
+      partition_row_index.resize(2);
       cell_partition_data.clear();
       face_partition_data.clear();
       boundary_partition_data.clear();
@@ -811,11 +813,10 @@ namespace internal
             ((n_active_cells - n_boundary_cells) / 2 / vectorization_length) *
             vectorization_length;
           unsigned int count = 0;
-          for (unsigned int i = 0; i < cells_close_to_boundary.size(); ++i)
-            if (cell_marked[cells_close_to_boundary[i]] == 0)
+          for (const unsigned int cell : cells_close_to_boundary)
+            if (cell_marked[cell] == 0)
               {
-                cell_marked[cells_close_to_boundary[i]] =
-                  count < n_second_slot ? 1 : 3;
+                cell_marked[cell] = count < n_second_slot ? 1 : 3;
                 ++count;
               }
 
@@ -836,8 +837,11 @@ namespace internal
       else
         std::fill(cell_marked.begin(), cell_marked.end(), 1);
 
-      for (unsigned int i = 0; i < cell_marked.size(); ++i)
-        Assert(cell_marked[i] != 0, ExcInternalError());
+      for (const unsigned char marker : cell_marked)
+        {
+          (void)marker;
+          Assert(marker != 0, ExcInternalError());
+        }
 
       unsigned int              n_categories = 1;
       std::vector<unsigned int> tight_category_map;
@@ -856,7 +860,7 @@ namespace internal
           std::vector<unsigned int> used_categories_vector(
             used_categories.size());
           n_categories = 0;
-          for (auto &it : used_categories)
+          for (const auto &it : used_categories)
             used_categories_vector[n_categories++] = it;
           for (unsigned int i = 0; i < n_active_cells + n_ghost_cells; ++i)
             {
@@ -879,8 +883,8 @@ namespace internal
         {
           n_categories = 2;
           tight_category_map.resize(n_active_cells + n_ghost_cells, 1);
-          for (unsigned int i = 0; i < cells_close_to_boundary.size(); ++i)
-            tight_category_map[cells_close_to_boundary[i]] = 0;
+          for (const unsigned int cell : cells_close_to_boundary)
+            tight_category_map[cell] = 0;
         }
 
       cell_partition_data.clear();
@@ -921,9 +925,8 @@ namespace internal
           // step 3: append cells according to categories
           for (unsigned int j = 0; j < n_categories; ++j)
             {
-              for (unsigned int jj = 0; jj < renumbering_category[j].size();
-                   jj++)
-                renumbering[counter++] = renumbering_category[j][jj];
+              for (const unsigned int cell : renumbering_category[j])
+                renumbering[counter++] = cell;
               unsigned int remainder =
                 renumbering_category[j].size() % vectorization_length;
               if (remainder)
@@ -1052,7 +1055,8 @@ namespace internal
           if (dofs_per_cell * block_size > 10000)
             block_size /= 4;
 
-          block_size = 1 << (unsigned int)(std::log2(block_size + 1));
+          block_size =
+            1 << static_cast<unsigned int>(std::log2(block_size + 1));
         }
       if (block_size > n_active_cells)
         block_size = std::max(1U, n_active_cells);
@@ -1543,8 +1547,9 @@ namespace internal
       irregular_cells.resize(n_active_cells + n_ghost_slots);
 
       unsigned int max_fe_index = 0;
-      for (unsigned int i = 0; i < cell_active_fe_index.size(); ++i)
-        max_fe_index = std::max(cell_active_fe_index[i], max_fe_index);
+      for (const unsigned int fe_index : cell_active_fe_index)
+        max_fe_index = std::max(fe_index, max_fe_index);
+
       Assert(!hp_bool || cell_active_fe_index.size() == n_active_cells,
              ExcInternalError());
 
@@ -1603,30 +1608,26 @@ namespace internal
                 else
                   {
                     partition_counter = 0;
-                    for (unsigned int j = 0; j < neighbor_list.size(); ++j)
+                    for (const unsigned int neighbor : neighbor_list)
                       {
-                        Assert(cell_partition[neighbor_list[j]] == part,
+                        Assert(cell_partition[neighbor] == part,
                                ExcInternalError());
-                        Assert(cell_partition_l2[neighbor_list[j]] ==
-                                 partition_l2 - 1,
+                        Assert(cell_partition_l2[neighbor] == partition_l2 - 1,
                                ExcInternalError());
-                        DynamicSparsityPattern::iterator neighbor =
-                                                           connectivity.begin(
-                                                             neighbor_list[j]),
-                                                         end = connectivity.end(
-                                                           neighbor_list[j]);
-                        for (; neighbor != end; ++neighbor)
+                        auto       neighbor_it = connectivity.begin(neighbor);
+                        const auto end_it      = connectivity.end(neighbor);
+                        for (; neighbor_it != end_it; ++neighbor_it)
                           {
-                            if (cell_partition[neighbor->column()] == part &&
-                                cell_partition_l2[neighbor->column()] ==
+                            if (cell_partition[neighbor_it->column()] == part &&
+                                cell_partition_l2[neighbor_it->column()] ==
                                   numbers::invalid_unsigned_int)
                               {
-                                cell_partition_l2[neighbor->column()] =
+                                cell_partition_l2[neighbor_it->column()] =
                                   partition_l2;
                                 neighbor_neighbor_list.push_back(
-                                  neighbor->column());
+                                  neighbor_it->column());
                                 partition_partition_list[counter++] =
-                                  neighbor->column();
+                                  neighbor_it->column();
                                 partition_counter++;
                               }
                           }
@@ -1788,11 +1789,9 @@ namespace internal
                           cell = counter - partition_counter;
                           for (unsigned int j = 0; j < max_fe_index + 1; j++)
                             {
-                              for (unsigned int jj = 0;
-                                   jj < renumbering_fe_index[j].size();
-                                   jj++)
-                                renumbering[cell++] =
-                                  renumbering_fe_index[j][jj];
+                              for (const unsigned int jj :
+                                   renumbering_fe_index[j])
+                                renumbering[cell++] = jj;
                               if (renumbering_fe_index[j].size() %
                                     vectorization_length !=
                                   0)
@@ -2057,15 +2056,12 @@ namespace internal
 
               // Loop through the list of cells in previous partition and put
               // all their neighbors in current partition
-              for (unsigned int j = 0; j < neighbor_list.size(); ++j)
+              for (const unsigned int cell : neighbor_list)
                 {
-                  Assert(cell_partition[neighbor_list[j]] == partition - 1,
+                  Assert(cell_partition[cell] == partition - 1,
                          ExcInternalError());
-                  DynamicSparsityPattern::iterator neighbor =
-                                                     connectivity.begin(
-                                                       neighbor_list[j]),
-                                                   end = connectivity.end(
-                                                     neighbor_list[j]);
+                  auto       neighbor = connectivity.begin(cell);
+                  const auto end      = connectivity.end(cell);
                   for (; neighbor != end; ++neighbor)
                     {
                       if (cell_partition[neighbor->column()] ==

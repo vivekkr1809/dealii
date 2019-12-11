@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -32,6 +32,7 @@
 #include <boost/random.hpp>
 
 #include <algorithm>
+#include <bitset>
 #include <cctype>
 #include <cerrno>
 #include <cmath>
@@ -60,6 +61,7 @@
 #    include <deal.II/lac/vector_memory.h>
 
 #    include <Epetra_MpiComm.h>
+#    include <Teuchos_DefaultComm.hpp>
 #  endif
 #  include <Epetra_SerialComm.h>
 #  include <Teuchos_RCP.hpp>
@@ -89,6 +91,48 @@ namespace Utilities
   }
 
 
+  namespace
+  {
+    template <int dim,
+              typename Number,
+              int effective_dim,
+              typename LongDouble,
+              typename Integer>
+    std::vector<std::array<std::uint64_t, effective_dim>>
+    inverse_Hilbert_space_filling_curve_effective(
+      const std::vector<Point<dim, Number>> &points,
+      const Point<dim, Number> &             bl,
+      const std::array<LongDouble, dim> &    extents,
+      const std::bitset<dim> &               valid_extents,
+      const int                              min_bits,
+      const Integer                          max_int)
+    {
+      std::vector<std::array<Integer, effective_dim>> int_points(points.size());
+
+      for (unsigned int i = 0; i < points.size(); ++i)
+        {
+          // convert into integers:
+          unsigned int eff_d = 0;
+          for (unsigned int d = 0; d < dim; ++d)
+            if (valid_extents[d])
+              {
+                Assert(extents[d] > 0, ExcInternalError());
+                const LongDouble v = (static_cast<LongDouble>(points[i][d]) -
+                                      static_cast<LongDouble>(bl[d])) /
+                                     extents[d];
+                Assert(v >= 0. && v <= 1., ExcInternalError());
+                AssertIndexRange(eff_d, effective_dim);
+                int_points[i][eff_d] =
+                  static_cast<Integer>(v * static_cast<LongDouble>(max_int));
+                ++eff_d;
+              }
+        }
+
+      // note that we call this with "min_bits"
+      return inverse_Hilbert_space_filling_curve<effective_dim>(int_points,
+                                                                min_bits);
+    }
+  } // namespace
 
   template <int dim, typename Number>
   std::vector<std::array<std::uint64_t, dim>>
@@ -115,11 +159,12 @@ namespace Utilities
         }
 
     std::array<LongDouble, dim> extents;
+    std::bitset<dim>            valid_extents;
     for (unsigned int i = 0; i < dim; ++i)
       {
         extents[i] =
           static_cast<LongDouble>(tr[i]) - static_cast<LongDouble>(bl[i]);
-        Assert(extents[i] > 0., ExcMessage("Bounding box is degenerate."));
+        valid_extents[i] = (extents[i] > 0.);
       }
 
     // make sure our conversion from fractional coordinates to
@@ -134,24 +179,66 @@ namespace Utilities
                                std::numeric_limits<Integer>::max() :
                                (Integer(1) << min_bits) - 1);
 
-    std::vector<std::array<Integer, dim>> int_points(points.size());
-
-    for (unsigned int i = 0; i < points.size(); ++i)
+    const unsigned int effective_dim = valid_extents.count();
+    if (effective_dim == dim)
       {
-        // convert into integers:
-        for (unsigned int d = 0; d < dim; ++d)
-          {
-            const LongDouble v = (static_cast<LongDouble>(points[i][d]) -
-                                  static_cast<LongDouble>(bl[d])) /
-                                 extents[d];
-            Assert(v >= 0. && v <= 1., ExcInternalError());
-            int_points[i][d] =
-              static_cast<Integer>(v * static_cast<LongDouble>(max_int));
-          }
+        return inverse_Hilbert_space_filling_curve_effective<dim,
+                                                             Number,
+                                                             dim,
+                                                             LongDouble,
+                                                             Integer>(
+          points, bl, extents, valid_extents, min_bits, max_int);
       }
 
-    // note that we call this with "min_bits"
-    return inverse_Hilbert_space_filling_curve<dim>(int_points, min_bits);
+    // various degenerate cases
+    std::array<std::uint64_t, dim> zero_ind;
+    for (unsigned int d = 0; d < dim; ++d)
+      zero_ind[d] = 0;
+
+    std::vector<std::array<std::uint64_t, dim>> ind(points.size(), zero_ind);
+    // manually check effective_dim == 1 and effective_dim == 2
+    if (dim == 3 && effective_dim == 2)
+      {
+        const auto ind2 =
+          inverse_Hilbert_space_filling_curve_effective<dim,
+                                                        Number,
+                                                        2,
+                                                        LongDouble,
+                                                        Integer>(
+            points, bl, extents, valid_extents, min_bits, max_int);
+
+        for (unsigned int i = 0; i < ind.size(); ++i)
+          for (unsigned int d = 0; d < 2; ++d)
+            ind[i][d + 1] = ind2[i][d];
+
+        return ind;
+      }
+    else if (effective_dim == 1)
+      {
+        const auto ind1 =
+          inverse_Hilbert_space_filling_curve_effective<dim,
+                                                        Number,
+                                                        1,
+                                                        LongDouble,
+                                                        Integer>(
+            points, bl, extents, valid_extents, min_bits, max_int);
+
+        for (unsigned int i = 0; i < ind.size(); ++i)
+          ind[i][dim - 1] = ind1[i][0];
+
+        return ind;
+      }
+
+    // we should get here only if effective_dim == 0
+    Assert(effective_dim == 0, ExcInternalError());
+
+    // if the bounding box is degenerate in all dimensions,
+    // can't do much but exit gracefully by setting index according
+    // to the index of each point so that there is no re-ordering
+    for (unsigned int i = 0; i < points.size(); ++i)
+      ind[i][dim - 1] = i;
+
+    return ind;
   }
 
 
@@ -379,22 +466,41 @@ namespace Utilities
   unsigned int
   needed_digits(const unsigned int max_number)
   {
-    if (max_number < 10)
-      return 1;
-    if (max_number < 100)
-      return 2;
-    if (max_number < 1000)
-      return 3;
-    if (max_number < 10000)
-      return 4;
-    if (max_number < 100000)
-      return 5;
-    if (max_number < 1000000)
-      return 6;
-    AssertThrow(false, ExcInvalidNumber(max_number));
-    return 0;
+    if (max_number > 0)
+      return static_cast<int>(
+        std::ceil(std::log10(std::fabs(max_number + 0.1))));
+
+    return 1;
   }
 
+
+
+  template <typename Number>
+  Number
+  truncate_to_n_digits(const Number number, const unsigned int n_digits)
+  {
+    AssertThrow(n_digits >= 1, ExcMessage("invalid parameter."));
+
+    if (!(std::fabs(number) > std::numeric_limits<Number>::min()))
+      return number;
+
+    const int order =
+      static_cast<int>(std::floor(std::log10(std::fabs(number))));
+
+    const int shift = -order + static_cast<int>(n_digits) - 1;
+
+    Assert(shift <= static_cast<int>(std::floor(
+                      std::log10(std::numeric_limits<Number>::max()))),
+           ExcMessage(
+             "Overflow. Use a smaller value for n_digits and/or make sure "
+             "that the absolute value of 'number' does not become too small."));
+
+    const Number factor = std::pow(10.0, static_cast<Number>(shift));
+
+    const Number number_cutoff = std::trunc(number * factor) / factor;
+
+    return number_cutoff;
+  }
 
 
   int
@@ -407,15 +513,24 @@ namespace Utilities
     while ((s.size() > 0) && (s[s.size() - 1] == ' '))
       s.erase(s.end() - 1);
 
-    // now convert and see whether we succeed. note that strtol only
+    // Now convert and see whether we succeed. Note that strtol only
     // touches errno if an error occurred, so if we want to check
     // whether an error happened, we need to make sure that errno==0
     // before calling strtol since otherwise it may be that the
     // conversion succeeds and that errno remains at the value it
-    // was before, whatever that was
+    // was before, whatever that was.
     char *p;
     errno       = 0;
     const int i = std::strtol(s.c_str(), &p, 10);
+
+    // We have an error if one of the following conditions is true:
+    // - strtol sets errno != 0
+    // - The original string was empty (we could have checked that
+    //   earlier already)
+    // - The string has non-zero length and strtol converted the
+    //   first part to something useful, but stopped converting short
+    //   of the terminating '\0' character. This happens, for example,
+    //   if the given string is "1234 abc".
     AssertThrow(!((errno != 0) || (s.size() == 0) ||
                   ((s.size() > 0) && (*p != '\0'))),
                 ExcMessage("Can't convert <" + s + "> to an integer."));
@@ -446,15 +561,24 @@ namespace Utilities
     while ((s.size() > 0) && (s[s.size() - 1] == ' '))
       s.erase(s.end() - 1);
 
-    // now convert and see whether we succeed. note that strtol only
+    // Now convert and see whether we succeed. Note that strtol only
     // touches errno if an error occurred, so if we want to check
     // whether an error happened, we need to make sure that errno==0
     // before calling strtol since otherwise it may be that the
     // conversion succeeds and that errno remains at the value it
-    // was before, whatever that was
+    // was before, whatever that was.
     char *p;
     errno          = 0;
     const double d = std::strtod(s.c_str(), &p);
+
+    // We have an error if one of the following conditions is true:
+    // - strtod sets errno != 0
+    // - The original string was empty (we could have checked that
+    //   earlier already)
+    // - The string has non-zero length and strtod converted the
+    //   first part to something useful, but stopped converting short
+    //   of the terminating '\0' character. This happens, for example,
+    //   if the given string is "1.234 abc".
     AssertThrow(!((errno != 0) || (s.size() == 0) ||
                   ((s.size() > 0) && (*p != '\0'))),
                 ExcMessage("Can't convert <" + s + "> to a double."));
@@ -677,7 +801,9 @@ namespace Utilities
     // in a thread context. one could use rand_r, but this does not
     // produce reproducible results between threads either (though at
     // least it is reentrant). these two approaches being
-    // non-workable, use a thread-local random number generator here
+    // non-workable, use a thread-local random number generator here.
+    // we could use std::mt19937 but doing so results in compiler-dependent
+    // output.
     static Threads::ThreadLocalStorage<boost::mt19937> random_number_generator;
     return boost::normal_distribution<>(a,
                                         sigma)(random_number_generator.get());
@@ -933,19 +1059,19 @@ namespace Utilities
 
 
     void
-    posix_memalign(void **memptr, size_t alignment, size_t size)
+    posix_memalign(void **memptr, std::size_t alignment, std::size_t size)
     {
 #ifndef DEAL_II_MSVC
       const int ierr = ::posix_memalign(memptr, alignment, size);
 
-      AssertThrow(ierr == 0, ExcOutOfMemory());
-      AssertThrow(*memptr != nullptr, ExcOutOfMemory());
+      AssertThrow(ierr == 0, ExcOutOfMemory(size));
+      AssertThrow(*memptr != nullptr, ExcOutOfMemory(size));
 #else
       // Windows does not appear to have posix_memalign. just use the
       // regular malloc in that case
       *memptr = malloc(size);
       (void)alignment;
-      AssertThrow(*memptr != 0, ExcOutOfMemory());
+      AssertThrow(*memptr != 0, ExcOutOfMemory(size));
 #endif
     }
 
@@ -975,6 +1101,22 @@ namespace Utilities
 #  endif
 
       return *communicator;
+    }
+
+
+
+    const Teuchos::RCP<const Teuchos::Comm<int>> &
+    tpetra_comm_self()
+    {
+#  ifdef DEAL_II_WITH_MPI
+      static auto communicator = Teuchos::RCP<const Teuchos::Comm<int>>(
+        new Teuchos::MpiComm<int>(MPI_COMM_SELF));
+#  else
+      static auto communicator =
+        Teuchos::RCP<const Teuchos::Comm<int>>(new Teuchos::Comm<int>());
+#  endif
+
+      return communicator;
     }
 
 
@@ -1051,7 +1193,7 @@ namespace Utilities
     unsigned int
     get_this_mpi_process(const Epetra_Comm &mpi_communicator)
     {
-      return (unsigned int)mpi_communicator.MyPID();
+      return static_cast<unsigned int>(mpi_communicator.MyPID());
     }
 
 
@@ -1104,6 +1246,11 @@ namespace Utilities
   to_string<double>(double, unsigned int);
   template std::string
   to_string<long double>(long double, unsigned int);
+
+  template double
+  truncate_to_n_digits(const double, const unsigned int);
+  template float
+  truncate_to_n_digits(const float, const unsigned int);
 
   template std::vector<std::array<std::uint64_t, 1>>
   inverse_Hilbert_space_filling_curve<1, double>(

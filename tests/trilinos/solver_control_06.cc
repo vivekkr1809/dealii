@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -220,7 +220,7 @@ Test_Solver_Output::setup_system()
 
   SparsityTools::distribute_sparsity_pattern(
     dsp,
-    dof_handler.n_locally_owned_dofs_per_processor(),
+    dof_handler.compute_n_locally_owned_dofs_per_processor(),
     mpi_comm,
     locally_relevant_dofs);
 
@@ -247,7 +247,7 @@ Test_Solver_Output::assemble_system()
 
   std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-  for (auto cell : dof_handler.active_cell_iterators())
+  for (auto &cell : dof_handler.active_cell_iterators())
     {
       if (cell->is_locally_owned())
         {

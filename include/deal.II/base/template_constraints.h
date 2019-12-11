@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2018 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,7 @@
 #include <deal.II/base/complex_overloads.h>
 
 #include <complex>
+#include <iterator>
 #include <utility>
 
 DEAL_II_NAMESPACE_OPEN
@@ -88,6 +89,32 @@ template <bool... Values>
 struct enable_if_all
   : std::enable_if<internal::TemplateConstraints::all_true<Values...>::value>
 {};
+
+
+
+/**
+ * A type trait that checks to see if a class behaves as an iterable container
+ * that has a beginning and an end. This implies that the class either defines
+ * the `begin()` and `end()` functions, or is a C-style array.
+ */
+template <typename T>
+class has_begin_and_end
+{
+  template <typename C>
+  static std::false_type
+  test(...);
+
+  template <typename C>
+  static auto
+  test(int) -> decltype(std::begin(std::declval<C>()),
+                        std::end(std::declval<C>()),
+                        std::true_type());
+
+public:
+  using type = decltype(test<T>(0));
+
+  static const bool value = type::value;
+};
 
 
 
@@ -290,103 +317,6 @@ struct PointerComparison
     return false;
   }
 };
-
-
-
-namespace internal
-{
-  /**
-   * A type that is sometimes used for template tricks. For example, in some
-   * situations one would like to do this:
-   *
-   * @code
-   *   template <int dim>
-   *   class X
-   *   {
-   *     // do something on subdim-dimensional sub-objects of the big
-   *     // dim-dimensional thing (for example on vertices/lines/quads of
-   *     // cells):
-   *     template <int subdim> void f();
-   *   };
-   *
-   *   template <int dim>
-   *   template <>
-   *   void X<dim>::f<0> ()
-   *   {
-   *     ...operate on the vertices of a cell...
-   *   }
-   *
-   *   template <int dim, int subdim> void g(X<dim> &x)
-   *   {
-   *     x.f<subdim> ();
-   *   }
-   * @endcode
-   *
-   * The problem is: the language doesn't allow us to specialize
-   * <code>X::f()</code> without specializing the outer class first. One of
-   * the common tricks is therefore to use something like this:
-   *
-   * @code
-   *   template <int N>
-   *   struct int2type
-   *   {};
-   *
-   *   template <int dim>
-   *   class X
-   *   {
-   *     // do something on subdim-dimensional sub-objects of the big
-   *     // dim-dimensional thing (for example on vertices/lines/quads of
-   *     // cells):
-   *     void f(int2type<0>);
-   *     void f(int2type<1>);
-   *     void f(int2type<2>);
-   *     void f(int2type<3>);
-   *   };
-   *
-   *   template <int dim>
-   *   void X<dim>::f (int2type<0>)
-   *   {
-   *     ...operate on the vertices of a cell...
-   *   }
-   *
-   *   template <int dim>
-   *   void X<dim>::f (int2type<1>)
-   *   {
-   *     ...operate on the lines of a cell...
-   *   }
-   *
-   *   template <int dim, int subdim>
-   *   void g(X<dim> &x)
-   *   {
-   *     x.f (int2type<subdim>());
-   *   }
-   * @endcode
-   *
-   * Note that we have replaced specialization of <code>X::f()</code> by
-   * overloading, but that from inside the function <code>g()</code>, we can
-   * still select which of the different <code>X::f()</code> we want based on
-   * the <code>subdim</code> template argument.
-   *
-   * @deprecated Use std::integral_constant<int, N> instead.
-   *
-   * @author Wolfgang Bangerth, 2006
-   */
-  template <int N>
-  struct DEAL_II_DEPRECATED int2type
-  {};
-
-
-  /**
-   * The equivalent of the int2type class for boolean arguments.
-   *
-   * @deprecated Use std::integral_constant<bool, B> instead.
-   *
-   * @author Wolfgang Bangerth, 2009
-   */
-  template <bool B>
-  struct DEAL_II_DEPRECATED bool2type
-  {};
-} // namespace internal
 
 
 

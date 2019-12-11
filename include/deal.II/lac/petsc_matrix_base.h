@@ -37,8 +37,11 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#    ifndef DOXYGEN
 template <typename Matrix>
 class BlockMatrixBase;
+#    endif
 
 
 namespace PETScWrappers
@@ -167,9 +170,7 @@ namespace PETScWrappers
         void
         visit_present_row();
 
-        /**
-         * Make enclosing class a friend.
-         */
+        // Make enclosing class a friend.
         friend class const_iterator;
       };
 
@@ -839,13 +840,17 @@ namespace PETScWrappers
     residual(VectorBase &dst, const VectorBase &x, const VectorBase &b) const;
 
     /**
-     * Iterator starting at the first entry.
+     * Iterator starting at the first entry. This can only be called on a
+     * processor owning the entire matrix. In all other cases refer to the
+     * version of begin() taking a row number as an argument.
      */
     const_iterator
     begin() const;
 
     /**
-     * Final iterator.
+     * Final iterator. This can only be called on a processor owning the entire
+     * matrix. In all other cases refer to the version of end() taking a row
+     * number as an argument.
      */
     const_iterator
     end() const;
@@ -1068,9 +1073,7 @@ namespace PETScWrappers
     mutable std::vector<PetscScalar> column_values;
 
 
-    /**
-     * To allow calling protected prepare_add() and prepare_set().
-     */
+    // To allow calling protected prepare_add() and prepare_set().
     template <class>
     friend class dealii::BlockMatrixBase;
   };
@@ -1327,7 +1330,7 @@ namespace PETScWrappers
                 n_columns++;
               }
           }
-        Assert(n_columns <= (int)n_cols, ExcInternalError());
+        AssertIndexRange(n_columns, n_cols + 1);
 
         col_index_ptr = column_indices.data();
         col_value_ptr = column_values.data();
@@ -1471,7 +1474,7 @@ namespace PETScWrappers
                 n_columns++;
               }
           }
-        Assert(n_columns <= (int)n_cols, ExcInternalError());
+        AssertIndexRange(n_columns, n_cols + 1);
 
         col_index_ptr = column_indices.data();
         col_value_ptr = column_values.data();
@@ -1495,13 +1498,29 @@ namespace PETScWrappers
   inline MatrixBase::const_iterator
   MatrixBase::begin() const
   {
-    return const_iterator(this, 0, 0);
+    Assert(
+      (in_local_range(0) && in_local_range(m() - 1)),
+      ExcMessage(
+        "begin() and end() can only be called on a processor owning the entire matrix. If this is a distributed matrix, use begin(row) and end(row) instead."));
+
+    // find the first non-empty row in order to make sure that the returned
+    // iterator points to something useful
+    size_type first_nonempty_row = 0;
+    while ((first_nonempty_row < m()) && (row_length(first_nonempty_row) == 0))
+      ++first_nonempty_row;
+
+    return const_iterator(this, first_nonempty_row, 0);
   }
 
 
   inline MatrixBase::const_iterator
   MatrixBase::end() const
   {
+    Assert(
+      (in_local_range(0) && in_local_range(m() - 1)),
+      ExcMessage(
+        "begin() and end() can only be called on a processor owning the entire matrix. If this is a distributed matrix, use begin(row) and end(row) instead."));
+
     return const_iterator(this, m(), 0);
   }
 
@@ -1541,7 +1560,9 @@ namespace PETScWrappers
 
     // if there is no such line, then take the
     // end iterator of the matrix
-    return end();
+    // we don't allow calling end() directly for distributed matrices so we need
+    // to copy the code without the assertion.
+    return {this, m(), 0};
   }
 
 

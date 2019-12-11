@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2018 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -121,8 +121,8 @@ FullMatrix<number>::all_zero() const
 {
   Assert(!this->empty(), ExcEmptyMatrix());
 
-  const number *      p = &this->values[0];
-  const number *const e = &this->values[0] + this->n_elements();
+  const number *      p = this->values.data();
+  const number *const e = this->values.data() + this->n_elements();
   while (p != e)
     if (*p++ != number(0.0))
       return false;
@@ -183,7 +183,7 @@ FullMatrix<number>::vmult(Vector<number2> &      dst,
 
   Assert(&src != &dst, ExcSourceEqualsDestination());
 
-  const number *e = &this->values[0];
+  const number *e = this->values.data();
   // get access to the data in order to
   // avoid copying it when using the ()
   // operator
@@ -214,7 +214,7 @@ FullMatrix<number>::Tvmult(Vector<number2> &      dst,
 
   Assert(&src != &dst, ExcSourceEqualsDestination());
 
-  const number *  e       = &this->values[0];
+  const number *  e       = this->values.data();
   number2 *       dst_ptr = &dst(0);
   const size_type size_m = m(), size_n = n();
 
@@ -409,7 +409,7 @@ FullMatrix<number>::add_col(const size_type i,
 {
   Assert(!this->empty(), ExcEmptyMatrix());
 
-  for (size_t l = 0; l < m(); ++l)
+  for (std::size_t l = 0; l < m(); ++l)
     (*this)(l, i) += s * (*this)(l, j) + t * (*this)(l, k);
 }
 
@@ -529,13 +529,12 @@ FullMatrix<number>::mmult(FullMatrix<number2> &      dst,
   // works for us (it is usually not efficient to use BLAS for very small
   // matrices):
 #ifdef DEAL_II_WITH_LAPACK
+  const size_type max_blas_int = std::numeric_limits<types::blas_int>::max();
   if ((std::is_same<number, double>::value ||
        std::is_same<number, float>::value) &&
       std::is_same<number, number2>::value)
-    if (this->n() * this->m() * src.n() > 300 &&
-        src.n() <= std::numeric_limits<types::blas_int>::max() &&
-        this->m() <= std::numeric_limits<types::blas_int>::max() &&
-        this->n() <= std::numeric_limits<types::blas_int>::max())
+    if (this->n() * this->m() * src.n() > 300 && src.n() <= max_blas_int &&
+        this->m() <= max_blas_int && this->n() <= max_blas_int)
       {
         // In case we have the BLAS function gemm detected by CMake, we
         // use that algorithm for matrix-matrix multiplication since it
@@ -567,7 +566,7 @@ FullMatrix<number>::mmult(FullMatrix<number2> &      dst,
              &alpha,
              &src(0, 0),
              &m,
-             &this->values[0],
+             this->values.data(),
              &k,
              &beta,
              &dst(0, 0),
@@ -588,7 +587,8 @@ FullMatrix<number>::mmult(FullMatrix<number2> &      dst,
       {
         number2 add_value = adding ? dst(i, j) : 0.;
         for (size_type k = 0; k < l; k++)
-          add_value += (number2)(*this)(i, k) * (number2)(src(k, j));
+          add_value += static_cast<number2>((*this)(i, k)) *
+                       static_cast<number2>((src(k, j)));
         dst(i, j) = add_value;
       }
 }
@@ -612,13 +612,12 @@ FullMatrix<number>::Tmmult(FullMatrix<number2> &      dst,
   // works for us (it is usually not efficient to use BLAS for very small
   // matrices):
 #ifdef DEAL_II_WITH_LAPACK
+  const size_type max_blas_int = std::numeric_limits<types::blas_int>::max();
   if ((std::is_same<number, double>::value ||
        std::is_same<number, float>::value) &&
       std::is_same<number, number2>::value)
-    if (this->n() * this->m() * src.n() > 300 &&
-        src.n() <= std::numeric_limits<types::blas_int>::max() &&
-        this->n() <= std::numeric_limits<types::blas_int>::max() &&
-        this->m() <= std::numeric_limits<types::blas_int>::max())
+    if (this->n() * this->m() * src.n() > 300 && src.n() <= max_blas_int &&
+        this->n() <= max_blas_int && this->m() <= max_blas_int)
       {
         // In case we have the BLAS function gemm detected by CMake, we
         // use that algorithm for matrix-matrix multiplication since it
@@ -651,7 +650,7 @@ FullMatrix<number>::Tmmult(FullMatrix<number2> &      dst,
              &alpha,
              &src(0, 0),
              &m,
-             &this->values[0],
+             this->values.data(),
              &n,
              &beta,
              &dst(0, 0),
@@ -671,7 +670,8 @@ FullMatrix<number>::Tmmult(FullMatrix<number2> &      dst,
         {
           number2 add_value = 0.;
           for (size_type k = 0; k < l; ++k)
-            add_value += (number2)(*this)(k, i) * (number2)(*this)(k, j);
+            add_value += static_cast<number2>((*this)(k, i)) *
+                         static_cast<number2>((*this)(k, j));
           if (adding)
             {
               dst(i, j) += add_value;
@@ -692,7 +692,8 @@ FullMatrix<number>::Tmmult(FullMatrix<number2> &      dst,
         {
           number2 add_value = adding ? dst(i, j) : 0.;
           for (size_type k = 0; k < l; k++)
-            add_value += (number2)(*this)(k, i) * (number2)(src(k, j));
+            add_value += static_cast<number2>((*this)(k, i)) *
+                         static_cast<number2>((src(k, j)));
           dst(i, j) = add_value;
         }
 }
@@ -715,13 +716,12 @@ FullMatrix<number>::mTmult(FullMatrix<number2> &      dst,
   // works for us (it is usually not efficient to use BLAS for very small
   // matrices):
 #ifdef DEAL_II_WITH_LAPACK
+  const size_type max_blas_int = std::numeric_limits<types::blas_int>::max();
   if ((std::is_same<number, double>::value ||
        std::is_same<number, float>::value) &&
       std::is_same<number, number2>::value)
-    if (this->n() * this->m() * src.m() > 300 &&
-        src.m() <= std::numeric_limits<types::blas_int>::max() &&
-        this->n() <= std::numeric_limits<types::blas_int>::max() &&
-        this->m() <= std::numeric_limits<types::blas_int>::max())
+    if (this->n() * this->m() * src.m() > 300 && src.m() <= max_blas_int &&
+        this->n() <= max_blas_int && this->m() <= max_blas_int)
       {
         // In case we have the BLAS function gemm detected by CMake, we
         // use that algorithm for matrix-matrix multiplication since it
@@ -754,7 +754,7 @@ FullMatrix<number>::mTmult(FullMatrix<number2> &      dst,
              &alpha,
              &src(0, 0),
              &k,
-             &this->values[0],
+             this->values.data(),
              &k,
              &beta,
              &dst(0, 0),
@@ -774,7 +774,8 @@ FullMatrix<number>::mTmult(FullMatrix<number2> &      dst,
         {
           number2 add_value = 0.;
           for (size_type k = 0; k < l; ++k)
-            add_value += (number2)(*this)(i, k) * (number2)(*this)(j, k);
+            add_value += static_cast<number2>((*this)(i, k)) *
+                         static_cast<number2>((*this)(j, k));
           if (adding)
             {
               dst(i, j) += add_value;
@@ -792,7 +793,8 @@ FullMatrix<number>::mTmult(FullMatrix<number2> &      dst,
         {
           number2 add_value = adding ? dst(i, j) : 0.;
           for (size_type k = 0; k < l; k++)
-            add_value += (number2)(*this)(i, k) * (number2)(src(j, k));
+            add_value += static_cast<number2>((*this)(i, k)) *
+                         static_cast<number2>(src(j, k));
           dst(i, j) = add_value;
         }
 }
@@ -816,13 +818,12 @@ FullMatrix<number>::TmTmult(FullMatrix<number2> &      dst,
   // works for us (it is usually not efficient to use BLAS for very small
   // matrices):
 #ifdef DEAL_II_WITH_LAPACK
+  const size_type max_blas_int = std::numeric_limits<types::blas_int>::max();
   if ((std::is_same<number, double>::value ||
        std::is_same<number, float>::value) &&
       std::is_same<number, number2>::value)
-    if (this->n() * this->m() * src.m() > 300 &&
-        src.m() <= std::numeric_limits<types::blas_int>::max() &&
-        this->n() <= std::numeric_limits<types::blas_int>::max() &&
-        this->m() <= std::numeric_limits<types::blas_int>::max())
+    if (this->n() * this->m() * src.m() > 300 && src.m() <= max_blas_int &&
+        this->n() <= max_blas_int && this->m() <= max_blas_int)
       {
         // In case we have the BLAS function gemm detected by CMake, we
         // use that algorithm for matrix-matrix multiplication since it
@@ -854,7 +855,7 @@ FullMatrix<number>::TmTmult(FullMatrix<number2> &      dst,
              &alpha,
              &src(0, 0),
              &k,
-             &this->values[0],
+             this->values.data(),
              &n,
              &beta,
              &dst(0, 0),
@@ -877,7 +878,8 @@ FullMatrix<number>::TmTmult(FullMatrix<number2> &      dst,
       {
         number2 add_value = adding ? dst(i, j) : 0.;
         for (size_type k = 0; k < l; k++)
-          add_value += (number2)(*this)(k, i) * (number2)(src(j, k));
+          add_value += static_cast<number2>((*this)(k, i)) *
+                       static_cast<number2>(src(j, k));
         dst(i, j) = add_value;
       }
 }
@@ -951,7 +953,7 @@ FullMatrix<number>::matrix_norm_square(const Vector<number2> &v) const
 
   number2         sum     = 0.;
   const size_type n_rows  = m();
-  const number *  val_ptr = &this->values[0];
+  const number *  val_ptr = this->values.data();
 
   for (size_type row = 0; row < n_rows; ++row)
     {
@@ -982,7 +984,7 @@ FullMatrix<number>::matrix_scalar_product(const Vector<number2> &u,
   number2         sum     = 0.;
   const size_type n_rows  = m();
   const size_type n_cols  = n();
-  const number *  val_ptr = &this->values[0];
+  const number *  val_ptr = this->values.data();
 
   for (size_type row = 0; row < n_rows; ++row)
     {
@@ -1745,7 +1747,7 @@ FullMatrix<number>::precondition_Jacobi(Vector<somenumber> &      dst,
   Assert(dst.size() == n(), ExcDimensionMismatch(dst.size(), n()));
   Assert(src.size() == n(), ExcDimensionMismatch(src.size(), n()));
 
-  const size_t      n       = src.size();
+  const std::size_t n       = src.size();
   somenumber *      dst_ptr = dst.begin();
   const somenumber *src_ptr = src.begin();
 
@@ -1823,8 +1825,8 @@ FullMatrix<number>::gauss_jordan()
   // matrices):
 #ifdef DEAL_II_WITH_LAPACK
   if (std::is_same<number, double>::value || std::is_same<number, float>::value)
-    if (this->n_cols() > 15 &&
-        this->n_cols() <= std::numeric_limits<types::blas_int>::max())
+    if (this->n_cols() > 15 && static_cast<types::blas_int>(this->n_cols()) <=
+                                 std::numeric_limits<types::blas_int>::max())
       {
         // In case we have the LAPACK functions
         // getrf and getri detected by CMake,
@@ -1853,7 +1855,7 @@ FullMatrix<number>::gauss_jordan()
 
         // Use the LAPACK function getrf for
         // calculating the LU factorization.
-        getrf(&nn, &nn, &this->values[0], &nn, ipiv.data(), &info);
+        getrf(&nn, &nn, this->values.data(), &nn, ipiv.data(), &info);
 
         Assert(info >= 0, ExcInternalError());
         Assert(info == 0, LACExceptions::ExcSingular());
@@ -1864,8 +1866,13 @@ FullMatrix<number>::gauss_jordan()
         // Use the LAPACK function getri for
         // calculating the actual inverse using
         // the LU factorization.
-        getri(
-          &nn, &this->values[0], &nn, ipiv.data(), inv_work.data(), &nn, &info);
+        getri(&nn,
+              this->values.data(),
+              &nn,
+              ipiv.data(),
+              inv_work.data(),
+              &nn,
+              &info);
 
         Assert(info >= 0, ExcInternalError());
         Assert(info == 0, LACExceptions::ExcSingular());

@@ -56,7 +56,8 @@ namespace parallel
      * "owns" a subset of cells. The use of this class is demonstrated in
      * step-18.
      *
-     * Different from the parallel::distributed::Triangulation, this implies
+     * Different from the parallel::distributed::Triangulation and
+     * parallel::fullydistributed::Triangulation classes, this implies
      * that the entire mesh is stored on each processor. While this is clearly
      * a memory bottleneck that limits the use of this class to a few dozen
      * or hundreds of MPI processes, the partitioning of the mesh can be used
@@ -99,7 +100,8 @@ namespace parallel
      *
      */
     template <int dim, int spacedim = dim>
-    class Triangulation : public dealii::parallel::Triangulation<dim, spacedim>
+    class Triangulation
+      : public dealii::parallel::TriangulationBase<dim, spacedim>
     {
     public:
       using active_cell_iterator =
@@ -401,7 +403,8 @@ namespace parallel
      * MPI is not available.
      */
     template <int dim, int spacedim = dim>
-    class Triangulation : public dealii::parallel::Triangulation<dim, spacedim>
+    class Triangulation
+      : public dealii::parallel::TriangulationBase<dim, spacedim>
     {
     public:
       /**

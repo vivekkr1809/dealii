@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -128,7 +128,7 @@ test(const unsigned int size,
           &liwork,
           &info);
 
-    lwork = work[0];
+    lwork = static_cast<int>(work[0]);
     work.resize(lwork);
     liwork = iwork[0];
     iwork.resize(liwork);

@@ -8,15 +8,19 @@ BOOL            := { true; false }
 // real scalar floating point types
 REAL_SCALARS    := { double; float }
 
+// real scalar floating point types (vectorized)
+REAL_SCALARS_VECTORIZED    := { @DEAL_II_EXPAND_REAL_SCALARS_VECTORIZED@; }
+FLOAT_VECTORIZED           := { @DEAL_II_EXPAND_FLOAT_VECTORIZED@; }
+
 // complex scalar types
-COMPLEX_SCALARS := { 
+COMPLEX_SCALARS := {
     @DEAL_II_EXPAND_COMPLEX_SCALARS@;
     }
 
 // real scalar floating point types
-REAL_AND_COMPLEX_SCALARS    := { 
+REAL_AND_COMPLEX_SCALARS    := {
         double;
-        float; 
+        float;
         @DEAL_II_EXPAND_COMPLEX_SCALARS@;
         }
 
@@ -63,7 +67,7 @@ MPI_SCALARS     := { int;
                      unsigned long long int;
                      float;
                      double;
-                     long double; 
+                     long double;
                      @DEAL_II_EXPAND_COMPLEX_SCALARS@;
                    }
 
@@ -95,13 +99,17 @@ VECTOR_TYPES := {   Vector<double>;
 
                     @DEAL_II_EXPAND_TRILINOS_MPI_VECTOR@;
                     @DEAL_II_EXPAND_EPETRA_VECTOR@;
+                    @DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE@;
+                    @DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT@;
+                    @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_DOUBLE@;
+                    @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_FLOAT@;
                     @DEAL_II_EXPAND_PETSC_MPI_VECTOR@;
 
                     @DEAL_II_EXPAND_TRILINOS_MPI_BLOCKVECTOR@;
                     @DEAL_II_EXPAND_PETSC_MPI_BLOCKVECTOR@;
                   }
 
-// same as VECTOR_TYPES but only real-valued vectors (and only with PETSc 
+// same as VECTOR_TYPES but only real-valued vectors (and only with PETSc
 // vectors if the PETScScalar data type is real-valued)
 REAL_VECTOR_TYPES  := {  Vector<double>;
                          Vector<float> ;
@@ -120,6 +128,8 @@ REAL_VECTOR_TYPES  := {  Vector<double>;
 
                          @DEAL_II_EXPAND_TRILINOS_MPI_VECTOR@;
                          @DEAL_II_EXPAND_EPETRA_VECTOR@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT@;
                          @DEAL_II_EXPAND_PETSC_MPI_VECTOR_REAL@;
 
                          @DEAL_II_EXPAND_TRILINOS_MPI_BLOCKVECTOR@;
@@ -138,6 +148,8 @@ REAL_NONBLOCK_VECTORS := { Vector<double>;
 
                            @DEAL_II_EXPAND_TRILINOS_MPI_VECTOR@;
                            @DEAL_II_EXPAND_EPETRA_VECTOR@;
+                           @DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE@;
+                           @DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT@;
                            @DEAL_II_EXPAND_PETSC_MPI_VECTOR_REAL@;
                          }
 
@@ -145,6 +157,10 @@ REAL_NONBLOCK_VECTORS := { Vector<double>;
 EXTERNAL_PARALLEL_VECTORS := { @DEAL_II_EXPAND_TRILINOS_MPI_VECTOR@;
                                @DEAL_II_EXPAND_TRILINOS_MPI_BLOCKVECTOR@;
                                @DEAL_II_EXPAND_EPETRA_VECTOR@;
+                               @DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE@;
+                               @DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT@;
+                               @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_DOUBLE@;
+                               @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_FLOAT@;
                                @DEAL_II_EXPAND_PETSC_MPI_VECTOR@;
                                @DEAL_II_EXPAND_PETSC_MPI_BLOCKVECTOR@
                              }
@@ -163,6 +179,10 @@ VECTORS_WITH_MATRIX := { Vector<double>;
 
                          @DEAL_II_EXPAND_TRILINOS_MPI_VECTOR@;
                          @DEAL_II_EXPAND_EPETRA_VECTOR@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_DOUBLE@;
+                         @DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_FLOAT@;
                          @DEAL_II_EXPAND_PETSC_MPI_VECTOR@;
                        }
 
@@ -249,6 +269,9 @@ SPACE_DIMENSIONS := { 1; 2; 3 }
 
 // all ranks used for instantiating tensors
 RANKS := { 1; 2; 3; 4 }
+
+// all ranks used for instantiating symmetric tensors
+SYM_RANKS := { 2; 4 }
 
 // Flags that are allowed in DataOutInterface::set_flags
 OUTPUT_FLAG_TYPES := { DXFlags; UcdFlags; GnuplotFlags; PovrayFlags; EpsFlags;

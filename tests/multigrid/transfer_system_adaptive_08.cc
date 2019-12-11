@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2017 by the deal.II authors
+// Copyright (C) 2000 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -138,7 +138,7 @@ check(const FiniteElement<dim> &fe)
 
   DoFHandler<dim> mg_dof_handler(tr);
   mg_dof_handler.distribute_dofs(fe);
-  mg_dof_handler.distribute_mg_dofs(fe);
+  mg_dof_handler.distribute_mg_dofs();
 
   std::vector<unsigned int> block_selected(3, 0);
   block_selected[2] = 1;

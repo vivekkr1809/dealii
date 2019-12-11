@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -210,7 +210,7 @@ namespace
                        t9 * y[1] - t11 * y[0] + x[0] * t53 - t59 * x[2] +
                        t59 * x[1] - t39 * x[0];
 
-    return Point<2>(t27 * t37 / 3, t63 * t37 / 3);
+    return {t27 * t37 / 3, t63 * t37 / 3};
   }
 
 
@@ -1233,7 +1233,7 @@ namespace
     s2                    = s3 * s4;
     const double unknown2 = s1 * s2;
 
-    return Point<3>(unknown0, unknown1, unknown2);
+    return {unknown0, unknown1, unknown2};
   }
 
 
@@ -1264,52 +1264,12 @@ namespace
   double
   measure(const TriaAccessor<2, 2, 2> &accessor)
   {
-    // the evaluation of the formulae
-    // is a bit tricky when done dimension
-    // independently, so we write this function
-    // for 2D and 3D separately
-    /*
-      Get the computation of the measure by this little Maple script. We
-      use the blinear mapping of the unit quad to the real quad. However,
-      every transformation mapping the unit faces to straight lines should
-      do.
+    unsigned int vertex_indices[GeometryInfo<2>::vertices_per_cell];
+    for (unsigned int i = 0; i < GeometryInfo<2>::vertices_per_cell; ++i)
+      vertex_indices[i] = accessor.vertex_index(i);
 
-      Remember that the area of the quad is given by
-      \int_K 1 dx dy  = \int_{\hat K} |det J| d(xi) d(eta)
-
-      # x and y are arrays holding the x- and y-values of the four vertices
-      # of this cell in real space.
-      x := array(0..3);
-      y := array(0..3);
-      tphi[0] := (1-xi)*(1-eta):
-      tphi[1] :=     xi*(1-eta):
-      tphi[2] := (1-xi)*eta:
-      tphi[3] :=     xi*eta:
-      x_real := sum(x[s]*tphi[s], s=0..3):
-      y_real := sum(y[s]*tphi[s], s=0..3):
-      detJ := diff(x_real,xi)*diff(y_real,eta) -
-      diff(x_real,eta)*diff(y_real,xi):
-
-      measure := simplify ( int ( int (detJ, xi=0..1), eta=0..1)):
-      readlib(C):
-
-      C(measure, optimized);
-
-      additional optimizaton: divide by 2 only one time
-    */
-
-    const double x[4] = {accessor.vertex(0)(0),
-                         accessor.vertex(1)(0),
-                         accessor.vertex(2)(0),
-                         accessor.vertex(3)(0)};
-    const double y[4] = {accessor.vertex(0)(1),
-                         accessor.vertex(1)(1),
-                         accessor.vertex(2)(1),
-                         accessor.vertex(3)(1)};
-
-    return (-x[1] * y[0] + x[1] * y[3] + y[0] * x[2] + x[0] * y[1] -
-            x[0] * y[2] - y[1] * x[3] - x[2] * y[3] + x[3] * y[2]) /
-           2;
+    return GridTools::cell_measure<2>(
+      accessor.get_triangulation().get_vertices(), vertex_indices);
   }
 
 
@@ -1833,7 +1793,7 @@ CellAccessor<2>::point_inside(const Point<2> &p) const
       // outside
       if ((-face[1] * to_p[0] + face[0] * to_p[1]) < 0)
         return false;
-    };
+    }
 
   // if we arrived here, then the
   // point is inside for all four
@@ -2021,6 +1981,7 @@ CellAccessor<dim, spacedim>::set_subdomain_id(
 }
 
 
+
 template <int dim, int spacedim>
 types::subdomain_id
 CellAccessor<dim, spacedim>::level_subdomain_id() const
@@ -2179,7 +2140,7 @@ CellAccessor<dim, spacedim>::set_neighbor(
       this->tria->levels[this->present_level]
         ->neighbors[this->present_index * GeometryInfo<dim>::faces_per_cell + i]
         .second = -1;
-    };
+    }
 }
 
 
@@ -2218,7 +2179,9 @@ CellAccessor<dim, spacedim>::id() const
   Assert(ptr.level() == 0, ExcInternalError());
   const unsigned int coarse_index = ptr.index();
 
-  return CellId(coarse_index, n_child_indices, &(id[0]));
+  return {this->tria->coarse_cell_index_to_coarse_cell_id(coarse_index),
+          n_child_indices,
+          id.data()};
 }
 
 

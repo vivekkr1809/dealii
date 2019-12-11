@@ -1,6 +1,6 @@
 //-----------------------------------------------------------
 //
-//    Copyright (C) 2015 - 2018 by the deal.II authors
+//    Copyright (C) 2015 - 2019 by the deal.II authors
 //
 //    This file is part of the deal.II library.
 //
@@ -204,8 +204,8 @@ namespace SUNDIALS
 #  ifdef DEAL_II_WITH_MPI
     if (is_serial_vector<VectorType>::value == false)
       {
-        const IndexSet is                = solution.locally_owned_elements();
-        const size_t   local_system_size = is.n_elements();
+        const IndexSet    is                = solution.locally_owned_elements();
+        const std::size_t local_system_size = is.n_elements();
 
         yy = N_VNew_Parallel(communicator, local_system_size, system_size);
 
@@ -318,8 +318,8 @@ namespace SUNDIALS
 #  ifdef DEAL_II_WITH_MPI
     if (is_serial_vector<VectorType>::value == false)
       {
-        const IndexSet is                = solution.locally_owned_elements();
-        const size_t   local_system_size = is.n_elements();
+        const IndexSet    is                = solution.locally_owned_elements();
+        const std::size_t local_system_size = is.n_elements();
 
         yy = N_VNew_Parallel(communicator, local_system_size, system_size);
 
@@ -362,7 +362,7 @@ namespace SUNDIALS
     status = IDASetInitStep(ida_mem, current_time_step);
     AssertIDA(status);
 
-    status = IDASetUserData(ida_mem, (void *)this);
+    status = IDASetUserData(ida_mem, this);
     AssertIDA(status);
 
     if (data.ic_type == AdditionalData::use_y_diff ||
@@ -391,8 +391,7 @@ namespace SUNDIALS
     AssertIDA(status);
 
     // Initialize solver
-    IDAMem IDA_mem;
-    IDA_mem = (IDAMem)ida_mem;
+    auto IDA_mem = static_cast<IDAMem>(ida_mem);
 
     IDA_mem->ida_lsetup = t_dae_lsetup<VectorType>;
     IDA_mem->ida_lsolve = t_dae_solve<VectorType>;

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,8 +13,10 @@
 //
 // ---------------------------------------------------------------------
 
-#ifndef dealii__cuda_kernels_templates_h
-#define dealii__cuda_kernels_templates_h
+#ifndef dealii_cuda_kernels_templates_h
+#define dealii_cuda_kernels_templates_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/lac/cuda_kernels.h>
 
@@ -44,9 +46,9 @@ namespace LinearAlgebra
 
 
 
-      template <typename Number, typename Binop>
+      template <typename Number, template <typename> class Binop>
       __global__ void
-      vector_bin_op(Number *v1, Number *v2, const size_type N)
+      vector_bin_op(Number *v1, const Number *v2, const size_type N)
       {
         const size_type idx_base =
           threadIdx.x + blockIdx.x * (blockDim.x * chunk_size);
@@ -54,10 +56,28 @@ namespace LinearAlgebra
           {
             const size_type idx = idx_base + i * block_size;
             if (idx < N)
-              v1[idx] = Binop::operation(v1[idx], v2[idx]);
+              v1[idx] = Binop<Number>::operation(v1[idx], v2[idx]);
           }
       }
 
+
+
+      template <typename Number, template <typename> class Binop>
+      __global__ void
+      masked_vector_bin_op(const unsigned int *mask,
+                           Number *            v1,
+                           const Number *      v2,
+                           const size_type     N)
+      {
+        const size_type idx_base =
+          threadIdx.x + blockIdx.x * (blockDim.x * chunk_size);
+        for (unsigned int i = 0; i < chunk_size; ++i)
+          {
+            const size_type idx = idx_base + i * block_size;
+            if (idx < N)
+              v1[mask[idx]] = Binop<Number>::operation(v1[mask[idx]], v2[idx]);
+          }
+      }
 
 
       template <typename Number>
@@ -173,45 +193,13 @@ namespace LinearAlgebra
 
       template <typename Number, typename Operation>
       __device__ void
-      reduce_within_warp(volatile Number *result_buffer, size_type local_idx)
+      reduce(Number *         result,
+             volatile Number *result_buffer,
+             const size_type  local_idx,
+             const size_type  global_idx,
+             const size_type  N)
       {
-        if (block_size >= 64)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 32]);
-        if (block_size >= 32)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 16]);
-        if (block_size >= 16)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 8]);
-        if (block_size >= 8)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 4]);
-        if (block_size >= 4)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 2]);
-        if (block_size >= 2)
-          result_buffer[local_idx] =
-            Operation::reduction_op(result_buffer[local_idx],
-                                    result_buffer[local_idx + 1]);
-      }
-
-
-
-      template <typename Number, typename Operation>
-      __device__ void
-      reduce(Number *        result,
-             Number *        result_buffer,
-             const size_type local_idx,
-             const size_type global_idx,
-             const size_type N)
-      {
-        for (size_type s = block_size / 2; s > 32; s = s >> 1)
+        for (size_type s = block_size / 2; s > warp_size; s = s >> 1)
           {
             if (local_idx < s)
               result_buffer[local_idx] =
@@ -220,8 +208,15 @@ namespace LinearAlgebra
             __syncthreads();
           }
 
-        if (local_idx < 32)
-          reduce_within_warp<Number, Operation>(result_buffer, local_idx);
+        if (local_idx < warp_size)
+          {
+            for (size_type s = warp_size; s > 0; s = s >> 1)
+              {
+                result_buffer[local_idx] =
+                  Operation::reduction_op(result_buffer[local_idx],
+                                          result_buffer[local_idx + s]);
+              }
+          }
 
         if (local_idx == 0)
           Operation::atomic_op(result, result_buffer[0]);
@@ -499,7 +494,7 @@ namespace LinearAlgebra
         else
           res_buf[local_idx] = 0.;
 
-        for (unsigned int i = 1; i < block_size; ++i)
+        for (unsigned int i = 1; i < chunk_size; ++i)
           {
             const unsigned int idx = global_idx + i * block_size;
             if (idx < N)
@@ -533,12 +528,12 @@ namespace LinearAlgebra
 
 
 
-      template <typename Number>
+      template <typename Number, typename IndexType>
       __global__ void
-      set_permutated(Number *         val,
+      set_permutated(const IndexType *indices,
+                     Number *         val,
                      const Number *   v,
-                     const size_type *indices,
-                     const size_type  N)
+                     const IndexType  N)
       {
         const size_type idx_base =
           threadIdx.x + blockIdx.x * (blockDim.x * chunk_size);
@@ -552,11 +547,30 @@ namespace LinearAlgebra
 
 
 
+      template <typename Number, typename IndexType>
+      __global__ void
+      gather(Number *         val,
+             const IndexType *indices,
+             const Number *   v,
+             const IndexType  N)
+      {
+        const IndexType idx_base =
+          threadIdx.x + blockIdx.x * (blockDim.x * chunk_size);
+        for (unsigned int i = 0; i < chunk_size; ++i)
+          {
+            const IndexType idx = idx_base + i * block_size;
+            if (idx < N)
+              val[idx] = v[indices[idx]];
+          }
+      }
+
+
+
       template <typename Number>
       __global__ void
-      add_permutated(Number *         val,
+      add_permutated(const size_type *indices,
+                     Number *         val,
                      const Number *   v,
-                     const size_type *indices,
                      const size_type  N)
       {
         const size_type idx_base =

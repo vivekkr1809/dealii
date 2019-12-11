@@ -1,6 +1,6 @@
 //-----------------------------------------------------------
 //
-//    Copyright (C) 2018 by the deal.II authors
+//    Copyright (C) 2018 - 2019 by the deal.II authors
 //
 //    This file is part of the deal.II library.
 //
@@ -21,11 +21,10 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/numbers.h>
+#include <deal.II/base/std_cxx17/optional.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/numerics/history.h>
-
-#include <boost/optional.hpp>
 
 #include <errno.h>
 #include <sys/stat.h>
@@ -33,9 +32,8 @@
 #include <fstream>
 #include <string>
 
-DEAL_II_NAMESPACE_OPEN
 
-using namespace dealii;
+DEAL_II_NAMESPACE_OPEN
 
 /**
  * A namespace for various algorithms related to minimization a over line.
@@ -51,7 +49,7 @@ namespace LineMinimization
    * not have a solution for given parameters.
    */
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   quadratic_fit(const NumberType x_low,
                 const NumberType f_low,
                 const NumberType g_low,
@@ -60,7 +58,7 @@ namespace LineMinimization
 
   /**
    * Given $x\_low$ and $x\_hi$ together with values of function
-   * $f(x\_low)$ and $f(x\_hi)$) and its gradients ($g(x\_low)*g(x\_hi) < 0$) at
+   * $f(x\_low)$ and $f(x\_hi)$ and its gradients ($g(x\_low)*g(x\_hi) < 0$) at
    * those points, return the local minimizer of the cubic interpolation
    * function (that is, the location where the cubic interpolation function
    * attains its minimum value).
@@ -68,7 +66,7 @@ namespace LineMinimization
    * The return type is optional as the real-valued solution might not exist.
    */
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   cubic_fit(const NumberType x_low,
             const NumberType f_low,
             const NumberType g_low,
@@ -84,7 +82,7 @@ namespace LineMinimization
    * The return type is optional as the real-valued solution might not exist.
    */
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   cubic_fit_three_points(const NumberType x_low,
                          const NumberType f_low,
                          const NumberType g_low,
@@ -243,9 +241,9 @@ namespace LineMinimization
    *
    *     // However, the corresponding gradient given in eq 5.14 is wrong. The
    *     // suggested result
-   *     // <code>const double g = -(residual_0*residual_trial);</code>
+   *     // const double g = -(residual_0*residual_trial);
    *     // should actually be
-   *     // $g = G(V + alpha*delta)*[ K(V + alpha*delta)*delta$.
+   *     // g = G(V + alpha*delta)*[ K(V + alpha*delta)*delta.
    *     Vector<double> tmp;
    *     tmp.reinit(newton_update);
    *     tangent_matrix.vmult(tmp, newton_update);
@@ -354,7 +352,7 @@ namespace LineMinimization
 
 
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   quadratic_fit(const NumberType x1,
                 const NumberType f1,
                 const NumberType g1,
@@ -364,7 +362,7 @@ namespace LineMinimization
     Assert(x1 != x2, ExcMessage("Point are the same"));
     const NumberType denom = (2. * g1 * x2 - 2. * g1 * x1 - 2. * f2 + 2. * f1);
     if (denom == 0)
-      return boost::none;
+      return {};
     else
       return (g1 * (x2 * x2 - x1 * x1) + 2. * (f1 - f2) * x1) / denom;
   }
@@ -372,7 +370,7 @@ namespace LineMinimization
 
 
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   cubic_fit(const NumberType x1,
             const NumberType f1,
             const NumberType g1,
@@ -384,13 +382,13 @@ namespace LineMinimization
     const NumberType beta1 = g1 + g2 - 3. * (f1 - f2) / (x1 - x2);
     const NumberType s     = beta1 * beta1 - g1 * g2;
     if (s < 0)
-      return boost::none;
+      return {};
 
     const NumberType beta2 = std::sqrt(s);
     const NumberType denom =
       x1 < x2 ? g2 - g1 + 2. * beta2 : g1 - g2 + 2. * beta2;
     if (denom == 0.)
-      return boost::none;
+      return {};
 
     return x1 < x2 ? x2 - (x2 - x1) * (g2 + beta2 - beta1) / denom :
                      x1 - (x1 - x2) * (g1 + beta2 - beta1) / denom;
@@ -399,7 +397,7 @@ namespace LineMinimization
 
 
   template <typename NumberType>
-  boost::optional<NumberType>
+  std_cxx17::optional<NumberType>
   cubic_fit_three_points(const NumberType x1,
                          const NumberType f1,
                          const NumberType g1,
@@ -424,7 +422,7 @@ namespace LineMinimization
     const NumberType denom =
       std::pow(x2_shift * x3_shift, 2) * (x2_shift - x3_shift);
     if (denom == 0.)
-      return boost::none;
+      return {};
 
     const NumberType A =
       (r1 * std::pow(x3_shift, 2) - r2 * std::pow(x2_shift, 2)) / denom;
@@ -435,7 +433,7 @@ namespace LineMinimization
     // now get the minimizer:
     const NumberType radical = B * B - A * C * 3;
     if (radical < 0)
-      return boost::none;
+      return {};
 
     return x1 + (-B + std::sqrt(radical)) / (A * 3);
   }
@@ -462,7 +460,7 @@ namespace LineMinimization
     // https://github.com/scipy/scipy/blob/v1.0.0/scipy/optimize/linesearch.py#L555-L563
 
     // First try cubic interpolation
-    boost::optional<NumberType> res = cubic_fit(x1, f1, g1, x2, f2, g2);
+    std_cxx17::optional<NumberType> res = cubic_fit(x1, f1, g1, x2, f2, g2);
     if (res && *res >= bounds.first && *res <= bounds.second)
       return *res;
 
@@ -498,10 +496,10 @@ namespace LineMinimization
     // https://github.com/scipy/scipy/blob/v1.0.0/scipy/optimize/linesearch.py#L555-L563
 
     // First try cubic interpolation after first iteration
-    boost::optional<NumberType> res =
+    std_cxx17::optional<NumberType> res =
       x_rec.size() > 0 ?
         cubic_fit_three_points(x1, f1, g1, x2, f2, x_rec[0], f_rec[0]) :
-        boost::none;
+        std_cxx17::optional<NumberType>{};
     if (res && *res >= bounds.first && *res <= bounds.second)
       return *res;
 

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,7 @@
 #include <deal.II/base/exceptions.h>
 
 #include <atomic>
+#include <cstring>
 #include <map>
 #include <mutex>
 #include <string>
@@ -108,7 +109,7 @@ public:
    */
   void
   subscribe(std::atomic<bool> *const validity,
-            const char *             identifier = nullptr) const;
+            const std::string &      identifier = "") const;
 
   /**
    * Unsubscribes a user from the object.
@@ -118,7 +119,7 @@ public:
    */
   void
   unsubscribe(std::atomic<bool> *const validity,
-              const char *             identifier = nullptr) const;
+              const std::string &      identifier = "") const;
 
   /**
    * Return the present number of subscriptions to this object. This allows to
@@ -192,16 +193,6 @@ public:
 
 private:
   /**
-   * The data type used in #counter_map.
-   */
-  using map_value_type = std::map<const char *, unsigned int>::value_type;
-
-  /**
-   * The iterator type used in #counter_map.
-   */
-  using map_iterator = std::map<const char *, unsigned int>::iterator;
-
-  /**
    * Store the number of objects which subscribed to this object. Initially,
    * this number is zero, and upon destruction it shall be zero again (i.e.
    * all objects which subscribed should have unsubscribed again).
@@ -223,7 +214,17 @@ private:
    * In this map, we count subscriptions for each different identification
    * string supplied to subscribe().
    */
-  mutable std::map<const char *, unsigned int> counter_map;
+  mutable std::map<std::string, unsigned int> counter_map;
+
+  /**
+   * The data type used in #counter_map.
+   */
+  using map_value_type = decltype(counter_map)::value_type;
+
+  /**
+   * The iterator type used in #counter_map.
+   */
+  using map_iterator = decltype(counter_map)::iterator;
 
   /**
    * In this vector, we store pointers to the validity bool in the SmartPointer
@@ -264,6 +265,37 @@ private:
 
 //---------------------------------------------------------------------------
 
+inline Subscriptor::Subscriptor()
+  : counter(0)
+  , object_info(nullptr)
+{}
+
+
+
+inline Subscriptor::Subscriptor(const Subscriptor &)
+  : counter(0)
+  , object_info(nullptr)
+{}
+
+
+
+inline Subscriptor &
+Subscriptor::operator=(const Subscriptor &s)
+{
+  object_info = s.object_info;
+  return *this;
+}
+
+
+
+inline unsigned int
+Subscriptor::n_subscriptions() const
+{
+  return counter;
+}
+
+
+
 template <class Archive>
 inline void
 Subscriptor::serialize(Archive &, const unsigned int)
@@ -278,9 +310,9 @@ Subscriptor::list_subscribers(StreamType &stream) const
 {
   std::lock_guard<std::mutex> lock(mutex);
 
-  for (map_iterator it = counter_map.begin(); it != counter_map.end(); ++it)
-    stream << it->second << '/' << counter << " subscriptions from \""
-           << it->first << '\"' << std::endl;
+  for (const auto &it : counter_map)
+    stream << it.second << '/' << counter << " subscriptions from \""
+           << it.first << '\"' << std::endl;
 }
 
 DEAL_II_NAMESPACE_CLOSE

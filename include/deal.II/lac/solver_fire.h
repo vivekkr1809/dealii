@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2017 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -88,7 +88,7 @@ DEAL_II_NAMESPACE_OPEN
  * @author Vishal Boddu, Denis Davydov, 2017
  */
 template <typename VectorType = Vector<double>>
-class SolverFIRE : public Solver<VectorType>
+class SolverFIRE : public SolverBase<VectorType>
 {
 public:
   /**
@@ -214,7 +214,7 @@ template <typename VectorType>
 SolverFIRE<VectorType>::SolverFIRE(SolverControl &           solver_control,
                                    VectorMemory<VectorType> &vector_memory,
                                    const AdditionalData &    data)
-  : Solver<VectorType>(solver_control, vector_memory)
+  : SolverBase<VectorType>(solver_control, vector_memory)
   , additional_data(data)
 {}
 
@@ -223,7 +223,7 @@ SolverFIRE<VectorType>::SolverFIRE(SolverControl &           solver_control,
 template <typename VectorType>
 SolverFIRE<VectorType>::SolverFIRE(SolverControl &       solver_control,
                                    const AdditionalData &data)
-  : Solver<VectorType>(solver_control)
+  : SolverBase<VectorType>(solver_control)
   , additional_data(data)
 {}
 

@@ -19,7 +19,7 @@ meshes had around 72,000 and 236,000 cells, for a total of 2,680,000
 and 8,250,000 degrees of freedom, respectively, more than an order of
 magnitude more than we had available in step-31:
 
-<table align="center" border="1" cellspacing="3" cellpadding="3">
+<table align="center" class="doxtable">
   <tr>
     <td>
         <img src="https://www.dealii.org/images/steps/developer/step-32.3d.cube.0.png" alt="">
@@ -176,67 +176,53 @@ To demonstrate the output we show the output from every 1250th time step here:
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-000.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-050.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-100.png" alt="">
     </td>
   </tr>
-
   <tr>
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-150.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-200.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-250.png" alt="">
     </td>
   </tr>
-
   <tr>
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-300.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-350.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-400.png" alt="">
     </td>
   </tr>
-
   <tr>
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-450.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-500.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-550.png" alt="">
     </td>
   </tr>
-
   <tr>
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-time-600.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-cells.png" alt="">
     </td>
-
     <td>
       <img src="https://www.dealii.org/images/steps/developer/step-32-2d-partition.png" alt="">
     </td>
@@ -283,7 +269,7 @@ seen above, interesting behavior only starts after quite a long time
 requiring more CPU hours than is available on a typical
 cluster. Consequently, rather than showing a complete simulation here,
 let us simply show a couple of pictures we have obtained using the
-successor to this program, called <i>Aspect</i> (short for <i>Advanced
+successor to this program, called <i>ASPECT</i> (short for <i>Advanced
 %Solver for Problems in Earth's ConvecTion</i>), that is being
 developed independently of deal.II and that already incorporates some
 of the extensions discussed below. The following two pictures show
@@ -302,7 +288,7 @@ with the mesh) onto 512 processors:
 
 There are many directions in which this program could be extended. As
 mentioned at the end of the introduction, most of these are under active
-development in the <i>Aspect</i> (short for <i>Advanced %Solver for Problems
+development in the <i>ASPECT</i> (short for <i>Advanced %Solver for Problems
 in Earth's ConvecTion</i>) code at the time this tutorial program is being
 finished. Specifically, the following are certainly topics that one should
 address to make the program more useful:
@@ -429,6 +415,6 @@ able to.
 
 There are many other ways to extend the current program. However, rather than
 discussing them here, let us point to the much larger open
-source code Aspect (see http://aspect.dealii.org/ ) that constitutes the
+source code ASPECT (see https://aspect.geodynamics.org/ ) that constitutes the
 further development of step-32 and that already includes many such possible
 extensions.

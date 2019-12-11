@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -331,33 +331,35 @@ FE_Enriched<dim, spacedim>::setup_data(
   // Pass ownership of the FiniteElement::InternalDataBase object
   // that fes_data points to, to the new InternalData object.
   auto update_each_flags = fes_data->update_each;
-  auto data = std_cxx14::make_unique<InternalData>(std::move(fes_data));
+  std::unique_ptr<typename FiniteElement<dim, spacedim>::InternalDataBase>
+        data_ptr = std_cxx14::make_unique<InternalData>(std::move(fes_data));
+  auto &data     = dynamic_cast<InternalData &>(*data_ptr);
 
   // copy update_each from FESystem data:
-  data->update_each = update_each_flags;
+  data.update_each = update_each_flags;
 
   // resize cache array according to requested flags
-  data->enrichment.resize(this->n_base_elements());
+  data.enrichment.resize(this->n_base_elements());
 
   const unsigned int n_q_points = quadrature.size();
 
   for (unsigned int base = 0; base < this->n_base_elements(); ++base)
     {
-      data->enrichment[base].resize(this->element_multiplicity(base));
+      data.enrichment[base].resize(this->element_multiplicity(base));
       for (unsigned int m = 0; m < this->element_multiplicity(base); ++m)
         {
           if (flags & update_values)
-            data->enrichment[base][m].values.resize(n_q_points);
+            data.enrichment[base][m].values.resize(n_q_points);
 
           if (flags & update_gradients)
-            data->enrichment[base][m].gradients.resize(n_q_points);
+            data.enrichment[base][m].gradients.resize(n_q_points);
 
           if (flags & update_hessians)
-            data->enrichment[base][m].hessians.resize(n_q_points);
+            data.enrichment[base][m].hessians.resize(n_q_points);
         }
     }
 
-  return std::move(data);
+  return data_ptr;
 }
 
 
@@ -727,7 +729,8 @@ FE_Enriched<dim, spacedim>::multiply_by_enrichment(
             continue;
 
           Assert(enrichments[base_no - 1][m](cell) != nullptr,
-                 ExcMessage("The pointer to the enrichment function is NULL"));
+                 ExcMessage(
+                   "The pointer to the enrichment function is not set"));
 
           Assert(enrichments[base_no - 1][m](cell)->n_components == 1,
                  ExcMessage(
@@ -1071,14 +1074,14 @@ namespace ColorEnriched
         dof_handler.get_triangulation().n_vertices(), false);
 
       // Mark vertices that belong to cells in subdomain 1
-      for (auto cell : dof_handler.active_cell_iterators())
+      for (const auto &cell : dof_handler.active_cell_iterators())
         if (predicate_1(cell)) // True ==> part of subdomain 1
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
                ++v)
             vertices_subdomain_1[cell->vertex_index(v)] = true;
 
       // Find if cells in subdomain 2 and subdomain 1 share vertices.
-      for (auto cell : dof_handler.active_cell_iterators())
+      for (const auto &cell : dof_handler.active_cell_iterators())
         if (predicate_2(cell)) // True ==> part of subdomain 2
           for (unsigned int v = 0; v < GeometryInfo<dim>::vertices_per_cell;
                ++v)
@@ -1172,7 +1175,7 @@ namespace ColorEnriched
        * of predicates active in the given cell.
        */
       unsigned int map_index = 0;
-      for (auto cell : dof_handler.active_cell_iterators())
+      for (const auto &cell : dof_handler.active_cell_iterators())
         {
           // set default FE index ==> no enrichment and no active predicates
           cell->set_active_fe_index(0);
@@ -1261,12 +1264,11 @@ namespace ColorEnriched
       /*
        * Treat interface between enriched cells specially,
        * until #1496 (https://github.com/dealii/dealii/issues/1496) is resolved.
-       * Each time we build constraints at the
-       * interface between two different FE_Enriched, we look for the least
-       * dominating FE via
-       * hp::FECollection::find_least_dominating_fe_in_collection(). If we don't
-       * take further actions, we may find a dominating FE that is too
-       * restrictive, i.e. enriched FE consisting of only FE_Nothing. New
+       * Each time we build constraints at the interface between two different
+       * FE_Enriched, we look for the least dominating FE of their common
+       * subspace via hp::FECollection::find_dominating_fe_extended().
+       * If we don't take further actions, we may find a dominating FE that is
+       * too restrictive, i.e. enriched FE consisting of only FE_Nothing. New
        * elements needs to be added to FECollection object to help find the
        * correct enriched FE underlying the spaces in the adjacent cells. This
        * is done by creating an appropriate set in fe_sets and a call to the
@@ -1279,16 +1281,15 @@ namespace ColorEnriched
        * the cell. If the interface has enriched FE [1 0 1] and [0 1 1]
        * on adjacent cells, an enriched FE [0 0 1] should exist and is
        * found as the least dominating finite element for the two cells by
-       * DoFTools::make_hanging_node_constraints using a call to the function
-       * hp::FECollection::find_least_dominating_fe_in_collection().
-       * Denoting the fe set in adjacent cells as {1,3} and {2,3}, this
-       * implies that an fe set {3} needs to be added! Based on the
-       * predicate configuration, this may not be automatically done without
-       * the following special treatment.
+       * DoFTools::make_hanging_node_constraints, using the above mentioned
+       * hp::FECollection functions. Denoting the fe set in adjacent cells as
+       * {1,3} and {2,3}, this implies that an fe set {3} needs to be added!
+       * Based on the predicate configuration, this may not be automatically
+       * done without the following special treatment.
        */
 
       // loop through faces
-      for (auto cell : dof_handler.active_cell_iterators())
+      for (const auto &cell : dof_handler.active_cell_iterators())
         {
           const unsigned int           fe_index = cell->active_fe_index();
           const std::set<unsigned int> fe_set   = fe_sets.at(fe_index);
@@ -1296,7 +1297,7 @@ namespace ColorEnriched
                ++face)
             {
               // cell shouldn't be at the boundary and
-              // neigboring cell is not already visited (to avoid visiting
+              // neighboring cell is not already visited (to avoid visiting
               // same face twice). Note that the cells' material ids are
               // labeled according to their order in dof_handler previously.
               if (!cell->at_boundary(face) &&
@@ -1412,8 +1413,7 @@ namespace ColorEnriched
       // loop through color sets and create FE_enriched element for each
       // of them provided before calling this function, we have color
       // enrichment function associated with each color.
-      for (unsigned int color_set_id = 0; color_set_id < fe_sets.size();
-           ++color_set_id)
+      for (const auto &fe_set : fe_sets)
         {
           std::vector<const FiniteElement<dim, spacedim> *> vec_fe_enriched(
             n_colors, &fe_nothing);
@@ -1421,12 +1421,12 @@ namespace ColorEnriched
             const typename Triangulation<dim, spacedim>::cell_iterator &)>>>
             functions(n_colors, {dummy_function});
 
-          for (const auto it : fe_sets[color_set_id])
+          for (const unsigned int color_id : fe_set)
             {
-              // Given a color id ( = it), corresponding color enrichment
+              // Given a color id, corresponding color enrichment
               // function is at index id-1 because color_enrichments are
               // indexed from zero and colors are indexed from 1.
-              const unsigned int ind = it - 1;
+              const unsigned int ind = color_id - 1;
 
               AssertIndexRange(ind, vec_fe_enriched.size());
               AssertIndexRange(ind, functions.size());

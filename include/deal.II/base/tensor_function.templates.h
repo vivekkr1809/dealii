@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 
 #ifndef dealii_tensor_function_templates_h
 #define dealii_tensor_function_templates_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/tensor_function.h>
@@ -123,9 +125,8 @@ template <int rank, int dim, typename Number>
 typename TensorFunction<rank, dim, Number>::gradient_type
 ConstantTensorFunction<rank, dim, Number>::gradient(const Point<dim> &) const
 {
-  static const Tensor<rank + 1, dim, Number> zero;
-
-  return zero;
+  // Return a zero (=default initialized) tensor
+  return {};
 }
 
 
@@ -140,10 +141,10 @@ ConstantTensorFunction<rank, dim, Number>::gradient_list(
   Assert(gradients.size() == points.size(),
          ExcDimensionMismatch(gradients.size(), points.size()));
 
-  static const Tensor<rank + 1, dim, Number> zero;
-
-  for (unsigned int i = 0; i < gradients.size(); ++i)
-    gradients[i] = zero;
+  // Return an array of zero tensors.
+  std::fill(gradients.begin(),
+            gradients.end(),
+            typename TensorFunction<rank, dim, Number>::gradient_type());
 }
 
 

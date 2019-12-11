@@ -47,12 +47,15 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 namespace LinearAlgebra
 {
   // Forward declaration
   template <typename Number>
   class ReadWriteVector;
 } // namespace LinearAlgebra
+#  endif
 
 /**
  * @addtogroup TrilinosWrappers
@@ -179,10 +182,8 @@ namespace TrilinosWrappers
        */
       const size_type index;
 
-      /**
-       * Make the vector class a friend, so that it can create objects of the
-       * present type.
-       */
+      // Make the vector class a friend, so that it can create objects of the
+      // present type.
       friend class ::dealii::TrilinosWrappers::MPI::Vector;
     };
   } // namespace internal
@@ -1201,9 +1202,19 @@ namespace TrilinosWrappers
       /**
        * Return a const reference to the underlying Trilinos Epetra_Map that
        * sets the parallel partitioning of the vector.
+       *
+       * @deprecated Use trilinos_partitioner() instead.
        */
+      DEAL_II_DEPRECATED
       const Epetra_Map &
       vector_partitioner() const;
+
+      /**
+       * Return a const reference to the underlying Trilinos Epetra_BlockMap
+       * that sets the parallel partitioning of the vector.
+       */
+      const Epetra_BlockMap &
+      trilinos_partitioner() const;
 
       /**
        * Print to a stream. @p precision denotes the desired precision with
@@ -1325,9 +1336,7 @@ namespace TrilinosWrappers
        */
       IndexSet owned_elements;
 
-      /**
-       * Make the reference class a friend.
-       */
+      // Make the reference class a friend.
       friend class internal::VectorReference;
     };
 
@@ -1604,17 +1613,14 @@ namespace TrilinosWrappers
 
       for (size_type i = 0; i < n_elements; ++i)
         {
-          const size_type                         row       = indices[i];
-          const TrilinosWrappers::types::int_type local_row = vector->Map().LID(
-            static_cast<TrilinosWrappers::types::int_type>(row));
+          const TrilinosWrappers::types::int_type row = indices[i];
+          const TrilinosWrappers::types::int_type local_row =
+            vector->Map().LID(row);
           if (local_row != -1)
             (*vector)[0][local_row] = values[i];
           else
             {
-              const int ierr = vector->ReplaceGlobalValues(
-                1,
-                (const TrilinosWrappers::types::int_type *)(&row),
-                &values[i]);
+              const int ierr = vector->ReplaceGlobalValues(1, &row, &values[i]);
               AssertThrow(ierr == 0, ExcTrilinosError(ierr));
               compressed = false;
             }
@@ -1688,7 +1694,8 @@ namespace TrilinosWrappers
             {
               const int ierr = vector->SumIntoGlobalValues(
                 1,
-                (const TrilinosWrappers::types::int_type *)(&row),
+                reinterpret_cast<const TrilinosWrappers::types::int_type *>(
+                  &row),
                 &values[i]);
               AssertThrow(ierr == 0, ExcTrilinosError(ierr));
               compressed = false;
@@ -1717,11 +1724,9 @@ namespace TrilinosWrappers
     Vector::size() const
     {
 #    ifndef DEAL_II_WITH_64BIT_INDICES
-      return (size_type)(vector->Map().MaxAllGID() + 1 -
-                         vector->Map().MinAllGID());
+      return vector->Map().MaxAllGID() + 1 - vector->Map().MinAllGID();
 #    else
-      return (size_type)(vector->Map().MaxAllGID64() + 1 -
-                         vector->Map().MinAllGID64());
+      return vector->Map().MaxAllGID64() + 1 - vector->Map().MinAllGID64();
 #    endif
     }
 
@@ -1730,7 +1735,7 @@ namespace TrilinosWrappers
     inline Vector::size_type
     Vector::local_size() const
     {
-      return (size_type)vector->Map().NumMyElements();
+      return vector->Map().NumMyElements();
     }
 
 
@@ -1863,7 +1868,7 @@ namespace TrilinosWrappers
 
       // loop over all the elements because
       // Trilinos does not support lp norms
-      for (size_type i = 0; i < n_local; i++)
+      for (size_type i = 0; i < n_local; ++i)
         sum += std::pow(std::fabs((*vector)[0][i]), p);
 
       norm = std::pow(sum, static_cast<TrilinosScalar>(1. / p));
@@ -1975,7 +1980,7 @@ namespace TrilinosWrappers
       AssertIsFinite(s);
 
       size_type n_local = local_size();
-      for (size_type i = 0; i < n_local; i++)
+      for (size_type i = 0; i < n_local; ++i)
         (*vector)[0][i] += s;
     }
 
@@ -2141,7 +2146,16 @@ namespace TrilinosWrappers
     inline const Epetra_Map &
     Vector::vector_partitioner() const
     {
-      return static_cast<const Epetra_Map &>(vector->Map());
+      // TODO A dynamic_cast fails here. This is suspicious.
+      return static_cast<const Epetra_Map &>(vector->Map()); // NOLINT
+    }
+
+
+
+    inline const Epetra_BlockMap &
+    Vector::trilinos_partitioner() const
+    {
+      return vector->Map();
     }
 
 

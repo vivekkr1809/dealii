@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2018 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,9 +43,9 @@ namespace parallel
      * <h3>Note on ghost elements</h3> In a parallel computation PETSc or
      * Trilinos vector may contain ghost elements or not. For reading in
      * information with prepare_for_coarsening_and_refinement() or
-     * prepare_serialization() you need to supply vectors with ghost elements,
-     * so that all locally_active elements can be read. On the other hand,
-     * ghosted vectors are generally not writable, so for calls to
+     * prepare_for_serialization() you need to supply vectors with ghost
+     * elements, so that all locally_active elements can be read. On the other
+     * hand, ghosted vectors are generally not writable, so for calls to
      * interpolate() or deserialize() you need to supply distributed vectors
      * without ghost elements. More precisely, during interpolation the
      * current algorithm writes into all locally active degrees of freedom.
@@ -81,15 +81,6 @@ namespace parallel
      * soltrans.interpolate(interpolated_solution);
      * @endcode
      *
-     * Different from PETSc and Trilinos vectors,
-     * LinearAlgebra::distributed::Vector allows writing into ghost elements.
-     * For a ghosted vector the interpolation step can be accomplished via
-     * @code
-     * interpolated_solution.zero_out_ghosts();
-     * soltrans.interpolate(interpolated_solution);
-     * interpolated_solution.update_ghost_values();
-     * @endcode
-     *
      * As the grid is distributed, it is important to note that the old
      * solution(s) must be copied to one that also provides access to the
      * locally relevant DoF values (these values required for the interpolation
@@ -113,12 +104,25 @@ namespace parallel
      *                     locally_relevant_dofs,
      *                     mpi_communicator);
      * old_solution = solution;
+     *
+     * // Initialize SolutionTransfer object
+     * SolutionTransfer<dim, VectorType> soltrans(dof_handler);
+     * soltrans.prepare_for_coarsening_and_refinement(old_solution);
      * ...
      * // Refine grid
      * // Recreate locally_owned_dofs and locally_relevant_dofs index sets
      * ...
      * solution.reinit(locally_owned_dofs, mpi_communicator);
-     * soltrans.refine_interpolate(old_solution, solution);
+     * soltrans.interpolate(solution);
+     * @endcode
+     *
+     * Different from PETSc and Trilinos vectors,
+     * LinearAlgebra::distributed::Vector allows writing into ghost elements.
+     * For a ghosted vector the interpolation step can be accomplished via
+     * @code
+     * interpolated_solution.zero_out_ghosts();
+     * soltrans.interpolate(interpolated_solution);
+     * interpolated_solution.update_ghost_values();
      * @endcode
      *
      * <h3>Use for Serialization</h3>
@@ -133,7 +137,7 @@ namespace parallel
      * @code
      * parallel::distributed::SolutionTransfer<dim,VectorType>
      *   sol_trans(dof_handler);
-     * sol_trans.prepare_serialization (vector);
+     * sol_trans.prepare_for_serialization (vector);
      *
      * triangulation.save(filename);
      * @endcode
@@ -153,82 +157,40 @@ namespace parallel
      *
      * If an object of the hp::DoFHandler class is registered with an
      * instantiation of this parallel::distributed::SolutionTransfer
-     * class, the following requirements have to be met:
-     * <ul>
-     *   <li>
-     *     The hp::DoFHandler needs to be explicitly mentioned
-     *     in the parallel::distributed::SolutionTransfer type, i.e.:
-     *     @code
-     *     parallel::distributed::SolutionsTransfer<dim, VectorType,
-     *       hp::DoFHandler<dim, spacedim>> sol_trans(hp_dof_handler);
-     *     @endcode
-     *   </li>
-     *   <li>
-     *     The transfer of the <tt>active_fe_index</tt> of each cell
-     *     has to be scheduled as well in the parallel::distributed case,
-     *     since ownerships of cells change during mesh repartitioning.
-     *     This can be achieved with the
-     *     parallel::distributed::ActiveFEIndicesTransfer class. The order in
-     *     which both objects append data during the packing process does not
-     *     matter. However, the unpacking process after refinement or
-     *     deserialization requires the `active_fe_index` to be distributed
-     *     before interpolating the data of the
-     *     parallel::distributed::SolutionTransfer object, so that the correct
-     *     FiniteElement object is associated with each cell. See the
-     *     documentation on parallel::distributed::ActiveFEIndicesTransfer
-     *     for further instructions.
-     *   </li>
-     * </ul>
+     * class, it is necessary to explicitly specify this in the template
+     * argument list of this class, i.e.:
+     * @code
+     * parallel::distributed::SolutionsTransfer<dim, VectorType,
+     *   hp::DoFHandler<dim, spacedim>> sol_trans(hp_dof_handler);
+     * @endcode
      *
      * Since data on hp::DoFHandler objects is associated with many different
      * FiniteElement objects, each cell's data has to be processed with its
      * correpsonding `active_fe_index`. Further, if refinement is involved,
      * data will be packed on the parent cell with its `active_fe_index` and
      * unpacked later with the same index on its children. If cells get
-     * coarsened into one, data will be packed on the latter with the least
-     * dominating `active_fe_index` amongst its children, as determined by the
-     * function hp::FECollection::find_least_face_dominating_fe_in_collection(),
-     * and unpacked on the same cell with the same index.
+     * coarsened into one, data will be packed on the children with the least
+     * dominant finite element of their common subspace, and unpacked on the
+     * parent with this particular finite element (consult
+     * hp::FECollection::find_dominated_fe_extended() for more information).
      *
-     * Code snippets to demonstrate the usage of the
-     * parallel::distributed::SolutionTransfer class with hp::DoFHandler
-     * objects are provided in the following. Here VectorType
-     * is your favorite vector type, e.g. PETScWrappers::MPI::Vector,
-     * TrilinosWrappers::MPI::Vector, or corresponding block vectors.
-     *
-     * After refinement, the order in which to unpack the transferred data
-     * is important:
-     * @code
-     * //[prepare triangulation for refinement ...]
-     *
-     * parallel::distributed::ActiveFEIndicesTransfer<dim,spacedim>
-     *   feidx_trans(hp_dof_handler);
-     * parallel::distributed::
-     *   SolutionTransfer<dim,VectorType,hp::DoFHandler<dim,spacedim>>
-     *     sol_trans(hp_dof_handler);
-     *
-     * feidx_trans.prepare_for_transfer();
-     * sol_trans.prepare_for_coarsening_and_refinement(solution);
-     * triangulation.execute_coarsening_and_refinement();
-     *
-     * feidx_trans.unpack();
-     * hp_dof_handler.distribute_dofs(fe_collection);
-     *
-     * VectorType interpolated_solution;
-     * //[create VectorType in the right size here ...]
-     * soltrans.interpolate(interpolated_solution);
-     * @endcode
+     * Transferring a solution across refinement works exactly like in the
+     * non-hp case. However, when considering serialization, we also have to
+     * store the active_fe_indices in an additional step. A code snippet
+     * demonstrating serialization with the
+     * parallel::distributed::SolutionTransfer class with hp::DoFHandler objects
+     * is provided in the following. Here VectorType is your favorite vector
+     * type, e.g. PETScWrappers::MPI::Vector, TrilinosWrappers::MPI::Vector, or
+     * corresponding block vectors.
      *
      * If vector has the locally relevant DoFs, serialization works as follows:
      * @code
-     * parallel::distributed::ActiveFEIndicesTransfer<dim,spacedim>
-     *   feidx_trans(hp_dof_handler);
      * parallel::distributed::
      *   SolutionTransfer<dim, VectorType, hp::DoFHandler<dim,spacedim>>
      *     sol_trans(hp_dof_handler);
      *
-     * feidx_trans.prepare_for_transfer();
-     * sol_trans.prepare_serialization(vector);
+     * hp_dof_handler.prepare_for_serialization_of_active_fe_indices();
+     * sol_trans.prepare_for_serialization(vector);
      *
      * triangulation.save(filename);
      * @endcode
@@ -239,14 +201,14 @@ namespace parallel
      * //[create coarse mesh...]
      * triangulation.load(filename);
      *
-     * hp::DoFHandler<dim,spacedim>   hp_dof_handler(triangulation);
      * hp::FECollection<dim,spacedim> fe_collection;
      * //[prepare identical fe_collection...]
-     * hp_dof_handler.distribute_dofs(fe_collection);
      *
-     * parallel::distributed::ActiveFEIndicesTransfer<dim,spacedim>
-     *   feidx_trans(hp_dof_handler);
-     * feidx_trans.deserialize();
+     * hp::DoFHandler<dim,spacedim> hp_dof_handler(triangulation);
+     * // We need to introduce our dof_handler to the fe_collection
+     * // before setting all active_fe_indices.
+     * hp_dof_handler.set_fe(fe_collection);
+     * hp_dof_handler.deserialize_active_fe_indices();
      * hp_dof_handler.distribute_dofs(fe_collection);
      *
      * parallel::distributed::
@@ -334,7 +296,6 @@ namespace parallel
       void
       interpolate(VectorType &out);
 
-
       /**
        * Prepare the serialization of the given vector. The serialization is
        * done by Triangulation::save(). The given vector needs all information
@@ -342,15 +303,34 @@ namespace parallel
        * this class for more information.
        */
       void
-      prepare_serialization(const VectorType &in);
-
+      prepare_for_serialization(const VectorType &in);
 
       /**
        * Same as the function above, only for a list of vectors.
        */
       void
-      prepare_serialization(const std::vector<const VectorType *> &all_in);
+      prepare_for_serialization(const std::vector<const VectorType *> &all_in);
 
+      /**
+       * Prepare the serialization of the given vector. The serialization is
+       * done by Triangulation::save(). The given vector needs all information
+       * on the locally active DoFs (it must be ghosted). See documentation of
+       * this class for more information.
+       *
+       * @deprecated Use parallel::distributed::SolutionTransfer::prepare_for_serialization() instead.
+       */
+      DEAL_II_DEPRECATED
+      void
+      prepare_serialization(const VectorType &in);
+
+      /**
+       * Same as the function above, only for a list of vectors.
+       *
+       * @deprecated Use parallel::distributed::SolutionTransfer::prepare_for_serialization() instead.
+       */
+      DEAL_II_DEPRECATED
+      void
+      prepare_serialization(const std::vector<const VectorType *> &all_in);
 
       /**
        * Execute the deserialization of the given vector. This needs to be

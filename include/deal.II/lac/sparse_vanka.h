@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,6 +28,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class FullMatrix;
 template <typename number>
@@ -39,6 +41,7 @@ template <typename number>
 class SparseVanka;
 template <typename number>
 class SparseBlockVanka;
+#endif
 
 /*! @addtogroup Preconditioners
  *@{
@@ -365,18 +368,16 @@ private:
   void
   compute_inverse(const size_type row, std::vector<size_type> &local_indices);
 
-  /**
-   * Make the derived class a friend. This seems silly, but is actually
-   * necessary, since derived classes can only access non-public members
-   * through their @p this pointer, but not access these members as member
-   * functions of other objects of the type of this base class (i.e. like
-   * <tt>x.f()</tt>, where @p x is an object of the base class, and @p f one
-   * of it's non-public member functions).
-   *
-   * Now, in the case of the @p SparseBlockVanka class, we would like to take
-   * the address of a function of the base class in order to call it through
-   * the multithreading framework, so the derived class has to be a friend.
-   */
+  // Make the derived class a friend. This seems silly, but is actually
+  // necessary, since derived classes can only access non-public members
+  // through their @p this pointer, but not access these members as member
+  // functions of other objects of the type of this base class (i.e. like
+  // <tt>x.f()</tt>, where @p x is an object of the base class, and @p f one
+  // of it's non-public member functions).
+  //
+  // Now, in the case of the @p SparseBlockVanka class, we would like to take
+  // the address of a function of the base class in order to call it through
+  // the multithreading framework, so the derived class has to be a friend.
   template <typename T>
   friend class SparseBlockVanka;
 };

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2018 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -222,7 +222,7 @@ namespace Testing
     r[k % 32] = nonoverflow_add(r[(k + 32 - 31) % 32], r[(k + 32 - 3) % 32]);
     int ret   = r[k % 32];
     k         = (k + 1) % 32;
-    return (unsigned int)ret >> 1;
+    return static_cast<unsigned int>(ret) >> 1;
   }
 
   // reseed our random number generator
@@ -315,7 +315,7 @@ checksum(const IT &begin, const IT &end)
 
   while (it != end)
     {
-      a = (a + (unsigned char)*it) % 65521;
+      a = (a + static_cast<unsigned char>(*it)) % 65521;
       b = (a + b) % 65521;
       ++it;
     }
@@ -527,6 +527,9 @@ struct MPILogInitAll
   {
 #ifdef DEAL_II_WITH_MPI
     const unsigned int myid = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+#else
+    constexpr unsigned int myid = 0;
+#endif
     if (myid == 0)
       {
         if (!deallog.has_file())
@@ -545,21 +548,16 @@ struct MPILogInitAll
     deallog.depth_console(console ? 10 : 0);
 
     deallog.push(Utilities::int_to_string(myid));
-#else
-    (void)console;
-    // can't use this function if not using MPI
-    Assert(false, ExcInternalError());
-#endif
   }
 
   ~MPILogInitAll()
   {
+    // pop the prefix for the MPI rank of the current process
+    deallog.pop();
+
 #ifdef DEAL_II_WITH_MPI
     const unsigned int myid  = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
     const unsigned int nproc = Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD);
-
-    // pop the prefix for the MPI rank of the current process
-    deallog.pop();
 
     if (myid != 0)
       {
@@ -583,10 +581,6 @@ struct MPILogInitAll
           }
       }
     MPI_Barrier(MPI_COMM_WORLD);
-
-#else
-    // can't use this function if not using MPI
-    Assert(false, ExcInternalError());
 #endif
   }
 };
@@ -596,16 +590,11 @@ struct MPILogInitAll
 // By default, all the ranks will try to access the device 0.
 // If we are running with MPI support it is better to address different graphic
 // cards for different processes even if only one node is used. The choice below
-// is based on the MPI proccess id.
+// is based on the MPI process id.
 // MPI needs to be initialized before using this function.
-//
-// Also initialize a dummy handle that makes sure that unused memory is released
-// before the device shuts down.
 void
 init_cuda(const bool use_mpi = false)
 {
-  static Utilities::CUDA::Handle cuda_handle;
-
 #  ifndef DEAL_II_WITH_MPI
   Assert(use_mpi == false, ExcInternalError());
 #  endif

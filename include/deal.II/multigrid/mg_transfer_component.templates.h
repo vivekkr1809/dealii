@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 
 #ifndef dealii_mg_transfer_component_templates_h
 #define dealii_mg_transfer_component_templates_h
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 

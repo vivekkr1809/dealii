@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2002 - 2017 by the deal.II authors
+// Copyright (C) 2002 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,10 +28,13 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#  ifndef DOXYGEN
 template <typename number>
 class Vector;
 template <typename number>
 class FullMatrix;
+#  endif
 
 /**
  * @addtogroup Matrix1
@@ -232,9 +235,7 @@ public:
        */
       unsigned short a_index;
 
-      /**
-       * Make enclosing class a friend.
-       */
+      // Make enclosing class a friend.
       friend class const_iterator;
     };
 
@@ -285,14 +286,6 @@ public:
      * Store an object of the accessor class.
      */
     Accessor accessor;
-
-    /**
-     * Make the enclosing class a friend. This is only necessary since icc7
-     * otherwise wouldn't allow us to make const_iterator::Accessor a friend,
-     * stating that it can't access this class -- this is of course bogus,
-     * since granting friendship doesn't need access to the class being
-     * granted friendship...
-     */
   };
 
   /**

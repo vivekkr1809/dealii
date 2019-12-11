@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -121,7 +121,7 @@ namespace internal
  *
  */
 template <typename VectorType = Vector<double>>
-class SolverBicgstab : public Solver<VectorType>,
+class SolverBicgstab : public SolverBase<VectorType>,
                        protected internal::SolverBicgstabData
 {
 public:
@@ -175,7 +175,7 @@ public:
   /**
    * Virtual destructor.
    */
-  virtual ~SolverBicgstab() override;
+  virtual ~SolverBicgstab() override = default;
 
   /**
    * Solve primal problem only.
@@ -314,7 +314,7 @@ template <typename VectorType>
 SolverBicgstab<VectorType>::SolverBicgstab(SolverControl &           cn,
                                            VectorMemory<VectorType> &mem,
                                            const AdditionalData &    data)
-  : Solver<VectorType>(cn, mem)
+  : SolverBase<VectorType>(cn, mem)
   , Vx(nullptr)
   , Vb(nullptr)
   , additional_data(data)
@@ -325,16 +325,10 @@ SolverBicgstab<VectorType>::SolverBicgstab(SolverControl &           cn,
 template <typename VectorType>
 SolverBicgstab<VectorType>::SolverBicgstab(SolverControl &       cn,
                                            const AdditionalData &data)
-  : Solver<VectorType>(cn)
+  : SolverBase<VectorType>(cn)
   , Vx(nullptr)
   , Vb(nullptr)
   , additional_data(data)
-{}
-
-
-
-template <typename VectorType>
-SolverBicgstab<VectorType>::~SolverBicgstab()
 {}
 
 

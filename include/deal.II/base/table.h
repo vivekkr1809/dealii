@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2002 - 2018 by the deal.II authors
+// Copyright (C) 2002 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,6 +31,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declaration
+#ifndef DOXYGEN
 template <int N, typename T>
 class TableBase;
 template <int N, typename T>
@@ -49,6 +50,7 @@ template <typename T>
 class Table<5, T>;
 template <typename T>
 class Table<6, T>;
+#endif
 
 
 
@@ -178,11 +180,6 @@ namespace internal
        */
       Accessor(const TableType &table, const iterator data);
 
-      /**
-       * Default constructor. Not needed, and invisible, so deleted.
-       */
-      Accessor() = delete;
-
     public:
       /**
        * Copy constructor. This constructor is public so that one can pass
@@ -283,11 +280,6 @@ namespace internal
        */
       Accessor(const TableType &table, const iterator data);
 
-      /**
-       * Default constructor. Not needed, so deleted.
-       */
-      Accessor() = delete;
-
     public:
       /**
        * Copy constructor. This constructor is public so that one can pass
@@ -297,7 +289,6 @@ namespace internal
        * the table it points to. Don't do this.
        */
       Accessor(const Accessor &a);
-
 
       /**
        * Index operator. Performs a range check.
@@ -685,9 +676,7 @@ protected:
    */
   TableIndices<N> table_size;
 
-  /**
-   * Make all other table classes friends.
-   */
+  // Make all other table classes friends.
   template <int, typename>
   friend class TableBase;
 };
@@ -930,6 +919,11 @@ namespace MatrixTableIterators
     value() const;
 
     /**
+     * Conversion operator that returns a constant reference to the element.
+     */
+    operator const value_type &() const;
+
+    /**
      * Return the row of the current entry.
      */
     size_type
@@ -961,14 +955,10 @@ namespace MatrixTableIterators
     void
     assert_valid_linear_index() const;
 
-    /**
-     * Make the const version a friend for copying.
-     */
+    // Make the const version a friend for copying.
     friend class AccessorBase<TableType, true, storage_order>;
 
-    /**
-     * Make the underlying iterator class a friend.
-     */
+    // Make the underlying iterator class a friend.
     friend class LinearIndexIterator<
       Iterator<TableType, Constness, storage_order>,
       Accessor<TableType, Constness, storage_order>>;
@@ -1053,6 +1043,11 @@ namespace MatrixTableIterators
      */
     value_type &
     value() const;
+
+    /**
+     * Conversion operator that returns a reference to the element.
+     */
+    operator value_type &();
   };
 
   /**
@@ -1259,7 +1254,6 @@ public:
   typename AlignedVector<T>::const_reference
   operator()(const size_type i, const size_type j) const;
 
-
   /**
    * Direct access to one element of the table by specifying all indices at
    * the same time. Range checks are performed.
@@ -1353,19 +1347,15 @@ protected:
   typename AlignedVector<T>::const_reference
   el(const size_type i, const size_type j) const;
 
-  /**
-   * Make the AccessorBase class a friend so that it may directly index into
-   * the array.
-   */
+  // Make the AccessorBase class a friend so that it may directly index into
+  // the array.
   friend class MatrixTableIterators::
     AccessorBase<Table<2, T>, true, MatrixTableIterators::Storage::row_major>;
   friend class MatrixTableIterators::
     AccessorBase<Table<2, T>, false, MatrixTableIterators::Storage::row_major>;
 
-  /**
-   * Make the mutable accessor class a friend so that we can write to array
-   * entries with iterators.
-   */
+  // Make the mutable accessor class a friend so that we can write to array
+  // entries with iterators.
   friend class MatrixTableIterators::
     Accessor<Table<2, T>, false, MatrixTableIterators::Storage::row_major>;
 };
@@ -2085,10 +2075,8 @@ protected:
   const_reference
   el(const size_type i, const size_type j) const;
 
-  /**
-   * Make the AccessorBase class a friend so that it may directly index into
-   * the array.
-   */
+  // Make the AccessorBase class a friend so that it may directly index into
+  // the array.
   friend class MatrixTableIterators::AccessorBase<
     TransposeTable<T>,
     true,
@@ -2098,10 +2086,8 @@ protected:
     false,
     MatrixTableIterators::Storage::column_major>;
 
-  /**
-   * Make the mutable accessor class a friend so that we can write to array
-   * entries with iterators.
-   */
+  // Make the mutable accessor class a friend so that we can write to array
+  // entries with iterators.
   friend class MatrixTableIterators::Accessor<
     TransposeTable<T>,
     false,
@@ -2935,6 +2921,16 @@ namespace MatrixTableIterators
 
 
   template <typename TableType, bool Constness, Storage storage_order>
+  inline AccessorBase<TableType, Constness, storage_order>::
+  operator const value_type &() const
+  {
+    assert_valid_linear_index();
+    return this->container->values[linear_index];
+  }
+
+
+
+  template <typename TableType, bool Constness, Storage storage_order>
   inline typename AccessorBase<TableType, Constness, storage_order>::size_type
   AccessorBase<TableType, Constness, storage_order>::row() const
   {
@@ -3015,6 +3011,15 @@ namespace MatrixTableIterators
   template <typename TableType, Storage storage_order>
   inline typename Accessor<TableType, false, storage_order>::value_type &
   Accessor<TableType, false, storage_order>::value() const
+  {
+    this->assert_valid_linear_index();
+    return this->container->values[this->linear_index];
+  }
+
+
+
+  template <typename TableType, Storage storage_order>
+  inline Accessor<TableType, false, storage_order>::operator value_type &()
   {
     this->assert_valid_linear_index();
     return this->container->values[this->linear_index];

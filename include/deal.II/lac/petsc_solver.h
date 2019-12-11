@@ -34,20 +34,25 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-#    ifdef DEAL_II_WITH_SLEPC
+// Forward declarations
+#    ifndef DOXYGEN
+#      ifdef DEAL_II_WITH_SLEPC
 namespace SLEPcWrappers
 {
   // forward declarations
   class TransformationBase;
 } // namespace SLEPcWrappers
+#      endif
 #    endif
 
 namespace PETScWrappers
 {
   // forward declarations
+#    ifndef DOXYGEN
   class MatrixBase;
   class VectorBase;
   class PreconditionerBase;
+#    endif
 
 
   /**
@@ -247,10 +252,8 @@ namespace PETScWrappers
     std::unique_ptr<SolverData> solver_data;
 
 #    ifdef DEAL_II_WITH_SLEPC
-    /**
-     * Make the transformation class a friend, since it needs to set the KSP
-     * solver.
-     */
+    // Make the transformation class a friend, since it needs to set the KSP
+    // solver.
     friend class SLEPcWrappers::TransformationBase;
 #    endif
   };

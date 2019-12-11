@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2014 - 2018 by the deal.II authors
+// Copyright (C) 2014 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -48,8 +48,11 @@
 #  include <BRepAdaptor_HCurve.hxx>
 #  include <BRepAdaptor_Surface.hxx>
 #  include <BRepAlgo_Section.hxx>
+#  include <BRepBndLib.hxx>
 #  include <BRepBuilderAPI_MakeEdge.hxx>
+#  include <BRepBuilderAPI_Sewing.hxx>
 #  include <BRepBuilderAPI_Transform.hxx>
+#  include <BRepMesh_IncrementalMesh.hxx>
 #  include <BRepTools.hxx>
 #  include <BRep_Builder.hxx>
 #  include <GCPnts_AbscissaPoint.hxx>
@@ -61,16 +64,21 @@
 #  include <Geom_BoundedCurve.hxx>
 #  include <Geom_Plane.hxx>
 #  include <IntCurvesFace_ShapeIntersector.hxx>
+#  include <Poly_Triangulation.hxx>
 #  include <ShapeAnalysis_Surface.hxx>
+#  include <StlAPI_Reader.hxx>
+#  include <StlAPI_Writer.hxx>
 #  include <TColStd_HSequenceOfTransient.hxx>
 #  include <TColStd_SequenceOfTransient.hxx>
 #  include <TColgp_HArray1OfPnt.hxx>
+#  include <TopLoc_Location.hxx>
 #  include <gp_Lin.hxx>
 #  include <gp_Pnt.hxx>
 #  include <gp_Vec.hxx>
 
 #  include <algorithm>
 #  include <vector>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -267,6 +275,87 @@ namespace OpenCASCADE
     AssertThrow(OK, ExcMessage("Failed to write IGES file."));
   }
 
+
+  TopoDS_Shape
+  read_STL(const std::string &filename)
+  {
+    StlAPI_Reader reader;
+    TopoDS_Shape  shape;
+    reader.Read(shape, filename.c_str());
+    return shape;
+  }
+
+
+  void
+  write_STL(const TopoDS_Shape &shape,
+            const std::string & filename,
+            const double        deflection,
+            const bool          sew_different_faces,
+            const double        sewer_tolerance,
+            const bool          is_relative,
+            const double        angular_deflection,
+            const bool          in_parallel)
+  {
+    TopLoc_Location            Loc;
+    std::vector<TopoDS_Vertex> vertices;
+    std::vector<TopoDS_Edge>   edges;
+    std::vector<TopoDS_Face>   faces;
+    OpenCASCADE::extract_geometrical_shapes(shape, faces, edges, vertices);
+    bool mesh_is_present = true;
+    for (unsigned int i = 0; i < faces.size(); ++i)
+      {
+        Handle(Poly_Triangulation) theTriangulation =
+          BRep_Tool::Triangulation(faces[i], Loc);
+        if (theTriangulation.IsNull())
+          {
+            mesh_is_present = false;
+            break;
+          }
+      }
+    TopoDS_Shape shape_to_be_written = shape;
+    if (!mesh_is_present)
+      {
+        if (sew_different_faces)
+          {
+            BRepBuilderAPI_Sewing sewer(sewer_tolerance);
+            sewer.Add(shape_to_be_written);
+            sewer.Perform();
+            shape_to_be_written = sewer.SewedShape();
+          }
+        else
+          shape_to_be_written = shape;
+        // BRepMesh_IncrementalMesh automatically calls the perform method to
+        // create the triangulation which is stored in the argument
+        // `shape_to_be_written`.
+        BRepMesh_IncrementalMesh mesh_im(shape_to_be_written,
+                                         deflection,
+                                         is_relative,
+                                         angular_deflection,
+                                         in_parallel);
+      }
+
+    StlAPI_Writer writer;
+
+#  if ((OCC_VERSION_MAJOR * 100 + OCC_VERSION_MINOR * 10) >= 690)
+    // opencascade versions 6.9.0 onwards return an error status
+    const auto error = writer.Write(shape_to_be_written, filename.c_str());
+
+    // which is a custom type between 6.9.0 and 7.1.0
+#    if ((OCC_VERSION_MAJOR * 100 + OCC_VERSION_MINOR * 10) < 720)
+    AssertThrow(error == StlAPI_StatusOK,
+                ExcMessage("Error writing STL from shape."));
+#    else
+    // and a boolean from version 7.2.0 onwards
+    AssertThrow(error == true, ExcMessage("Error writing STL from shape."));
+#    endif
+
+#  else
+
+    // for opencascade versions 6.8.0 and older the return value is void
+    writer.Write(shape_to_be_written, filename.c_str());
+#  endif
+  }
+
   TopoDS_Shape
   read_STEP(const std::string &filename, const double scale_factor)
   {
@@ -323,14 +412,14 @@ namespace OpenCASCADE
 
     extract_geometrical_shapes(shape, faces, edges, vertices);
 
-    for (unsigned int i = 0; i < vertices.size(); ++i)
-      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(vertices[i]));
+    for (const auto &vertex : vertices)
+      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(vertex));
 
-    for (unsigned int i = 0; i < edges.size(); ++i)
-      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(edges[i]));
+    for (const auto &edge : edges)
+      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(edge));
 
-    for (unsigned int i = 0; i < faces.size(); ++i)
-      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(faces[i]));
+    for (const auto &face : faces)
+      tolerance = std::fmax(tolerance, BRep_Tool::Tolerance(face));
 
 
     return tolerance;
@@ -500,6 +589,7 @@ namespace OpenCASCADE
 
     Handle(Geom_BSplineCurve) bspline = bspline_generator.Curve();
     TopoDS_Edge out_shape             = BRepBuilderAPI_MakeEdge(bspline);
+    out_shape.Closed(closed);
     return out_shape;
   }
 
@@ -521,7 +611,7 @@ namespace OpenCASCADE
 
     unsigned int face_index;
 
-    for (auto cell : triangulation.active_cell_iterators())
+    for (const auto &cell : triangulation.active_cell_iterators())
       for (unsigned int f = 0; f < GeometryInfo<2>::faces_per_cell; ++f)
         if (cell->face(f)->at_boundary())
           {

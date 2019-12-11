@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -135,9 +135,9 @@ dseupd_(int *         rvec,
  * The ArpackSolver can be used in application codes with serial objects in
  * the following way:
  * @code
- * SolverControl solver_control (1000, 1e-9);
- * ArpackSolver (solver_control);
- * system.solve (A, B, OP, lambda, x, size_of_spectrum);
+ * SolverControl solver_control(1000, 1e-9);
+ * ArpackSolver solver(solver_control);
+ * solver.solve(A, B, OP, lambda, x, size_of_spectrum);
  * @endcode
  * for the generalized eigenvalue problem $Ax=B\lambda x$, where the variable
  * <code>size_of_spectrum</code> tells ARPACK the number of
@@ -483,6 +483,21 @@ inline ArpackSolver::AdditionalData::AdditionalData(
         ExcMessage(
           "'smallest imaginary part' can only be used for non-symmetric problems!"));
     }
+  // Check for possible options for asymmetric problems
+  else
+    {
+      Assert(
+        eigenvalue_of_interest != algebraically_largest,
+        ExcMessage(
+          "'largest algebraic part' can only be used for symmetric problems!"));
+      Assert(
+        eigenvalue_of_interest != algebraically_smallest,
+        ExcMessage(
+          "'smallest algebraic part' can only be used for symmetric problems!"));
+      Assert(eigenvalue_of_interest != both_ends,
+             ExcMessage(
+               "'both ends' can only be used for symmetric problems!"));
+    }
 }
 
 
@@ -764,6 +779,9 @@ ArpackSolver::solve(const MatrixType1 & /*system_matrix*/,
             break;
         }
     }
+
+  // Set number of used iterations in SolverControl
+  control().check(iparam[2], 0.);
 
   if (info < 0)
     {

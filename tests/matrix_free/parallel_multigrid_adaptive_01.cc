@@ -75,7 +75,7 @@ public:
     addit_data.tasks_parallel_scheme =
       MatrixFree<dim, number>::AdditionalData::none;
     addit_data.tasks_block_size = 3;
-    addit_data.level_mg_handler = level;
+    addit_data.mg_level         = level;
     AffineConstraints<double> constraints;
     if (level == numbers::invalid_unsigned_int)
       {
@@ -642,7 +642,7 @@ test()
       FE_Q<dim>       fe(fe_degree);
       DoFHandler<dim> dof(tria);
       dof.distribute_dofs(fe);
-      dof.distribute_mg_dofs(fe);
+      dof.distribute_mg_dofs();
 
       do_test<dim, fe_degree, fe_degree + 1, double>(dof);
     }

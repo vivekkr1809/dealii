@@ -28,9 +28,10 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class Vector;
-
+#endif
 
 /*! @addtogroup Matrix1
  *@{
@@ -60,7 +61,7 @@ public:
   using size_type = types::global_dof_index;
 
   /**
-   * @name Constructors and initialization.
+   * @name Constructors and initialization
    */
   /**
    * Constructor generating an empty matrix of dimension <tt>n</tt>.

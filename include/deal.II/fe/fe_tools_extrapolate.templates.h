@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2000 - 2018 by the deal.II authors
+// Copyright (C) 2000 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #ifndef dealii_fe_tools_extrapolate_templates_H
 #define dealii_fe_tools_extrapolate_templates_H
 
+
+#include <deal.II/base/config.h>
 
 #include <deal.II/distributed/p4est_wrappers.h>
 #include <deal.II/distributed/tria.h>
@@ -1148,6 +1150,14 @@ namespace FETools
       std::vector<MPI_Request>                 requests(cells_to_send.size());
       std::vector<unsigned int>                destinations;
 
+      // Protect the communcation below:
+      static Utilities::MPI::CollectiveMutex      mutex;
+      Utilities::MPI::CollectiveMutex::ScopedLock lock(mutex, communicator);
+
+      // We pick a new tag in each round. Wrap around after 10 rounds:
+      const int mpi_tag =
+        Utilities::MPI::internal::Tags::fe_tools_extrapolate + round % 10;
+
       // send data
       unsigned int idx = 0;
       for (typename std::vector<CellData>::const_iterator it =
@@ -1158,11 +1168,11 @@ namespace FETools
           destinations.push_back(it->receiver);
 
           it->pack_data(*buffer);
-          const int ierr = MPI_Isend(&(*buffer)[0],
+          const int ierr = MPI_Isend(buffer->data(),
                                      buffer->size(),
                                      MPI_BYTE,
                                      it->receiver,
-                                     round,
+                                     mpi_tag,
                                      communicator,
                                      &requests[idx]);
           AssertThrowMPI(ierr);
@@ -1180,9 +1190,10 @@ namespace FETools
       for (unsigned int index = 0; index < n_senders; ++index)
         {
           MPI_Status status;
-          int        len;
-          int ierr = MPI_Probe(MPI_ANY_SOURCE, round, communicator, &status);
+          int ierr = MPI_Probe(MPI_ANY_SOURCE, mpi_tag, communicator, &status);
           AssertThrowMPI(ierr);
+
+          int len;
           ierr = MPI_Get_count(&status, MPI_BYTE, &len);
           AssertThrowMPI(ierr);
           receive.resize(len);
@@ -1259,9 +1270,9 @@ namespace FETools
         std::lower_bound(cells_list.begin(), cells_list.end(), cell_data);
 
       if ((bound != cells_list.end()) && !(cell_data < *bound))
-        return (int)(bound - cells_list.begin());
+        return static_cast<int>(bound - cells_list.begin());
 
-      return (-1);
+      return -1;
     }
 
 
@@ -1581,6 +1592,23 @@ namespace FETools
 
 
 #  ifdef DEAL_II_WITH_MPI
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA
+    template <int dim, int spacedim, typename Number>
+    void
+    reinit_distributed(const DoFHandler<dim, spacedim> &              dh,
+                       LinearAlgebra::TpetraWrappers::Vector<Number> &vector)
+    {
+      const parallel::distributed::Triangulation<dim, spacedim> *parallel_tria =
+        dynamic_cast<
+          const parallel::distributed::Triangulation<dim, spacedim> *>(
+          &dh.get_triangulation());
+      Assert(parallel_tria != nullptr, ExcNotImplemented());
+
+      const IndexSet &locally_owned_dofs = dh.locally_owned_dofs();
+      vector.reinit(locally_owned_dofs, parallel_tria->get_communicator());
+    }
+#    endif
+
     template <int dim, int spacedim>
     void
     reinit_distributed(const DoFHandler<dim, spacedim> &      dh,

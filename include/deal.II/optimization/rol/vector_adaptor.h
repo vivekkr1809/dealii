@@ -30,10 +30,6 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
-using namespace dealii;
-
-
 /**
  * A namespace that provides an interface to the
  * <a href="https://trilinos.org/docs/dev/packages/rol/doc/html/index.html">
@@ -106,7 +102,8 @@ namespace Rol
    * @endcode
    *
    * @note The current implementation in ROL doesn't support vector sizes above
-   * the largest value of int type. Some of the vectors in deal.II (@ref Vector)
+   * the largest value of int type. Some of the vectors in deal.II (see
+   * @ref Vector)
    * may not satisfy the above requirements.
    *
    * @author Vishal Boddu, 2017

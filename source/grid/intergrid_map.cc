@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2017 by the deal.II authors
+// Copyright (C) 1999 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -77,7 +77,7 @@ InterGridMap<MeshType>::make_mapping(const MeshType &source_grid,
       // zero-based index, but we need the
       // number of cells, which is one larger
       mapping[level].resize(n_cells + 1, destination_grid.end());
-    };
+    }
 
   // now make up the mapping
   // loop over all cells and set the user

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,9 +38,13 @@ main()
 
   Subscriptor       subscriptor;
   std::atomic<bool> dummy_a;
-  subscriptor.subscribe(&dummy_a, "a");
-  subscriptor.unsubscribe(&dummy_a, "b");
-  subscriptor.unsubscribe(&dummy_a, "a");
+  const char *      foo_a = "a";
+  const char *      foo_b = "b";
+  subscriptor.subscribe(&dummy_a, foo_a);
+  subscriptor.unsubscribe(&dummy_a, foo_b);
+  std::atomic<bool> dummy_b;
+  subscriptor.unsubscribe(&dummy_b, foo_a);
+  subscriptor.unsubscribe(&dummy_a, foo_a);
 
   return 0;
 }

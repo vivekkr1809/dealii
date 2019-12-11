@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2013 - 2017 by the deal.II authors
+// Copyright (C) 2013 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -332,7 +332,7 @@ Step4<dim>::solve(int cycle)
 
   {
     deallog.push("IC");
-    static constexpr std::array<unsigned int, 2> lower{49, 67};
+    static constexpr std::array<unsigned int, 2> lower{48, 67};
     TrilinosWrappers::PreconditionIC             preconditioner;
     solution = 0;
     SolverControl solver_control(1000, 1e-10);
@@ -342,7 +342,7 @@ Step4<dim>::solve(int cycle)
       solver.solve(system_matrix, solution, system_rhs, preconditioner),
       solver_control.last_step(),
       lower[cycle],
-      lower[cycle] + 4);
+      lower[cycle] + 5);
     deallog.pop();
   }
 

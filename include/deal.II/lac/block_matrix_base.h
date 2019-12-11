@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2004 - 2017 by the deal.II authors
+// Copyright (C) 2004 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -37,9 +37,11 @@
 DEAL_II_NAMESPACE_OPEN
 
 
+// Forward declaration
+#ifndef DOXYGEN
 template <typename>
 class MatrixIterator;
-
+#endif
 
 
 /*! @addtogroup Matrix1
@@ -99,9 +101,7 @@ namespace BlockMatrixIterators
      */
     unsigned int col_block;
 
-    /**
-     * Let the iterator class be a friend.
-     */
+    // Let the iterator class be a friend.
     template <typename>
     friend class MatrixIterator;
   };
@@ -280,9 +280,7 @@ namespace BlockMatrixIterators
     bool
     operator==(const Accessor &a) const;
 
-    /**
-     * Let the iterator class be a friend.
-     */
+    // Let the iterator class be a friend.
     template <typename>
     friend class dealii::MatrixIterator;
   };
@@ -364,6 +362,7 @@ public:
    * library containers.
    */
   using value_type      = typename BlockType::value_type;
+  using real_type       = typename numbers::NumberTraits<value_type>::real_type;
   using pointer         = value_type *;
   using const_pointer   = const value_type *;
   using reference       = value_type &;
@@ -701,6 +700,13 @@ public:
   template <class BlockVectorType>
   value_type
   matrix_norm_square(const BlockVectorType &v) const;
+
+  /**
+   * Return the frobenius norm of the matrix, i.e. the square root of the sum
+   * of squares of all entries in the matrix.
+   */
+  real_type
+  frobenius_norm() const;
 
   /**
    * Compute the matrix scalar product $\left(u,Mv\right)$.
@@ -1060,10 +1066,8 @@ private:
    */
   TemporaryData temporary_data;
 
-  /**
-   * Make the iterator class a friend. We have to work around a compiler bug
-   * here again.
-   */
+  // Make the iterator class a friend. We have to work around a compiler bug
+  // here again.
   template <typename, bool>
   friend class BlockMatrixIterators::Accessor;
 
@@ -1809,8 +1813,8 @@ BlockMatrixBase<MatrixType>::set(const size_type  row,
       block(row_index.first, block_col)
         .set(row_index.second,
              temporary_data.counter_within_block[block_col],
-             &temporary_data.column_indices[block_col][0],
-             &temporary_data.column_values[block_col][0],
+             temporary_data.column_indices[block_col].data(),
+             temporary_data.column_values[block_col].data(),
              false);
     }
 }
@@ -2065,8 +2069,8 @@ BlockMatrixBase<MatrixType>::add(const size_type  row,
       block(row_index.first, block_col)
         .add(row_index.second,
              temporary_data.counter_within_block[block_col],
-             &temporary_data.column_indices[block_col][0],
-             &temporary_data.column_values[block_col][0],
+             temporary_data.column_indices[block_col].data(),
+             temporary_data.column_values[block_col].data(),
              false,
              col_indices_are_sorted);
     }
@@ -2403,6 +2407,28 @@ BlockMatrixBase<MatrixType>::matrix_norm_square(const BlockVectorType &v) const
         norm_sqr +=
           block(row, col).matrix_scalar_product(v.block(row), v.block(col));
   return norm_sqr;
+}
+
+
+
+template <class MatrixType>
+typename BlockMatrixBase<MatrixType>::real_type
+BlockMatrixBase<MatrixType>::frobenius_norm() const
+{
+  value_type norm_sqr = 0;
+
+  // For each block, get the Frobenius norm, and add the square to the
+  // accumulator for the full matrix
+  for (unsigned int row = 0; row < n_block_rows(); ++row)
+    {
+      for (unsigned int col = 0; col < n_block_cols(); ++col)
+        {
+          const value_type block_norm = block(row, col).frobenius_norm();
+          norm_sqr += block_norm * block_norm;
+        }
+    }
+
+  return std::sqrt(norm_sqr);
 }
 
 

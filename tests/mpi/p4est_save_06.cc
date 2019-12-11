@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/utilities.h>
 
-#include <deal.II/distributed/active_fe_indices_transfer.h>
 #include <deal.II/distributed/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
 
@@ -78,7 +77,7 @@ test()
       hp::FECollection<dim> fe_collection;
 
       // prepare FECollection with arbitrary number of entries
-      const unsigned int max_degree = 1 + std::pow(2, dim);
+      const unsigned int max_degree = 1 + Utilities::pow(2, dim);
       for (unsigned int i = 0; i < max_degree; ++i)
         fe_collection.push_back(FE_Q<dim>(max_degree - i));
 
@@ -93,8 +92,6 @@ test()
                                        locally_relevant_dofs,
                                        com_small);
 
-      parallel::distributed::ActiveFEIndicesTransfer<dim, dim> feidx_transfer(
-        dh);
       parallel::distributed::
         SolutionTransfer<dim, PETScWrappers::MPI::Vector, hp::DoFHandler<dim>>
           soltrans(dh);
@@ -109,8 +106,8 @@ test()
       x.compress(VectorOperation::insert);
       rel_x = x;
 
-      feidx_transfer.prepare_for_transfer();
-      soltrans.prepare_serialization(rel_x);
+      dh.prepare_for_serialization_of_active_fe_indices();
+      soltrans.prepare_for_serialization(rel_x);
 
       tr.save("file");
       deallog << "#cells: " << tr.n_global_active_cells() << std::endl
@@ -133,15 +130,12 @@ test()
     hp::FECollection<dim> fe_collection;
 
     // prepare FECollection with arbitrary number of entries
-    const unsigned int max_degree = 1 + std::pow(2, dim);
+    const unsigned int max_degree = 1 + Utilities::pow(2, dim);
     for (unsigned int i = 0; i < max_degree; ++i)
       fe_collection.push_back(FE_Q<dim>(max_degree - i));
 
-    dh.distribute_dofs(fe_collection);
-
-    parallel::distributed::ActiveFEIndicesTransfer<dim> feidx_transfer(dh);
-    feidx_transfer.deserialize();
-
+    dh.set_fe(fe_collection);
+    dh.deserialize_active_fe_indices();
     dh.distribute_dofs(fe_collection);
 
     IndexSet locally_owned_dofs = dh.locally_owned_dofs();

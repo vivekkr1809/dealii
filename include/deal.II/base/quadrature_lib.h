@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -707,7 +707,7 @@ public:
  * \end{pmatrix}
  * \f]
  *
- * with determinant of the Jacobian equal to $J= \beta \hat \x^{2\beta-1}$.
+ * with determinant of the Jacobian equal to $J= \beta \hat x^{2\beta-1}$.
  * Such transformation maps the reference square $[0,1]\times[0,1]$ to the
  * reference simplex, by collapsing the left side of the square and squeezing
  * quadrature points towards the origin, and then shearing the resulting
@@ -738,6 +738,7 @@ public:
    *
    * @param radial_quadrature Base quadrature to use in the radial direction
    * @param angular_quadrature Base quadrature to use in the angular direction
+   * @param beta Exponent used in the transformation
    */
   QDuffy(const Quadrature<1> &radial_quadrature,
          const Quadrature<1> &angular_quadrature,
@@ -748,6 +749,7 @@ public:
    * both the radial and angular quadratures.
    *
    * @param n Order of QGauss quadrature
+   * @param beta Exponent used in the transformation
    */
   QDuffy(const unsigned int n, const double beta);
 };

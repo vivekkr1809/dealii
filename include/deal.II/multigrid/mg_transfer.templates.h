@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2003 - 2017 by the deal.II authors
+// Copyright (C) 2003 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #ifndef dealii_mg_transfer_templates_h
 #define dealii_mg_transfer_templates_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/dofs/dof_accessor.h>
@@ -29,7 +31,6 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
-#include <deal.II/lac/vector_view.h>
 
 #include <deal.II/multigrid/mg_base.h>
 #include <deal.II/multigrid/mg_tools.h>
@@ -105,34 +106,6 @@ namespace internal
         }
     }
 
-    /**
-     * Adjust vectors on all levels to correct size.  Here, we just count the
-     * numbers of degrees of freedom on each level and @p reinit each level
-     * vector to this length.
-     */
-    template <int dim, typename number, int spacedim>
-    void
-    reinit_vector(const dealii::DoFHandler<dim, spacedim> &mg_dof,
-                  const std::vector<unsigned int> &,
-                  MGLevelObject<LinearAlgebra::distributed::Vector<number>> &v)
-    {
-      const parallel::Triangulation<dim, spacedim> *tria =
-        (dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
-          &mg_dof.get_triangulation()));
-
-      for (unsigned int level = v.min_level(); level <= v.max_level(); ++level)
-        {
-          if (v[level].size() != mg_dof.locally_owned_mg_dofs(level).size() ||
-              v[level].local_size() !=
-                mg_dof.locally_owned_mg_dofs(level).n_elements())
-            v[level].reinit(mg_dof.locally_owned_mg_dofs(level),
-                            tria != nullptr ? tria->get_communicator() :
-                                              MPI_COMM_SELF);
-          else
-            v[level] = 0.;
-        }
-    }
-
 
 #ifdef DEAL_II_WITH_TRILINOS
     /**
@@ -146,8 +119,8 @@ namespace internal
                   const std::vector<unsigned int> &,
                   MGLevelObject<TrilinosWrappers::MPI::Vector> &v)
     {
-      const dealii::parallel::Triangulation<dim, spacedim> *tria =
-        (dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
+      const dealii::parallel::TriangulationBase<dim, spacedim> *tria =
+        (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
           &mg_dof.get_triangulation()));
       AssertThrow(
         tria != nullptr,
@@ -174,8 +147,8 @@ namespace internal
                   const std::vector<unsigned int> &,
                   MGLevelObject<PETScWrappers::MPI::Vector> &v)
     {
-      const dealii::parallel::Triangulation<dim, spacedim> *tria =
-        (dynamic_cast<const parallel::Triangulation<dim, spacedim> *>(
+      const dealii::parallel::TriangulationBase<dim, spacedim> *tria =
+        (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
           &mg_dof.get_triangulation()));
       AssertThrow(
         tria != nullptr,
@@ -209,14 +182,10 @@ namespace internal
               const T &src,
               V &      dst)
   {
-    // we should have i->second == i->first, therefore we can use the same
-    // function for both copying to mg as well as copying from mg
-    for (std::vector<std::pair<types::global_dof_index,
-                               types::global_dof_index>>::const_iterator i =
-           copy_indices.begin();
-         i != copy_indices.end();
-         ++i)
-      dst(i->first) = src(i->first);
+    // we should have copy_index.second == copy_index.first, therefore we can
+    // use the same function for both copying to mg as well as copying from mg
+    for (const auto &copy_index : copy_indices)
+      dst(copy_index.first) = src(copy_index.first);
     dst.compress(VectorOperation::insert);
   }
 
@@ -450,20 +419,43 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_to_mg(
 {
   LinearAlgebra::distributed::Vector<Number> &this_ghosted_global_vector =
     solution_transfer ? solution_ghosted_global_vector : ghosted_global_vector;
-  const std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    &this_copy_indices =
-      solution_transfer ? solution_copy_indices : copy_indices;
-  const std::vector<std::vector<std::pair<unsigned int, unsigned int>>>
-    &this_copy_indices_level_mine =
-      solution_transfer ? solution_copy_indices_level_mine :
-                          copy_indices_level_mine;
+  const std::vector<Table<2, unsigned int>> &this_copy_indices =
+    solution_transfer ? solution_copy_indices : copy_indices;
+  const std::vector<Table<2, unsigned int>> &this_copy_indices_level_mine =
+    solution_transfer ? solution_copy_indices_level_mine :
+                        copy_indices_level_mine;
+
+  (void)mg_dof_handler;
 
   AssertIndexRange(dst.max_level(),
                    mg_dof_handler.get_triangulation().n_global_levels());
   AssertIndexRange(dst.min_level(), dst.max_level() + 1);
-  internal::MGTransfer::reinit_vector(mg_dof_handler,
-                                      component_to_block_map,
-                                      dst);
+
+  for (unsigned int level = dst.min_level(); level <= dst.max_level(); ++level)
+    if (dst[level].size() != mg_dof_handler.n_dofs(level) ||
+        dst[level].local_size() !=
+          mg_dof_handler.locally_owned_mg_dofs(level).n_elements())
+      {
+        // In case a ghosted level vector has been initialized, we can simply
+        // use that as a template for the vector partitioning. If not, we
+        // resort to the locally owned range of the dof handler.
+        if (level <= ghosted_level_vector.max_level() &&
+            ghosted_level_vector[level].size() == mg_dof_handler.n_dofs(level))
+          dst[level].reinit(ghosted_level_vector[level], false);
+        else
+          {
+            const parallel::TriangulationBase<dim, spacedim> *tria =
+              (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+                &mg_dof_handler.get_triangulation()));
+            dst[level].reinit(mg_dof_handler.locally_owned_mg_dofs(level),
+                              tria != nullptr ? tria->get_communicator() :
+                                                MPI_COMM_SELF);
+          }
+      }
+    else if ((perform_plain_copy == false &&
+              perform_renumbered_plain_copy == false) ||
+             level != dst.max_level())
+      dst[level] = 0;
 
   if (perform_plain_copy)
     {
@@ -474,11 +466,17 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_to_mg(
     }
   else if (perform_renumbered_plain_copy)
     {
-      Assert(copy_indices_level_mine.back().empty(), ExcInternalError());
+      AssertDimension(dst[dst.max_level()].local_size(), src.local_size());
+      AssertDimension(this_copy_indices.back().n_cols(), src.local_size());
+      Assert(copy_indices_level_mine.back().n_rows() == 0, ExcInternalError());
       LinearAlgebra::distributed::Vector<Number> &dst_level =
         dst[dst.max_level()];
-      for (std::pair<unsigned int, unsigned int> i : this_copy_indices.back())
-        dst_level.local_element(i.second) = src.local_element(i.first);
+      // as opposed to the copy_unknowns lambda below, we here know that all
+      // src elements will be touched, so we only need to do indirect
+      // addressing on one index
+      for (unsigned int i = 0; i < this_copy_indices.back().n_cols(); ++i)
+        dst_level.local_element(this_copy_indices.back()(1, i)) =
+          src.local_element(i);
       return;
     }
 
@@ -495,24 +493,20 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_to_mg(
     {
       --level;
 
-      using dof_pair_iterator =
-        std::vector<std::pair<unsigned int, unsigned int>>::const_iterator;
       LinearAlgebra::distributed::Vector<Number> &dst_level = dst[level];
 
+      auto copy_unknowns = [&](const Table<2, unsigned int> &indices) {
+        for (unsigned int i = 0; i < indices.n_cols(); ++i)
+          dst_level.local_element(indices(1, i)) =
+            this_ghosted_global_vector.local_element(indices(0, i));
+      };
+
       // first copy local unknowns
-      for (dof_pair_iterator i = this_copy_indices[level].begin();
-           i != this_copy_indices[level].end();
-           ++i)
-        dst_level.local_element(i->second) =
-          this_ghosted_global_vector.local_element(i->first);
+      copy_unknowns(this_copy_indices[level]);
 
       // Do the same for the indices where the level index is local, but the
       // global index is not
-      for (dof_pair_iterator i = this_copy_indices_level_mine[level].begin();
-           i != this_copy_indices_level_mine[level].end();
-           ++i)
-        dst_level.local_element(i->second) =
-          this_ghosted_global_vector.local_element(i->first);
+      copy_unknowns(this_copy_indices_level_mine[level]);
 
       dst_level.compress(VectorOperation::insert);
     }
@@ -544,12 +538,16 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_from_mg(
     }
   else if (perform_renumbered_plain_copy)
     {
+      AssertDimension(src[src.max_level()].local_size(), dst.local_size());
+      AssertDimension(copy_indices.back().n_cols(), dst.local_size());
+      Assert(copy_indices_global_mine.back().n_rows() == 0, ExcInternalError());
       Assert(copy_indices_global_mine.back().empty(), ExcInternalError());
       const LinearAlgebra::distributed::Vector<Number> &src_level =
         src[src.max_level()];
       dst.zero_out_ghosts();
-      for (std::pair<unsigned int, unsigned int> i : copy_indices.back())
-        dst.local_element(i.first) = src_level.local_element(i.second);
+      for (unsigned int i = 0; i < copy_indices.back().n_cols(); ++i)
+        dst.local_element(i) =
+          src_level.local_element(copy_indices.back()(1, i));
       return;
     }
 
@@ -560,9 +558,6 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_from_mg(
   dst = 0;
   for (unsigned int level = src.min_level(); level <= src.max_level(); ++level)
     {
-      using dof_pair_iterator =
-        std::vector<std::pair<unsigned int, unsigned int>>::const_iterator;
-
       // the ghosted vector should already have the correct local size (but
       // different parallel layout)
       AssertDimension(ghosted_level_vector[level].local_size(),
@@ -575,18 +570,18 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::copy_from_mg(
       ghosted_vector = src[level];
       ghosted_vector.update_ghost_values();
 
+      auto copy_unknowns = [&](const Table<2, unsigned int> &indices) {
+        for (unsigned int i = 0; i < indices.n_cols(); ++i)
+          dst.local_element(indices(0, i)) =
+            ghosted_vector.local_element(indices(1, i));
+      };
+
       // first copy local unknowns
-      for (dof_pair_iterator i = copy_indices[level].begin();
-           i != copy_indices[level].end();
-           ++i)
-        dst.local_element(i->first) = ghosted_vector.local_element(i->second);
+      copy_unknowns(copy_indices[level]);
 
       // Do the same for the indices where the level index is local, but the
       // global index is not
-      for (dof_pair_iterator i = copy_indices_global_mine[level].begin();
-           i != copy_indices_global_mine[level].end();
-           ++i)
-        dst.local_element(i->first) = ghosted_vector.local_element(i->second);
+      copy_unknowns(copy_indices_global_mine[level]);
     }
   dst.compress(VectorOperation::insert);
 }
@@ -609,9 +604,6 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::
   dst.zero_out_ghosts();
   for (unsigned int level = src.min_level(); level <= src.max_level(); ++level)
     {
-      using dof_pair_iterator =
-        std::vector<std::pair<unsigned int, unsigned int>>::const_iterator;
-
       // the ghosted vector should already have the correct local size (but
       // different parallel layout)
       AssertDimension(ghosted_level_vector[level].local_size(),
@@ -624,18 +616,18 @@ MGLevelGlobalTransfer<LinearAlgebra::distributed::Vector<Number>>::
       ghosted_vector = src[level];
       ghosted_vector.update_ghost_values();
 
+      auto copy_unknowns = [&](const Table<2, unsigned int> &indices) {
+        for (unsigned int i = 0; i < indices.n_cols(); ++i)
+          dst.local_element(indices(0, i)) +=
+            ghosted_vector.local_element(indices(1, i));
+      };
+
       // first add local unknowns
-      for (dof_pair_iterator i = copy_indices[level].begin();
-           i != copy_indices[level].end();
-           ++i)
-        dst.local_element(i->first) += ghosted_vector.local_element(i->second);
+      copy_unknowns(copy_indices[level]);
 
       // Do the same for the indices where the level index is local, but the
       // global index is not
-      for (dof_pair_iterator i = copy_indices_global_mine[level].begin();
-           i != copy_indices_global_mine[level].end();
-           ++i)
-        dst.local_element(i->first) += ghosted_vector.local_element(i->second);
+      copy_unknowns(copy_indices_global_mine[level]);
     }
   dst.compress(VectorOperation::add);
 }

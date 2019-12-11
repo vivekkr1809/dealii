@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,6 +27,8 @@
 #    include <deal.II/lac/exceptions.h>
 #    include <deal.II/lac/full_matrix.h>
 #    include <deal.II/lac/trilinos_epetra_vector.h>
+#    include <deal.II/lac/trilinos_index_access.h>
+#    include <deal.II/lac/trilinos_tpetra_vector.h>
 #    include <deal.II/lac/trilinos_vector.h>
 #    include <deal.II/lac/vector_memory.h>
 #    include <deal.II/lac/vector_operation.h>
@@ -53,6 +55,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations
+#    ifndef DOXYGEN
 template <typename MatrixType>
 class BlockMatrixBase;
 
@@ -61,23 +64,26 @@ class SparseMatrix;
 class SparsityPattern;
 class DynamicSparsityPattern;
 
-
-
 namespace TrilinosWrappers
 {
-  // forward declarations
   class SparseMatrix;
   class SparsityPattern;
 
+  namespace SparseMatrixIterators
+  {
+    template <bool Constness>
+    class Iterator;
+  }
+} // namespace TrilinosWrappers
+#    endif
+
+namespace TrilinosWrappers
+{
   /**
    * Iterators for Trilinos matrices
    */
   namespace SparseMatrixIterators
   {
-    // forward declaration
-    template <bool Constness>
-    class Iterator;
-
     /**
      * Exception
      */
@@ -243,9 +249,7 @@ namespace TrilinosWrappers
       value() const;
 
     private:
-      /**
-       * Make iterator class a friend.
-       */
+      // Make iterator class a friend.
       template <bool>
       friend class Iterator;
     };
@@ -327,14 +331,11 @@ namespace TrilinosWrappers
       value() const;
 
     private:
-      /**
-       * Make iterator class a friend.
-       */
+      // Make iterator class a friend.
       template <bool>
       friend class Iterator;
-      /**
-       * Make Reference object a friend.
-       */
+
+      // Make Reference object a friend.
       friend class Reference;
     };
 
@@ -1316,12 +1317,13 @@ namespace TrilinosWrappers
      * initialize the matrix with a sparsity pattern to fix the matrix
      * structure before inserting elements.
      */
+    template <typename Number>
     void
-    set(const size_type       row,
-        const size_type       n_cols,
-        const size_type *     col_indices,
-        const TrilinosScalar *values,
-        const bool            elide_zero_values = false);
+    set(const size_type  row,
+        const size_type  n_cols,
+        const size_type *col_indices,
+        const Number *   values,
+        const bool       elide_zero_values = false);
 
     /**
      * Add @p value to the element (<i>i,j</i>).
@@ -1564,6 +1566,7 @@ namespace TrilinosWrappers
      * <ul>
      * <li> TrilinosWrappers::MPI::Vector,
      * <li> LinearAlgebra::EpetraWrappers::Vector,
+     * <li> LinearAlgebra::TpetraWrappers::Vector,
      * <li> Vector<double>,
      * <li> LinearAlgebra::distributed::Vector<double>.
      * </ul>
@@ -1574,12 +1577,28 @@ namespace TrilinosWrappers
      * initialized with the same IndexSet that was used for the column indices
      * of the matrix.
      *
+     * This function will be called when the underlying number type for the
+     * matrix object and the one for the vector object are the same.
+     * Despite looking complicated, the return type is just `void`.
+     *
      * In case of a serial vector, this function will only work when
      * running on one processor, since the matrix object is inherently
      * distributed. Otherwise, an exception will be thrown.
      */
     template <typename VectorType>
-    void
+    typename std::enable_if<std::is_same<typename VectorType::value_type,
+                                         TrilinosScalar>::value>::type
+    vmult(VectorType &dst, const VectorType &src) const;
+
+    /**
+     * Same as the function above for the case that the underlying number type
+     * for the matrix object and the one for the vector object do not coincide.
+     * This case is not implemented. Calling it will result in a runtime error.
+     * Despite looking complicated, the return type is just `void`.
+     */
+    template <typename VectorType>
+    typename std::enable_if<!std::is_same<typename VectorType::value_type,
+                                          TrilinosScalar>::value>::type
     vmult(VectorType &dst, const VectorType &src) const;
 
     /**
@@ -1591,9 +1610,25 @@ namespace TrilinosWrappers
      *
      * This function can be called with several types of vector objects,
      * see the discussion about @p VectorType in vmult().
+     *
+     * This function will be called when the underlying number type for the
+     * matrix object and the one for the vector object are the same.
+     * Despite looking complicated, the return type is just `void`.
      */
     template <typename VectorType>
-    void
+    typename std::enable_if<std::is_same<typename VectorType::value_type,
+                                         TrilinosScalar>::value>::type
+    Tvmult(VectorType &dst, const VectorType &src) const;
+
+    /**
+     * Same as the function above for the case that the underlying number type
+     * for the matrix object and the one for the vector object do not coincide.
+     * This case is not implemented. Calling it will result in a runtime error.
+     * Despite looking complicated, the return type is just `void`.
+     */
+    template <typename VectorType>
+    typename std::enable_if<!std::is_same<typename VectorType::value_type,
+                                          TrilinosScalar>::value>::type
     Tvmult(VectorType &dst, const VectorType &src) const;
 
     /**
@@ -2113,9 +2148,7 @@ namespace TrilinosWrappers
      */
     bool compressed;
 
-    /**
-     * To allow calling protected prepare_add() and prepare_set().
-     */
+    // To allow calling protected prepare_add() and prepare_set().
     friend class BlockMatrixBase<SparseMatrix>;
   };
 
@@ -2745,7 +2778,7 @@ namespace TrilinosWrappers
     Accessor<false>::value() const
     {
       Assert(a_row < matrix->m(), ExcBeyondEndOfMatrix());
-      return Reference(*this);
+      return {*this};
     }
 
 
@@ -2983,6 +3016,32 @@ namespace TrilinosWrappers
   // Inline the set() and add() functions, since they will be called
   // frequently, and the compiler can optimize away some unnecessary loops
   // when the sizes are given at compile time.
+  template <>
+  void
+  SparseMatrix::set<TrilinosScalar>(const size_type       row,
+                                    const size_type       n_cols,
+                                    const size_type *     col_indices,
+                                    const TrilinosScalar *values,
+                                    const bool            elide_zero_values);
+
+
+
+  template <typename Number>
+  void
+  SparseMatrix::set(const size_type  row,
+                    const size_type  n_cols,
+                    const size_type *col_indices,
+                    const Number *   values,
+                    const bool       elide_zero_values)
+  {
+    std::vector<TrilinosScalar> trilinos_values(n_cols);
+    std::copy(values, values + n_cols, trilinos_values.begin());
+    this->set(
+      row, n_cols, col_indices, trilinos_values.data(), elide_zero_values);
+  }
+
+
+
   inline void
   SparseMatrix::set(const size_type      i,
                     const size_type      j,
@@ -3071,11 +3130,7 @@ namespace TrilinosWrappers
     // sparsity pattern), it does not know about the number of columns so we
     // must always take this from the additional column space map
     Assert(column_space_map.get() != nullptr, ExcInternalError());
-#      ifndef DEAL_II_WITH_64BIT_INDICES
-    return column_space_map->NumGlobalElements();
-#      else
-    return column_space_map->NumGlobalElements64();
-#      endif
+    return n_global_elements(*column_space_map);
   }
 
 
@@ -3289,6 +3344,13 @@ namespace TrilinosWrappers
     } // namespace LinearOperatorImplementation
   }   // namespace internal
 
+  template <>
+  void
+  SparseMatrix::set<TrilinosScalar>(const size_type       row,
+                                    const size_type       n_cols,
+                                    const size_type *     col_indices,
+                                    const TrilinosScalar *values,
+                                    const bool            elide_zero_values);
 #    endif // DOXYGEN
 
 } /* namespace TrilinosWrappers */

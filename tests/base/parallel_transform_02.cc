@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,8 +19,6 @@
 #include <deal.II/base/parallel.h>
 
 #include <deal.II/lac/vector.h>
-
-#include <boost/lambda/lambda.hpp>
 
 #include "../tests.h"
 
@@ -45,7 +43,7 @@ main()
                       x.end(),
                       y.begin(),
                       z.begin(),
-                      (boost::lambda::_1 + 2 * boost::lambda::_2),
+                      [](double i, double j) { return i + 2 * j; },
                       10);
 
   Assert(z.l2_norm() == 0, ExcInternalError());

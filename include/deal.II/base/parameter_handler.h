@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,8 +36,10 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations for interfaces and friendship
+#ifndef DOXYGEN
 class LogStream;
 class MultipleParameterLoop;
+#endif
 
 /**
  * The ParameterHandler class provides a standard interface to an input file
@@ -344,7 +346,7 @@ class MultipleParameterLoop;
  * add_action() function.) Of course, in C++ one doesn't usually pass
  * around the address of a function, but an action can be a function-like
  * object (taking a string as argument) that results from calling
- * @p std::bind, or more conveniently, it can be a
+ * such as a
  * <a href="http://en.cppreference.com/w/cpp/language/lambda">lambda
  * function</a> that has the form
  * @code
@@ -843,18 +845,6 @@ class MultipleParameterLoop;
  */
 class ParameterHandler : public Subscriptor
 {
-private:
-  /**
-   * Inhibit automatic CopyConstructor.
-   */
-  ParameterHandler(const ParameterHandler &) = delete;
-
-  /**
-   * Inhibit automatic assignment operator.
-   */
-  ParameterHandler &
-  operator=(const ParameterHandler &) = delete;
-
 public:
   /**
    * List of possible output formats used for
@@ -911,6 +901,17 @@ public:
    * spectacular.
    */
   virtual ~ParameterHandler() override = default;
+
+  /**
+   * Inhibit automatic CopyConstructor.
+   */
+  ParameterHandler(const ParameterHandler &) = delete;
+
+  /**
+   * Inhibit automatic assignment operator.
+   */
+  ParameterHandler &
+  operator=(const ParameterHandler &) = delete;
 
   /**
    * Parse each line from a stream until the stream returns the <tt>eof</tt>
@@ -2155,8 +2156,8 @@ ParameterHandler::save(Archive &ar, const unsigned int) const
 
   std::vector<std::string> descriptions;
 
-  for (unsigned int j = 0; j < patterns.size(); ++j)
-    descriptions.push_back(patterns[j]->description());
+  for (const auto &pattern : patterns)
+    descriptions.push_back(pattern->description());
 
   ar &descriptions;
 }
@@ -2176,8 +2177,8 @@ ParameterHandler::load(Archive &ar, const unsigned int)
   ar &                     descriptions;
 
   patterns.clear();
-  for (unsigned int j = 0; j < descriptions.size(); ++j)
-    patterns.push_back(Patterns::pattern_factory(descriptions[j]));
+  for (const auto &description : descriptions)
+    patterns.push_back(Patterns::pattern_factory(description));
 }
 
 

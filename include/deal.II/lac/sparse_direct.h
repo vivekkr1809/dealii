@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/subscriptor.h>
-#include <deal.II/base/thread_management.h>
 
 #include <deal.II/lac/block_sparse_matrix.h>
 #include <deal.II/lac/sparse_matrix.h>
@@ -31,11 +30,21 @@
 #ifdef DEAL_II_WITH_UMFPACK
 #  include <umfpack.h>
 #endif
-#ifndef SuiteSparse_long
-#  define SuiteSparse_long long int
-#endif
 
 DEAL_II_NAMESPACE_OPEN
+
+namespace types
+{
+  /**
+   * Index type for UMFPACK. SuiteSparse_long has to be used here for the
+   * Windows 64 build.
+   */
+#ifdef SuiteSparse_long
+  using suitesparse_index = SuiteSparse_long;
+#else
+  using suitesparse_index = long int;
+#endif
+} // namespace types
 
 /**
  * This class provides an interface to the sparse direct solver UMFPACK, which
@@ -45,10 +54,7 @@ DEAL_II_NAMESPACE_OPEN
  * systems, Ax=b, using the Unsymmetric-pattern MultiFrontal method and direct
  * sparse LU factorization. Matrices may have symmetric or unsymmetric
  * sparsity patterns, and may have unsymmetric entries. The use of this class
- * is explained in the
- * @ref step_22 "step-22"
- * and
- * @ref step_29 "step-29"
+ * is explained in the step-22 and step-29
  * tutorial programs.
  *
  * This matrix class implements the usual interface of preconditioners, that
@@ -300,7 +306,7 @@ public:
         "single zero eigenvalue and its rank is therefore "
         "deficient by one."
         "\n\n"
-        "The other common situation is that you run out of memory."
+        "The other common situation is that you run out of memory. "
         "On a typical laptop or desktop, it should easily be possible "
         "to solve problems with 100,000 unknowns in 2d. If you are "
         "solving problems with many more unknowns than that, in "
@@ -353,13 +359,11 @@ private:
   sort_arrays(const BlockSparseMatrix<number> &);
 
   /**
-   * The arrays in which we store the data for the solver. SuiteSparse_long
-   * has to be used here for Windows 64 build, if we used only long int,
-   * compilation would fail.
+   * The arrays in which we store the data for the solver.
    */
-  std::vector<SuiteSparse_long> Ap;
-  std::vector<SuiteSparse_long> Ai;
-  std::vector<double>           Ax;
+  std::vector<types::suitesparse_index> Ap;
+  std::vector<types::suitesparse_index> Ai;
+  std::vector<double>                   Ax;
 
   /**
    * Control and work arrays for the solver routines.

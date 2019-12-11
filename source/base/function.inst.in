@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2017 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,7 @@ for (S : REAL_SCALARS; dim : SPACE_DIMENSIONS)
     template class ComponentSelectFunction<dim, S>;
     template class ScalarFunctionFromFunctionObject<dim, S>;
     template class VectorFunctionFromScalarFunctionObject<dim, S>;
+    template class FunctionFromFunctionObjects<dim, S>;
     template class VectorFunctionFromTensorFunction<dim, S>;
   }
 
@@ -33,5 +34,6 @@ for (S : COMPLEX_SCALARS; dim : SPACE_DIMENSIONS)
     template class ComponentSelectFunction<dim, S>;
     template class ScalarFunctionFromFunctionObject<dim, S>;
     template class VectorFunctionFromScalarFunctionObject<dim, S>;
+    template class FunctionFromFunctionObjects<dim, S>;
     template class VectorFunctionFromTensorFunction<dim, S>;
   }

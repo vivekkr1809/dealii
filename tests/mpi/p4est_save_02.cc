@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 by the deal.II authors
+// Copyright (C) 2009 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -97,7 +97,7 @@ test()
     x.compress(VectorOperation::insert);
     solution = x;
 
-    soltrans.prepare_serialization(solution);
+    soltrans.prepare_for_serialization(solution);
 
     tr.save(filename.c_str());
 

@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  *
- * Copyright (C) 2008 - 2018 by the deal.II authors
+ * Copyright (C) 2008 - 2019 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -104,8 +104,11 @@ namespace Step22
   // This is an adaptation of step-20, so the main class and the data types
   // are nearly the same as used there. The only difference is that we have an
   // additional member <code>preconditioner_matrix</code>, that is used for
-  // preconditioning the Schur complement, and a corresponding sparsity pattern
-  // <code>preconditioner_sparsity_pattern</code>.
+  // preconditioning the Schur complement, and a corresponding sparsity
+  // pattern <code>preconditioner_sparsity_pattern</code>. In addition,
+  // instead of relying on LinearOperator, we implement our own InverseMatrix
+  // class.
+  //
   // In this example we also use adaptive grid refinement, which is handled
   // in analogy to step-6. According to the discussion in the introduction,
   // we are also going to use the AffineConstraints object for implementing
@@ -256,18 +259,16 @@ namespace Step22
   // introduction. Here, we create the respective objects that will be used.
 
   // @sect4{The <code>InverseMatrix</code> class template}
-
   // The <code>InverseMatrix</code> class represents the data structure for an
-  // inverse matrix. It is derived from the one in step-20. The only
-  // difference is that we now do include a preconditioner to the matrix since
-  // we will apply this class to different kinds of matrices that will require
-  // different preconditioners (in step-20 we did not use a preconditioner in
-  // this class at all). The types of matrix and preconditioner are passed to
-  // this class via template parameters, and matrix and preconditioner objects
-  // of these types will then be passed to the constructor when an
+  // inverse matrix. Unlike step-20, we implement this with a class instead of
+  // the helper function inverse_linear_operator() we will apply this class to
+  // different kinds of matrices that will require different preconditioners
+  // (in step-20 we only used a non-identity preconditioner for the mass
+  // matrix). The types of matrix and preconditioner are passed to this class
+  // via template parameters, and matrix and preconditioner objects of these
+  // types will then be passed to the constructor when an
   // <code>InverseMatrix</code> object is created. The member function
-  // <code>vmult</code> is, as in step-20, a multiplication with a vector,
-  // obtained by solving a linear system:
+  // <code>vmult</code> is obtained by solving a linear system:
   template <class MatrixType, class PreconditionerType>
   class InverseMatrix : public Subscriptor
   {
@@ -1022,9 +1023,9 @@ namespace Step22
     // the last coordinate direction. See the example description above for
     // details.
     for (const auto &cell : triangulation.active_cell_iterators())
-      for (unsigned int f = 0; f < GeometryInfo<dim>::faces_per_cell; ++f)
-        if (cell->face(f)->center()[dim - 1] == 0)
-          cell->face(f)->set_all_boundary_ids(1);
+      for (const auto &face : cell->face_iterators())
+        if (face->center()[dim - 1] == 0)
+          face->set_all_boundary_ids(1);
 
 
     // We then apply an initial refinement before solving for the first

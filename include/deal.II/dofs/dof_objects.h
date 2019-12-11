@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2006 - 2018 by the deal.II authors
+// Copyright (C) 2006 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -25,18 +25,22 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <int, int>
 class DoFHandler;
+#endif
 
 namespace internal
 {
   namespace DoFHandlerImplementation
   {
+#ifndef DOXYGEN
     template <int>
     class DoFLevel;
     template <int>
     class DoFFaces;
-
+#endif
 
     /**
      * Store the indices of the degrees of freedom which are located on
@@ -56,7 +60,7 @@ namespace internal
      * associated with vertices are not stored in the DoFObjects classes but
      * rather in the DoFHandler::vertex_dofs array.
      *
-     * The DoFObjects classes are not used directly, but objects of theses
+     * The DoFObjects classes are not used directly, but objects of these
      * classes are included in the DoFLevel and DoFFaces classes.
      *
      * @ingroup dofs
@@ -149,10 +153,8 @@ namespace internal
       void
       serialize(Archive &ar, const unsigned int version);
 
-      /**
-       * Declare the classes that store levels and faces of DoFs friends so
-       * that they can resize arrays.
-       */
+      // Declare the classes that store levels and faces of DoFs friends so
+      // that they can resize arrays.
       template <int>
       friend class DoFLevel;
       template <int>

@@ -1,6 +1,6 @@
 //-----------------------------------------------------------
 //
-//    Copyright (C) 2017 - 2018 by the deal.II authors
+//    Copyright (C) 2017 - 2019 by the deal.II authors
 //
 //    This file is part of the deal.II library.
 //
@@ -47,8 +47,8 @@ ParameterAcceptor::~ParameterAcceptor()
 std::string
 ParameterAcceptor::get_section_name() const
 {
-  return (section_name != "" ? section_name :
-                               boost::core::demangle(typeid(*this).name()));
+  return (!section_name.empty() ? section_name :
+                                  boost::core::demangle(typeid(*this).name()));
 }
 
 
@@ -60,7 +60,7 @@ ParameterAcceptor::initialize(
   ParameterHandler &                  prm)
 {
   declare_all_parameters(prm);
-  if (filename != "")
+  if (!filename.empty())
     {
       // check the extension of input file
       if (filename.substr(filename.find_last_of('.') + 1) == "prm")
@@ -106,7 +106,7 @@ ParameterAcceptor::initialize(
             "Invalid extension of parameter file. Please use .prm or .xml"));
     }
 
-  if (output_filename != "")
+  if (!output_filename.empty())
     {
       std::ofstream outfile(output_filename.c_str());
       Assert(outfile, ExcIO());
@@ -173,26 +173,26 @@ ParameterAcceptor::parse_parameters(ParameterHandler &)
 void
 ParameterAcceptor::parse_all_parameters(ParameterHandler &prm)
 {
-  for (unsigned int i = 0; i < class_list.size(); ++i)
-    if (class_list[i] != nullptr)
+  for (const auto &instance : class_list)
+    if (instance != nullptr)
       {
-        class_list[i]->enter_my_subsection(prm);
-        class_list[i]->parse_parameters(prm);
-        class_list[i]->parse_parameters_call_back();
-        class_list[i]->leave_my_subsection(prm);
+        instance->enter_my_subsection(prm);
+        instance->parse_parameters(prm);
+        instance->parse_parameters_call_back();
+        instance->leave_my_subsection(prm);
       }
 }
 
 void
 ParameterAcceptor::declare_all_parameters(ParameterHandler &prm)
 {
-  for (unsigned int i = 0; i < class_list.size(); ++i)
-    if (class_list[i] != nullptr)
+  for (const auto &instance : class_list)
+    if (instance != nullptr)
       {
-        class_list[i]->enter_my_subsection(prm);
-        class_list[i]->declare_parameters(prm);
-        class_list[i]->declare_parameters_call_back();
-        class_list[i]->leave_my_subsection(prm);
+        instance->enter_my_subsection(prm);
+        instance->declare_parameters(prm);
+        instance->declare_parameters_call_back();
+        instance->leave_my_subsection(prm);
       }
 }
 

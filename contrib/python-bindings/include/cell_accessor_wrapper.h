@@ -20,6 +20,8 @@
 
 #include <deal.II/grid/tria_accessor.h>
 
+#include <boost/python.hpp>
+
 DEAL_II_NAMESPACE_OPEN
 
 namespace python
@@ -44,6 +46,11 @@ namespace python
                         const int             index);
 
     /**
+     * Constructor for an empty object.
+     */
+    CellAccessorWrapper();
+
+    /**
      * Destructor.
      */
     ~CellAccessorWrapper();
@@ -54,69 +61,140 @@ namespace python
      *  - in 3D: isotropic, no_refinement, cut_x, cut_y, cut_z, cut_xy, cut_xz,
      *  cut_yz, and cut_xyz.
      */
-    void set_refine_flag(const std::string &refinement_case);
+    void
+    set_refine_flag(const std::string &refinement_case);
 
 
     /**
      * Get the refine flag.
      */
-    std::string get_refine_flag() const;
+    std::string
+    get_refine_flag() const;
 
     /**
      * Set the coarsen flag to true or false.
      */
-    void set_coarsen_flag(const bool coarsen_flag);
+    void
+    set_coarsen_flag(const bool coarsen_flag);
 
     /**
      * Get the coarsen flag.
      */
-    bool get_coarsen_flag() const;
+    bool
+    get_coarsen_flag() const;
 
     /**
      * Get the barycenter of the cell.
      */
-    PointWrapper get_barycenter() const;
+    PointWrapper
+    get_barycenter() const;
 
     /**
      * Set the material id.
      */
-    void set_material_id(const int material_id);
+    void
+    set_material_id(const int material_id);
 
     /**
      * Get the material id.
      */
-    int get_material_id() const;
+    int
+    get_material_id() const;
 
     /**
      * Set the ith vertex of the cell to @p point_wrapper.
      */
-    void set_vertex(const int i, PointWrapper &point_wrapper);
+    void
+    set_vertex(const int i, PointWrapper &point_wrapper);
 
     /**
      * Return the ith vertex of the cell.
      */
-    PointWrapper get_vertex(const int i) const;
+    PointWrapper
+    get_vertex(const int i) const;
 
     /**
      * Set the manifold id.
      */
-    void set_manifold_id(const int manifold_id);
+    void
+    set_manifold_id(const int manifold_id);
 
     /**
      * Get the manifold id.
      */
-    int get_manifold_id() const;
+    int
+    get_manifold_id() const;
+
+    /**
+     * Do as set_manifold_id() but also set the manifold indicators of
+     * the objects that bound the current object.
+     */
+    void
+    set_all_manifold_ids(const int manifold_id);
+
+    /**
+     * Return the ith neighbor of a cell. If the neighbor does not exist,
+     * i.e., if the ith face of the current object is at the boundary,
+     * then an exception is thrown.
+     */
+    CellAccessorWrapper
+    neighbor(const int i) const;
+
+    /**
+     * Return whether the cell is at the boundary.
+     */
+    bool
+    at_boundary() const;
+
+    /**
+     * This is a slight variation to the at_boundary function:
+     * for 2 dimensions it is equivalent, for three
+     * dimensions it returns whether at least one of the 12
+     * lines of the hexahedron is at a boundary.
+     */
+    bool
+    has_boundary_lines() const;
+
+    /**
+     * Get faces of the underlying cell.
+     */
+    boost::python::list
+    faces() const;
+
+    /**
+     * Compute the dim-dimensional measure of the object.
+     * For a dim-dimensional cell in dim-dimensional space,
+     * this equals its volume. On the other hand, for a 2d
+     * cell in 3d space, or if the current object pointed to
+     * is a 2d face of a 3d cell in 3d space, then the function
+     * computes the area the object occupies. For a
+     * one-dimensional object, return its length.
+     */
+    double
+    measure() const;
 
     /**
      * Exception.
      */
     DeclException2(ExcVertexDoesNotExist,
-                   int, int,
+                   int,
+                   int,
                    << "Requested vertex number " << arg1
                    << " does not exist. The largest vertex number "
-                   << "acceptable is "<< arg2-1);
+                   << "acceptable is " << arg2 - 1);
+
+    DeclException2(ExcNeighborDoesNotExist,
+                   int,
+                   int,
+                   << "Requested neighbor number " << arg1
+                   << " does not exist. The largest neighbor number "
+                   << "acceptable is " << arg2 - 1);
 
   private:
+    template <int dim_, int spacedim_>
+    const CellAccessorWrapper
+    construct_neighbor_wrapper(const int i) const;
+
     /**
      * Dimension of the underlying CellAccessor object.
      */
@@ -132,8 +210,29 @@ namespace python
      */
     void *cell_accessor;
 
+    friend class MappingQGenericWrapper;
   };
-}
+
+
+  template <int dim_, int spacedim_>
+  const CellAccessorWrapper
+  CellAccessorWrapper::construct_neighbor_wrapper(const int i) const
+  {
+    Assert(dim_ == dim && spacedim_ == spacedim, ExcInternalError());
+    auto *cell = static_cast<CellAccessor<dim_, spacedim_> *>(cell_accessor);
+
+    auto neighbor = cell->neighbor(i);
+
+    CellAccessorWrapper neighbor_wrapper;
+    neighbor_wrapper.dim      = dim_;
+    neighbor_wrapper.spacedim = spacedim_;
+    neighbor_wrapper.cell_accessor =
+      new CellAccessor<dim_, spacedim_>(&neighbor->get_triangulation(),
+                                        neighbor->level(),
+                                        neighbor->index());
+    return neighbor_wrapper;
+  }
+} // namespace python
 
 DEAL_II_NAMESPACE_CLOSE
 

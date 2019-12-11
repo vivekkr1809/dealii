@@ -38,15 +38,14 @@ DEAL_II_NAMESPACE_OPEN
 
 template <int dim>
 FE_BernardiRaugel<dim>::FE_BernardiRaugel(const unsigned int p)
-  : FE_PolyTensor<PolynomialsBernardiRaugel<dim>, dim>(
-      p,
+  : FE_PolyTensor<dim>(
+      PolynomialsBernardiRaugel<dim>(p),
       FiniteElementData<dim>(get_dpo_vector(),
                              dim,
                              2,
                              FiniteElementData<dim>::Hdiv),
-      std::vector<bool>(PolynomialsBernardiRaugel<dim>::compute_n_pols(p),
-                        true),
-      std::vector<ComponentMask>(PolynomialsBernardiRaugel<dim>::compute_n_pols(
+      std::vector<bool>(PolynomialsBernardiRaugel<dim>::n_polynomials(p), true),
+      std::vector<ComponentMask>(PolynomialsBernardiRaugel<dim>::n_polynomials(
                                    p),
                                  std::vector<bool>(dim, true)))
 {
@@ -55,7 +54,7 @@ FE_BernardiRaugel<dim>::FE_BernardiRaugel(const unsigned int p)
 
   // const unsigned int n_dofs = this->dofs_per_cell;
 
-  this->mapping_type = mapping_none;
+  this->mapping_kind = {mapping_none};
   // These must be done first, since
   // they change the evaluation of
   // basis functions

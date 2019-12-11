@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2010 - 2017 by the deal.II authors
+// Copyright (C) 2010 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -452,7 +452,7 @@ namespace Step39
   InteriorPenaltyProblem<dim>::setup_system()
   {
     dof_handler.distribute_dofs(fe);
-    dof_handler.distribute_mg_dofs(fe);
+    dof_handler.distribute_mg_dofs();
     types::global_dof_index n_dofs = dof_handler.n_dofs();
     solution.reinit(n_dofs);
     right_hand_side.reinit(n_dofs);

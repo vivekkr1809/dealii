@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,7 +36,6 @@
 // to 'cut' its tree on a parent branch that does not exist in this case.
 
 
-#include <deal.II/distributed/active_fe_indices_transfer.h>
 #include <deal.II/distributed/cell_weights.h>
 #include <deal.II/distributed/tria.h>
 
@@ -64,20 +63,12 @@ test()
   fe_collection.push_back(FE_Q<dim>(7));
 
   hp::DoFHandler<dim> dh(tria);
+  dh.set_fe(fe_collection);
   // default: active_fe_index = 0
   for (auto &cell : dh.active_cell_iterators())
     if (cell->is_locally_owned())
       if (cell->id().to_string() == "0_3:000")
         cell->set_active_fe_index(1);
-  dh.distribute_dofs(fe_collection);
-
-
-  parallel::distributed::ActiveFEIndicesTransfer<dim> feidx_transfer(dh);
-  feidx_transfer.prepare_for_transfer();
-
-  parallel::CellWeights<dim> cell_weights(dh);
-  cell_weights.register_ndofs_weighting(100000);
-
 
   deallog << "Number of cells before repartitioning: "
           << tria.n_locally_owned_active_cells() << std::endl;
@@ -90,9 +81,10 @@ test()
   }
 
 
+  const parallel::CellWeights<dim> cell_weights(
+    dh, parallel::CellWeights<dim>::ndofs_weighting({100000, 1}));
+
   tria.repartition();
-  feidx_transfer.unpack();
-  dh.distribute_dofs(fe_collection);
 
 
   deallog << "Number of cells after repartitioning: "
@@ -104,6 +96,25 @@ test()
         dof_counter += cell->get_fe().dofs_per_cell;
     deallog << "  Cumulative dofs per cell: " << dof_counter << std::endl;
   }
+
+#ifdef DEBUG
+  parallel::distributed::Triangulation<dim> other_tria(MPI_COMM_WORLD);
+  GridGenerator::hyper_cube(other_tria);
+  other_tria.refine_global(3);
+
+  dh.initialize(other_tria, fe_collection);
+
+  try
+    {
+      tria.repartition();
+    }
+  catch (ExcMessage &)
+    {
+      deallog << "Triangulation changed" << std::endl;
+    }
+#else
+  deallog << "Triangulation changed" << std::endl;
+#endif
 
   // make sure no processor is hanging
   MPI_Barrier(MPI_COMM_WORLD);

@@ -1,6 +1,6 @@
 ## ---------------------------------------------------------------------
 ##
-## Copyright (C) 2012 - 2018 by the deal.II authors
+## Copyright (C) 2012 - 2019 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -43,6 +43,7 @@ SET(_unity_include_src
   index_set.cc
   job_identifier.cc
   logstream.cc
+  hdf5.cc
   mpi.cc
   multithread_info.cc
   named_selection.cc
@@ -50,6 +51,7 @@ SET(_unity_include_src
   parallel.cc
   parameter_handler.cc
   parameter_acceptor.cc
+  parsed_convergence_table.cc
   parsed_function.cc
   partitioner.cc
   patterns.cc
@@ -57,6 +59,7 @@ SET(_unity_include_src
   polynomial.cc
   polynomials_abf.cc
   polynomials_adini.cc
+  tensor_polynomials_base.cc
   polynomials_bernstein.cc
   polynomials_bdm.cc
   polynomials_bernardi_raugel.cc
@@ -72,6 +75,7 @@ SET(_unity_include_src
   quadrature.cc
   quadrature_lib.cc
   quadrature_selector.cc
+  scalar_polynomials_base.cc
   subscriptor.cc
   table_handler.cc
   tensor_function.cc
@@ -96,6 +100,7 @@ IF(DEAL_II_WITH_CUDA)
   SET(_separate_src
     ${_separate_src}
     cuda.cu
+    partitioner.cu
   )
 ENDIF()
 
@@ -115,8 +120,10 @@ SET(_inst
   function_time.inst.in
   incremental_function.inst.in
   geometric_utilities.inst.in
+  hdf5.inst.in
   mpi.inst.in
   partitioner.inst.in
+  partitioner.cuda.inst.in
   polynomials_rannacher_turek.inst.in
   symmetric_tensor.inst.in
   tensor.inst.in

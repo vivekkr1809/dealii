@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2015 - 2018 by the deal.II authors
+// Copyright (C) 2015 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -41,7 +41,8 @@ namespace LinearAlgebra
   namespace EpetraWrappers
   {
     Vector::Vector()
-      : vector(new Epetra_FEVector(
+      : Subscriptor()
+      , vector(new Epetra_FEVector(
           Epetra_Map(0, 0, 0, Utilities::Trilinos::comm_self())))
     {}
 
@@ -56,7 +57,8 @@ namespace LinearAlgebra
 
     Vector::Vector(const IndexSet &parallel_partitioner,
                    const MPI_Comm &communicator)
-      : vector(new Epetra_FEVector(
+      : Subscriptor()
+      , vector(new Epetra_FEVector(
           parallel_partitioner.make_trilinos_map(communicator, false)))
     {}
 
@@ -572,10 +574,10 @@ namespace LinearAlgebra
           const size_type n_indices = vector->Map().NumMyElements();
 #    ifndef DEAL_II_WITH_64BIT_INDICES
           unsigned int *vector_indices =
-            (unsigned int *)vector->Map().MyGlobalElements();
+            reinterpret_cast<unsigned int *>(vector->Map().MyGlobalElements());
 #    else
           size_type *vector_indices =
-            (size_type *)vector->Map().MyGlobalElements64();
+            reinterpret_cast<size_type *>(vector->Map().MyGlobalElements64());
 #    endif
           is.add_indices(vector_indices, vector_indices + n_indices);
         }

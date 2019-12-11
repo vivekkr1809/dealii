@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/function.h>
-#include <deal.II/base/thread_management.h>
 
 #include <deal.II/dofs/deprecated_function_map.h>
 
@@ -37,6 +36,7 @@ DEAL_II_NAMESPACE_OPEN
 
 
 // forward declarations
+#ifndef DOXYGEN
 template <int dim>
 class Quadrature;
 
@@ -69,7 +69,7 @@ namespace hp
 } // namespace hp
 
 
-#ifdef DEAL_II_WITH_PETSC
+#  ifdef DEAL_II_WITH_PETSC
 namespace PETScWrappers
 {
   class MatrixBase;
@@ -80,9 +80,9 @@ namespace PETScWrappers
     class BlockVector;
   } // namespace MPI
 } // namespace PETScWrappers
-#endif
+#  endif
 
-#ifdef DEAL_II_WITH_TRILINOS
+#  ifdef DEAL_II_WITH_TRILINOS
 namespace TrilinosWrappers
 {
   class SparseMatrix;
@@ -93,6 +93,7 @@ namespace TrilinosWrappers
     class BlockVector;
   } // namespace MPI
 } // namespace TrilinosWrappers
+#  endif
 #endif
 
 
@@ -192,8 +193,8 @@ namespace TrilinosWrappers
  * parts with indicators contained in a std::map<types::boundary_id, const
  * Function<spacedim,number>*> passed to the function (i.e. if you want to set
  * up the mass matrix for the parts of the boundary with indicators zero and 2,
- * you pass the function a map of <tt>unsigned
- * char</tt>s as parameter @p boundary_functions containing the keys zero and
+ * you pass the function a map with key type types::boundary_id
+ * as the parameter @p boundary_functions containing the keys zero and
  * 2). The size of the matrix is equal to the number of degrees of freedom
  * that have support on the boundary, i.e. it is <em>not</em> a matrix on all
  * degrees of freedom, but only a subset. (The $\phi_i$ in the formula are the
@@ -652,7 +653,8 @@ namespace MatrixCreator
  * respect for fixed degrees of freedom, and in a second step eliminate them
  * again from the linear system. The inclusion into the assembly process is as
  * follows: when the matrix and vectors are set up, a list of nodes subject to
- * Dirichlet bc is made and matrix and vectors are modified accordingly. This
+ * Dirichlet boundary conditions is made and matrix and vectors are
+ * modified accordingly. This
  * is done by deleting all entries in the matrix in the line of this degree of
  * freedom, setting the main diagonal entry to a suitable positive value and
  * the right hand side element to a value so that the solution of the linear

@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2007 - 2017 by the deal.II authors
+// Copyright (C) 2007 - 2018 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #define dealii_vector_memory_templates_h
 
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/std_cxx14/memory.h>
 
@@ -26,11 +28,19 @@ DEAL_II_NAMESPACE_OPEN
 
 
 template <typename VectorType>
-typename GrowingVectorMemory<VectorType>::Pool
-  GrowingVectorMemory<VectorType>::pool;
+typename GrowingVectorMemory<VectorType>::Pool &
+GrowingVectorMemory<VectorType>::get_pool()
+{
+  static GrowingVectorMemory<VectorType>::Pool pool;
+  return pool;
+}
+
+
 
 template <typename VectorType>
 Threads::Mutex GrowingVectorMemory<VectorType>::mutex;
+
+
 
 template <typename VectorType>
 inline GrowingVectorMemory<VectorType>::Pool::Pool()
@@ -82,7 +92,7 @@ inline GrowingVectorMemory<VectorType>::GrowingVectorMemory(
   , log_statistics(log_statistics)
 {
   std::lock_guard<std::mutex> lock(mutex);
-  pool.initialize(initial_size);
+  get_pool().initialize(initial_size);
 }
 
 
@@ -96,7 +106,7 @@ inline GrowingVectorMemory<VectorType>::~GrowingVectorMemory()
       deallog << "GrowingVectorMemory:Overall allocated vectors: "
               << total_alloc << std::endl;
       deallog << "GrowingVectorMemory:Maximum allocated vectors: "
-              << pool.data->size() << std::endl;
+              << get_pool().data->size() << std::endl;
     }
 }
 
@@ -112,8 +122,8 @@ GrowingVectorMemory<VectorType>::alloc()
   ++current_alloc;
   // see if there is a free vector
   // available in our list
-  for (typename std::vector<entry_type>::iterator i = pool.data->begin();
-       i != pool.data->end();
+  for (typename std::vector<entry_type>::iterator i = get_pool().data->begin();
+       i != get_pool().data->end();
        ++i)
     {
       if (i->first == false)
@@ -124,10 +134,9 @@ GrowingVectorMemory<VectorType>::alloc()
     }
 
   // no free vector found, so let's just allocate a new one
-  pool.data->emplace_back(
-    entry_type(true, std_cxx14::make_unique<VectorType>()));
+  get_pool().data->emplace_back(true, std_cxx14::make_unique<VectorType>());
 
-  return pool.data->back().second.get();
+  return get_pool().data->back().second.get();
 }
 
 
@@ -138,8 +147,8 @@ GrowingVectorMemory<VectorType>::free(const VectorType *const v)
 {
   std::lock_guard<std::mutex> lock(mutex);
 
-  for (typename std::vector<entry_type>::iterator i = pool.data->begin();
-       i != pool.data->end();
+  for (typename std::vector<entry_type>::iterator i = get_pool().data->begin();
+       i != get_pool().data->end();
        ++i)
     {
       if (v == i->second.get())
@@ -160,8 +169,8 @@ GrowingVectorMemory<VectorType>::release_unused_memory()
 {
   std::lock_guard<std::mutex> lock(mutex);
 
-  if (pool.data != nullptr)
-    pool.data->clear();
+  if (get_pool().data != nullptr)
+    get_pool().data->clear();
 }
 
 
@@ -173,8 +182,10 @@ GrowingVectorMemory<VectorType>::memory_consumption() const
   std::lock_guard<std::mutex> lock(mutex);
 
   std::size_t                                            result = sizeof(*this);
-  const typename std::vector<entry_type>::const_iterator end = pool.data->end();
-  for (typename std::vector<entry_type>::const_iterator i = pool.data->begin();
+  const typename std::vector<entry_type>::const_iterator end =
+    get_pool().data->end();
+  for (typename std::vector<entry_type>::const_iterator i =
+         get_pool().data->begin();
        i != end;
        ++i)
     result += sizeof(*i) + MemoryConsumption::memory_consumption(i->second);

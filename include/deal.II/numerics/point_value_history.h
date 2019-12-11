@@ -17,6 +17,8 @@
 #ifndef dealii_point_value_history_h
 #define dealii_point_value_history_h
 
+#include <deal.II/base/config.h>
+
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/quadrature_lib.h>
@@ -480,6 +482,7 @@ public:
    * get_support_locations replaces it and reflects the fact that the points
    * returned are actually the support points.
    */
+  DEAL_II_DEPRECATED
   void
   get_points(std::vector<std::vector<Point<dim>>> &locations);
 

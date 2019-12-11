@@ -16,8 +16,11 @@
 #ifndef dealii_std_cxx11_shared_ptr_h
 #define dealii_std_cxx11_shared_ptr_h
 
-
 #include <deal.II/base/config.h>
+
+DEAL_II_WARNING(
+  "This file is deprecated. Simply use the corresponding C++11 header <memory>.")
+
 
 #include <memory>
 DEAL_II_NAMESPACE_OPEN
@@ -28,12 +31,6 @@ namespace std_cxx11
   using std::make_shared;
   using std::shared_ptr;
 } // namespace std_cxx11
-DEAL_II_NAMESPACE_CLOSE
-
-
-// then allow using the old namespace name instead of the new one
-DEAL_II_NAMESPACE_OPEN
-namespace std_cxx1x = std_cxx11;
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

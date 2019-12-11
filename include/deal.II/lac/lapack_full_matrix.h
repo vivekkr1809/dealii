@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2018 by the deal.II authors
+// Copyright (C) 2005 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,6 +33,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations
+#ifndef DOXYGEN
 template <typename number>
 class Vector;
 template <typename number>
@@ -41,7 +42,7 @@ template <typename number>
 class FullMatrix;
 template <typename number>
 class SparseMatrix;
-
+#endif
 
 /**
  * A variant of FullMatrix using LAPACK functions wherever possible. In order
@@ -174,6 +175,26 @@ public:
    */
   void
   rank1_update(const number a, const Vector<number> &v);
+
+  /**
+   * Apply <a href="https://en.wikipedia.org/wiki/Givens_rotation">Givens
+   * rotation</a>
+   * @p csr (a triplet of cosine, sine and radius, see
+   * Utilities::LinearAlgebra::givens_rotation() for the definition of the
+   * rotation matrix $\mathbf G$)
+   * to this matrix in the plane spanned by the @p i'th and @p k'th unit vectors.
+   * If @p left is <code>true</code>, the rotation is applied from left
+   * $\mathbf A \leftarrow \mathbf G \mathbf A$
+   * and only rows @p i and @p k are affected.
+   * Otherwise, transpose of the rotation matrix is applied from right
+   * $\mathbf A \leftarrow \mathbf A \mathbf G^T$
+   * and only columns @p i and @p k are affected.
+   */
+  void
+  apply_givens_rotation(const std::array<number, 3> &csr,
+                        const size_type              i,
+                        const size_type              k,
+                        const bool                   left = true);
 
   /**
    * Assignment from different matrix classes, performing the usual conversion
@@ -528,6 +549,18 @@ public:
           const bool                      adding = false) const;
 
   /**
+   * Performs out-place transposition.
+   * Matrix @p B should be appropriately sized.
+   *
+   * @note for complex number types, conjugate transpose will be performed.
+   *
+   * @note If deal.II is configured with Intel-MKL, `mkl_?omatcopy` will be used,
+   * otherwise transposition is done element by element.
+   */
+  void
+  transpose(LAPACKFullMatrix<number> &B) const;
+
+  /**
    * Scale rows of this matrix by @p V . This is equivalent to premultiplication
    * with a diagonal matrix $\mathbf A\leftarrow {\rm diag}(\mathbf V)\mathbf
    * A$.
@@ -783,6 +816,17 @@ public:
    * Requires that the #state is LAPACKSupport::matrix, fills the data members
    * #wr, #svd_u, and #svd_vt, and leaves the object in the #state
    * LAPACKSupport::svd.
+   *
+   * The singular value decomposition factorizes the provided matrix (A) into
+   * three parts: U, sigma, and the transpose of V (V^T), such that A = U sigma
+   * V^T. Sigma is a MxN matrix which contains the singular values of A on
+   * the diagonal while all the other elements are zero. U is a MxM orthogonal
+   * matrix containing the left singular vectors corresponding to the singular
+   * values of A. V is a NxN orthonal matrix containing the right singular
+   * vectors corresponding the the singular values of A.
+   *
+   * Note that the variable #svd_vt contains the tranpose of V and can be
+   * accessed by get_svd_vt(), while U is accessed with get_svd_u().
    */
   void
   compute_svd();
@@ -830,9 +874,25 @@ public:
   singular_value(const size_type i) const;
 
   /**
+   * Retrieve the matrix #svd_u after compute_svd() or compute_inverse_svd() was
+   * called.
+   */
+  inline const LAPACKFullMatrix<number> &
+  get_svd_u() const;
+
+  /**
+   * Retrieve the matrix #svd_vt after compute_svd() or compute_inverse_svd()
+   * was called.
+   */
+  inline const LAPACKFullMatrix<number> &
+  get_svd_vt() const;
+
+  /**
    * Print the matrix and allow formatting of entries.
    *
    * The parameters allow for a flexible setting of the output format:
+   *
+   * @param out This specifies the stream to write to.
    *
    * @param precision denotes the number of trailing digits.
    *
@@ -1136,6 +1196,28 @@ LAPACKFullMatrix<number>::singular_value(const size_type i) const
   AssertIndexRange(i, wr.size());
 
   return wr[i];
+}
+
+
+template <typename number>
+inline const LAPACKFullMatrix<number> &
+LAPACKFullMatrix<number>::get_svd_u() const
+{
+  Assert(state == LAPACKSupport::svd || state == LAPACKSupport::inverse_svd,
+         LAPACKSupport::ExcState(state));
+
+  return *svd_u;
+}
+
+
+template <typename number>
+inline const LAPACKFullMatrix<number> &
+LAPACKFullMatrix<number>::get_svd_vt() const
+{
+  Assert(state == LAPACKSupport::svd || state == LAPACKSupport::inverse_svd,
+         LAPACKSupport::ExcState(state));
+
+  return *svd_vt;
 }
 
 

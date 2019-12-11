@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 1998 - 2018 by the deal.II authors
+// Copyright (C) 1998 - 2019 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -35,6 +35,8 @@
 
 DEAL_II_NAMESPACE_OPEN
 
+// Forward declarations
+#ifndef DOXYGEN
 template <typename>
 class FullMatrix;
 class SparsityPattern;
@@ -52,9 +54,31 @@ namespace internals
   class GlobalRowsFromLocal;
 }
 
+namespace internal
+{
+  namespace AffineConstraintsImplementation
+  {
+    template <class VectorType>
+    void
+    set_zero_all(const std::vector<types::global_dof_index> &cm,
+                 VectorType &                                vec);
+
+    template <class T>
+    void
+    set_zero_all(const std::vector<types::global_dof_index> &cm,
+                 dealii::Vector<T> &                         vec);
+
+    template <class T>
+    void
+    set_zero_all(const std::vector<types::global_dof_index> &cm,
+                 dealii::BlockVector<T> &                    vec);
+  } // namespace AffineConstraintsImplementation
+} // namespace internal
+
 
 template <typename number>
 class AffineConstraints;
+#endif
 
 /**
  * ConstraintMatrix has been renamed to AffineConstraints. Provide a
@@ -705,7 +729,7 @@ public:
    * condensed and compressed.  This function is the appropriate choice for
    * applying inhomogeneous constraints.
    *
-   * The current object object must be closed to call this function.
+   * The current object must be closed to call this function.
    *
    * See the general documentation of this class for more detailed
    * information.
@@ -1187,7 +1211,7 @@ public:
   {
     /**
      * A data type in which we store the list of entries that make up the
-     * homogenous part of a constraint.
+     * homogeneous part of a constraint.
      */
     using Entries = std::vector<std::pair<size_type, number>>;
 
@@ -1673,6 +1697,20 @@ AffineConstraints<number>::set_inhomogeneity(const size_type line_n,
 }
 
 template <typename number>
+template <class VectorType>
+inline void
+AffineConstraints<number>::set_zero(VectorType &vec) const
+{
+  // since lines is a private member, we cannot pass it to the functions
+  // above. therefore, copy the content which is cheap
+  std::vector<size_type> constrained_lines(lines.size());
+  for (unsigned int i = 0; i < lines.size(); ++i)
+    constrained_lines[i] = lines[i].index;
+  internal::AffineConstraintsImplementation::set_zero_all(constrained_lines,
+                                                          vec);
+}
+
+template <typename number>
 inline types::global_dof_index
 AffineConstraints<number>::n_constraints() const
 {
@@ -1938,7 +1976,8 @@ public:
    * derived from BlockMatrixBase<T>).
    */
   static const bool value =
-    (sizeof(check_for_block_matrix((MatrixType *)nullptr)) == sizeof(yes_type));
+    (sizeof(check_for_block_matrix(static_cast<MatrixType *>(nullptr))) ==
+     sizeof(yes_type));
 };
 
 // instantiation of the static member
